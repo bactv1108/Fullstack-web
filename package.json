@@ -1,0 +1,27 @@
+{
+  "name": "fullstack-web",
+  "version": "1.0.0",
+  "description": "\"# duan-fullstack\"",
+  "main": "index.js",
+  "scripts": {
+    "dev:backend": "cd duAn_Fullstack_Backend && npm run dev",
+    "dev:frontend": "cd duAn_Fullstack_Frontend && npm run dev",
+    "dev:admin": "cd duAn_Fullstack_Admin && npm run dev",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:admin\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bactv1108/Fullstack-web.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/bactv1108/Fullstack-web/issues"
+  },
+  "homepage": "https://github.com/bactv1108/Fullstack-web#readme",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

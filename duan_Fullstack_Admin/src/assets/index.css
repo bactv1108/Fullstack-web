@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@theme {
+  --color-admin-bg: #0f1115;
+  --color-admin-card: #181b21;
+  --color-admin-primary: #3b82f6; /* Blue */
+  --color-admin-primary-hover: #2563eb;
+  --color-admin-text: #e2e8f0;
+  --color-admin-text-muted: #94a3b8;
+  --color-admin-border: #334155;
+  --color-admin-danger: #ef4444;
+  --color-admin-success: #10b981;
+}
+
+body {
+  background-color: var(--color-admin-bg);
+  color: var(--color-admin-text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.admin-card {
+  @apply bg-admin-card border border-admin-border rounded-xl shadow-lg;
+}
+
+.admin-input {
+  @apply w-full bg-admin-bg border border-admin-border rounded-lg px-4 py-2 text-admin-text focus:outline-none focus:border-admin-primary focus:ring-1 focus:ring-admin-primary transition-colors;
+}
+
+.admin-btn {
+  @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.admin-btn-primary {
+  @apply bg-admin-primary text-white hover:bg-admin-primary-hover;
+}
+
+/* Custom scrollbar for admin */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-admin-border);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}

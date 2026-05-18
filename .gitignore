@@ -1,0 +1,14 @@
+# Không track thư mục chứa thư viện ở tất cả các cấp
+node_modules/
+**/node_modules/
+
+# Không track các file môi trường chứa mã bảo mật (Rất quan trọng!)
+.env
+.env.local
+**/.env
+**/.env.local
+
+# Không track các file build đầu ra
+dist/
+build/
+.DS_Store
