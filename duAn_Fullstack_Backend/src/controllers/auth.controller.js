@@ -1,8 +1,23 @@
 const { google } = require('googleapis');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
+const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 const db = require('../config/db');
 require('dotenv').config();
 
+// ── Nodemailer Transporter ──────────────────────────────────────────
+const transporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+  port: Number(process.env.EMAIL_PORT) || 465,
+  secure: process.env.EMAIL_SECURE === 'true',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+// ── Google OAuth (existing) ─────────────────────────────────────────
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
@@ -11,8 +26,8 @@ const oauth2Client = new google.auth.OAuth2(
 
 const googleAuth = (req, res) => {
   const url = oauth2Client.generateAuthUrl({
-    access_type: 'offline', // Để nhận refresh_token
-    prompt: 'consent', // Bắt buộc user đồng ý để luôn trả về refresh_token
+    access_type: 'offline',
+    prompt: 'consent',
     scope: [
       'https://www.googleapis.com/auth/userinfo.profile',
       'https://www.googleapis.com/auth/userinfo.email',
@@ -66,7 +81,7 @@ const googleCallback = async (req, res) => {
     } else {
       // INSERT
       const [insertResult] = await db.execute(
-        'INSERT INTO users (google_id, email, name, avatar, refresh_token) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO users (google_id, email, name, avatar, refresh_token, is_verified) VALUES (?, ?, ?, ?, ?, 1)',
         [google_id, email, name, avatar, refresh_token || null]
       );
       user = {
@@ -87,17 +102,292 @@ const googleCallback = async (req, res) => {
     );
 
     // Redirect back to frontend
-    // Frontend URL could be loaded from env, hardcoded for now as requested
     const frontendRedirectUrl = `http://localhost:5173/auth/google/callback?token=${token}`;
     res.redirect(frontendRedirectUrl);
 
   } catch (error) {
-    console.error('Error in Google Callback:', error);
+    console.error('[AUTH] Google Callback error:', error.message);
     res.status(500).json({ error: 'Internal Server Error during Google Authentication' });
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+//  TRADITIONAL AUTH: Register, Login, Verify Email, Forgot Password
+// ═══════════════════════════════════════════════════════════════════
+
+// ── REGISTER ────────────────────────────────────────────────────────
+const register = async (req, res) => {
+  const { name, email, password } = req.body;
+  console.log(`[AUTH] POST /register — email: ${email}`);
+
+  // ── Validation ──
+  if (!name || !email || !password) {
+    console.log('[AUTH] Validation failed: Missing required fields');
+    return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin (tên, email, mật khẩu).' });
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    console.log(`[AUTH] Validation failed: Invalid email format — ${email}`);
+    return res.status(400).json({ message: 'Email không đúng định dạng.' });
+  }
+
+  if (password.length < 8) {
+    console.log('[AUTH] Validation failed: Password too short');
+    return res.status(400).json({ message: 'Mật khẩu phải có ít nhất 8 ký tự.' });
+  }
+
+  try {
+    // Check for existing email
+    const [existing] = await db.execute('SELECT id FROM users WHERE email = ?', [email]);
+    if (existing.length > 0) {
+      console.log(`[AUTH] Validation failed: Email already exists — ${email}`);
+      return res.status(409).json({ message: 'Email này đã được đăng ký.' });
+    }
+
+    // Hash password
+    const password_hash = await bcrypt.hash(password, 12);
+
+    // Generate verification token
+    const verification_token = crypto.randomBytes(32).toString('hex');
+
+    // Insert user with is_verified = 0
+    await db.execute(
+      'INSERT INTO users (name, email, password_hash, is_verified, verification_token) VALUES (?, ?, ?, 0, ?)',
+      [name, email, password_hash, verification_token]
+    );
+
+    // Send verification email
+    const verifyUrl = `http://localhost:3000/api/auth/verify-email?token=${verification_token}`;
+
+    await transporter.sendMail({
+      from: `"Fullstack App" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: 'Xác thực tài khoản của bạn',
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:32px;background:#18181b;border-radius:16px;color:#e4e4e7;">
+          <h2 style="color:#f59e0b;margin-top:0;">Xin chào ${name},</h2>
+          <p>Cảm ơn bạn đã đăng ký. Vui lòng bấm nút bên dưới để xác thực email:</p>
+          <a href="${verifyUrl}" style="display:inline-block;padding:12px 28px;background:#f59e0b;color:#0f0f13;font-weight:bold;text-decoration:none;border-radius:8px;margin:16px 0;">
+            Xác thực Email
+          </a>
+          <p style="font-size:13px;color:#71717a;margin-top:20px;">Nếu bạn không đăng ký tài khoản, hãy bỏ qua email này.</p>
+        </div>
+      `,
+    });
+
+    return res.status(201).json({ message: 'Đăng ký thành công! Vui lòng kiểm tra email để xác thực tài khoản.' });
+
+  } catch (error) {
+    console.error('[AUTH] Register error:', error.message);
+    return res.status(500).json({ message: 'Lỗi hệ thống. Vui lòng thử lại sau.' });
+  }
+};
+
+// ── VERIFY EMAIL ────────────────────────────────────────────────────
+const verifyEmail = async (req, res) => {
+  const { token } = req.query;
+  console.log(`[AUTH] GET /verify-email — token: ${token ? token.substring(0, 12) + '...' : 'MISSING'}`);
+
+  if (!token) {
+    console.log('[AUTH] Validation failed: Missing verification token');
+    return res.status(400).json({ message: 'Token xác thực không hợp lệ.' });
+  }
+
+  try {
+    const [rows] = await db.execute('SELECT id, is_verified FROM users WHERE verification_token = ?', [token]);
+
+    if (rows.length === 0) {
+      console.log('[AUTH] Validation failed: Token not found in database');
+      return res.status(400).json({ message: 'Token xác thực không hợp lệ hoặc đã hết hạn.' });
+    }
+
+    if (rows[0].is_verified === 1) {
+      return res.redirect('http://localhost:5173/login?verified=already');
+    }
+
+    // Mark as verified and clear token
+    await db.execute('UPDATE users SET is_verified = 1, verification_token = NULL WHERE id = ?', [rows[0].id]);
+
+    // Redirect to frontend login page with success flag
+    return res.redirect('http://localhost:5173/login?verified=true');
+
+  } catch (error) {
+    console.error('[AUTH] Verify email error:', error.message);
+    return res.status(500).json({ message: 'Lỗi hệ thống khi xác thực email.' });
+  }
+};
+
+// ── LOGIN ───────────────────────────────────────────────────────────
+const login = async (req, res) => {
+  const { email, password } = req.body;
+  console.log(`[AUTH] POST /login — email: ${email}`);
+
+  // ── Validation ──
+  if (!email || !password) {
+    console.log('[AUTH] Validation failed: Missing email or password');
+    return res.status(400).json({ message: 'Vui lòng nhập email và mật khẩu.' });
+  }
+
+  try {
+    const [rows] = await db.execute('SELECT * FROM users WHERE email = ?', [email]);
+
+    if (rows.length === 0) {
+      return res.status(401).json({ message: 'Email hoặc mật khẩu không đúng.' });
+    }
+
+    const user = rows[0];
+
+    // Must have a password_hash (not a Google-only account)
+    if (!user.password_hash) {
+      return res.status(401).json({ message: 'Tài khoản này sử dụng đăng nhập Google. Vui lòng đăng nhập bằng Google.' });
+    }
+
+    // Compare password
+    const isMatch = await bcrypt.compare(password, user.password_hash);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Email hoặc mật khẩu không đúng.' });
+    }
+
+    // Check is_verified
+    if (user.is_verified !== 1) {
+      return res.status(403).json({
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Tài khoản chưa được xác thực. Vui lòng kiểm tra email của bạn.',
+      });
+    }
+
+    // Sign JWT
+    const access_token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role || 'user' },
+      process.env.JWT_SECRET || 'secret',
+      { expiresIn: '15m' }
+    );
+
+    return res.status(200).json({
+      message: 'Đăng nhập thành công!',
+      user: { id: user.id, name: user.name, email: user.email, role: user.role || 'user', avatar: user.avatar },
+      access_token,
+    });
+
+  } catch (error) {
+    console.error('[AUTH] Login error:', error.message);
+    return res.status(500).json({ message: 'Lỗi hệ thống. Vui lòng thử lại sau.' });
+  }
+};
+
+// ── RESEND VERIFICATION ─────────────────────────────────────────────
+const resendVerification = async (req, res) => {
+  const { email } = req.body;
+  console.log(`[AUTH] POST /resend-verification — email: ${email}`);
+
+  if (!email) {
+    console.log('[AUTH] Validation failed: Missing email');
+    return res.status(400).json({ message: 'Vui lòng nhập email.' });
+  }
+
+  try {
+    const [rows] = await db.execute('SELECT id, name, is_verified FROM users WHERE email = ?', [email]);
+
+    if (rows.length === 0) {
+      // Don't reveal whether email exists for security
+      return res.status(200).json({ message: 'Nếu email tồn tại, chúng tôi đã gửi lại link xác thực.' });
+    }
+
+    const user = rows[0];
+
+    if (user.is_verified === 1) {
+      return res.status(200).json({ message: 'Tài khoản đã được xác thực. Bạn có thể đăng nhập.' });
+    }
+
+    // Generate new token
+    const verification_token = crypto.randomBytes(32).toString('hex');
+    await db.execute('UPDATE users SET verification_token = ? WHERE id = ?', [verification_token, user.id]);
+
+    const verifyUrl = `http://localhost:3000/api/auth/verify-email?token=${verification_token}`;
+
+    await transporter.sendMail({
+      from: `"Fullstack App" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: 'Xác thực tài khoản của bạn (gửi lại)',
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:32px;background:#18181b;border-radius:16px;color:#e4e4e7;">
+          <h2 style="color:#f59e0b;margin-top:0;">Xin chào ${user.name},</h2>
+          <p>Bạn đã yêu cầu gửi lại link xác thực. Vui lòng bấm nút bên dưới:</p>
+          <a href="${verifyUrl}" style="display:inline-block;padding:12px 28px;background:#f59e0b;color:#0f0f13;font-weight:bold;text-decoration:none;border-radius:8px;margin:16px 0;">
+            Xác thực Email
+          </a>
+        </div>
+      `,
+    });
+
+    return res.status(200).json({ message: 'Đã gửi lại email xác thực. Vui lòng kiểm tra hộp thư.' });
+
+  } catch (error) {
+    console.error('[AUTH] Resend verification error:', error.message);
+    return res.status(500).json({ message: 'Lỗi hệ thống. Vui lòng thử lại sau.' });
+  }
+};
+
+// ── FORGOT PASSWORD ─────────────────────────────────────────────────
+const forgotPassword = async (req, res) => {
+  const { email } = req.body;
+  console.log(`[AUTH] POST /forgot-password — email: ${email}`);
+
+  if (!email) {
+    console.log('[AUTH] Validation failed: Missing email');
+    return res.status(400).json({ message: 'Vui lòng nhập email.' });
+  }
+
+  try {
+    const [rows] = await db.execute('SELECT id, name FROM users WHERE email = ?', [email]);
+
+    if (rows.length === 0) {
+      // Don't reveal whether email exists
+      return res.status(200).json({ message: 'Nếu email tồn tại, chúng tôi đã gửi link đặt lại mật khẩu.' });
+    }
+
+    const user = rows[0];
+    const reset_token = crypto.randomBytes(32).toString('hex');
+    const reset_token_expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await db.execute(
+      'UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?',
+      [reset_token, reset_token_expires, user.id]
+    );
+
+    const resetUrl = `http://localhost:5173/reset-password?token=${reset_token}`;
+
+    await transporter.sendMail({
+      from: `"Fullstack App" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: 'Đặt lại mật khẩu',
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:32px;background:#18181b;border-radius:16px;color:#e4e4e7;">
+          <h2 style="color:#f59e0b;margin-top:0;">Xin chào ${user.name},</h2>
+          <p>Bạn đã yêu cầu đặt lại mật khẩu. Bấm nút bên dưới để tiếp tục:</p>
+          <a href="${resetUrl}" style="display:inline-block;padding:12px 28px;background:#f59e0b;color:#0f0f13;font-weight:bold;text-decoration:none;border-radius:8px;margin:16px 0;">
+            Đặt lại mật khẩu
+          </a>
+          <p style="font-size:13px;color:#71717a;margin-top:20px;">Link có hiệu lực trong 1 giờ. Nếu bạn không yêu cầu, hãy bỏ qua email này.</p>
+        </div>
+      `,
+    });
+
+    return res.status(200).json({ message: 'Đã gửi link đặt lại mật khẩu đến email của bạn.' });
+
+  } catch (error) {
+    console.error('[AUTH] Forgot password error:', error.message);
+    return res.status(500).json({ message: 'Lỗi hệ thống. Vui lòng thử lại sau.' });
   }
 };
 
 module.exports = {
   googleAuth,
-  googleCallback
+  googleCallback,
+  register,
+  verifyEmail,
+  login,
+  resendVerification,
+  forgotPassword,
 };

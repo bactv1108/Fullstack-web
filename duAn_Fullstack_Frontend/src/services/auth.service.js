@@ -37,6 +37,10 @@ const authService = {
     return axiosClient.post('/auth/forgot-password', { email });
   },
 
+  resendVerification: async (email) => {
+    return axiosClient.post('/auth/resend-verification', { email });
+  },
+
   resetPassword: async (data) => {
     if (MOCK_API) {
       await delay(1000);
