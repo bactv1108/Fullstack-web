@@ -13,4 +13,7 @@ router.get('/verify-email', authController.verifyEmail);
 router.post('/resend-verification', authController.resendVerification);
 router.post('/forgot-password', authController.forgotPassword);
 
+// 🔥 KÍCH NỔ CỔNG ĐÓN DATA LƯU VÀO DATABASE TẠI ĐÂY
+router.post('/reset-password', authController.resetPassword);
+
 module.exports = router;

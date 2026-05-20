@@ -19,9 +19,9 @@ const transporter = nodemailer.createTransport({
 
 // ── Google OAuth (existing) ─────────────────────────────────────────
 const oauth2Client = new google.auth.OAuth2(
-  process.env.GOOGLE_CLIENT_ID,
-  process.env.GOOGLE_CLIENT_SECRET,
-  process.env.GOOGLE_REDIRECT_URI
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_REDIRECT_URI
 );
 
 const googleAuth = (req, res) => {
@@ -69,20 +69,20 @@ const googleCallback = async (req, res) => {
         updateQuery += ', refresh_token = ?';
         queryParams.push(refresh_token);
       }
-      
+
       updateQuery += ' WHERE id = ?';
       queryParams.push(user.id);
 
       await db.execute(updateQuery, queryParams);
-      
+
       // Update local user object for JWT
       user.name = name;
       user.avatar = avatar;
     } else {
       // INSERT
       const [insertResult] = await db.execute(
-        'INSERT INTO users (google_id, email, name, avatar, refresh_token, is_verified) VALUES (?, ?, ?, ?, ?, 1)',
-        [google_id, email, name, avatar, refresh_token || null]
+          'INSERT INTO users (google_id, email, name, avatar, refresh_token, is_verified) VALUES (?, ?, ?, ?, ?, 1)',
+          [google_id, email, name, avatar, refresh_token || null]
       );
       user = {
         id: insertResult.insertId,
@@ -96,9 +96,9 @@ const googleCallback = async (req, res) => {
 
     // Sign local JWT
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET || 'secret',
-      { expiresIn: '15m' }
+        { id: user.id, email: user.email, role: user.role },
+        process.env.JWT_SECRET || 'secret',
+        { expiresIn: '15m' }
     );
 
     // Redirect back to frontend
@@ -153,8 +153,8 @@ const register = async (req, res) => {
 
     // Insert user with is_verified = 0
     await db.execute(
-      'INSERT INTO users (name, email, password_hash, is_verified, verification_token) VALUES (?, ?, ?, 0, ?)',
-      [name, email, password_hash, verification_token]
+        'INSERT INTO users (name, email, password_hash, is_verified, verification_token) VALUES (?, ?, ?, 0, ?)',
+        [name, email, password_hash, verification_token]
     );
 
     // Send verification email
@@ -259,9 +259,9 @@ const login = async (req, res) => {
 
     // Sign JWT
     const access_token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role || 'user' },
-      process.env.JWT_SECRET || 'secret',
-      { expiresIn: '15m' }
+        { id: user.id, email: user.email, role: user.role || 'user' },
+        process.env.JWT_SECRET || 'secret',
+        { expiresIn: '15m' }
     );
 
     return res.status(200).json({
@@ -352,8 +352,8 @@ const forgotPassword = async (req, res) => {
     const reset_token_expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
     await db.execute(
-      'UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?',
-      [reset_token, reset_token_expires, user.id]
+        'UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?',
+        [reset_token, reset_token_expires, user.id]
     );
 
     const resetUrl = `http://localhost:5173/reset-password?token=${reset_token}`;
@@ -382,6 +382,57 @@ const forgotPassword = async (req, res) => {
   }
 };
 
+// ── RESET PASSWORD (TÍCH HỢP MỚI ĐỂ ĐÓNG HÒM LOGIC) ─────────────────────
+const resetPassword = async (req, res) => {
+  const { token, password } = req.body;
+  console.log(`[AUTH] POST /reset-password — token: ${token ? token.substring(0, 12) + '...' : 'MISSING'}`);
+
+  if (!token || !password) {
+    return res.status(400).json({ message: 'Thiếu thông tin mã xác thực (Token) hoặc mật khẩu mới.' });
+  }
+
+  if (password.length < 8) {
+    return res.status(400).json({ message: 'Mật khẩu mới phải có ít nhất 8 ký tự.' });
+  }
+
+  try {
+    // Tìm user có token trùng khớp
+    const [rows] = await db.execute(
+        'SELECT id, reset_token_expires FROM users WHERE reset_token = ?',
+        [token]
+    );
+
+    if (rows.length === 0) {
+      return res.status(400).json({ message: 'Mã xác thực không hợp lệ hoặc đã từng được sử dụng.' });
+    }
+
+    const user = rows[0];
+
+    // Kiểm tra thời hạn hiệu lực (1 giờ)
+    const now = new Date();
+    const expires = new Date(user.reset_token_expires);
+    if (now > expires) {
+      return res.status(400).json({ message: 'Mã xác thực đặt lại mật khẩu đã hết hạn hiệu lực.' });
+    }
+
+    // Băm mật khẩu mới bằng thư viện bcrypt gốc chuẩn 12 vòng băm
+    const password_hash = await bcrypt.hash(password, 12);
+
+    // Lưu đè dữ liệu mới vào cơ sở dữ liệu và dọn dẹp token
+    await db.execute(
+        'UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expires = NULL WHERE id = ?',
+        [password_hash, user.id]
+    );
+
+    // TRẢ VỀ JSON CHUẨN ĐỂ FRONTEND KHÔNG BỊ "UNEXPECTED END OF JSON"
+    return res.status(200).json({ message: 'Cập nhật mật khẩu mới vào cơ sở dữ liệu thành công!' });
+
+  } catch (error) {
+    console.error('[AUTH] Reset password error:', error.message);
+    return res.status(500).json({ message: 'Lỗi hệ thống từ server. Vui lòng thử lại sau.' });
+  }
+};
+
 module.exports = {
   googleAuth,
   googleCallback,
@@ -390,4 +441,5 @@ module.exports = {
   login,
   resendVerification,
   forgotPassword,
+  resetPassword, // Đã kích nổ export hàm mới
 };

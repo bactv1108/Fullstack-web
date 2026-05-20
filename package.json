@@ -23,5 +23,8 @@
   "homepage": "https://github.com/bactv1108/Fullstack-web#readme",
   "devDependencies": {
     "concurrently": "^9.2.1"
+  },
+  "dependencies": {
+    "lucide-react": "^1.16.0"
   }
 }
