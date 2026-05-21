@@ -96,7 +96,11 @@ export default function ResetPassword() {
                 }, 2000);
 
             } catch (err) {
-                setError(err.message || 'Lỗi kết nối hệ thống server Backend!');
+                if (err.message === 'Mật khẩu mới không được trùng với mật khẩu cũ.') {
+                    setError('Mật khẩu hiện tại đã được sử dụng, vui lòng nhập mật khẩu mới');
+                } else {
+                    setError(err.message || 'Lỗi kết nối hệ thống server Backend!');
+                }
             } finally {
                 setLoading(false);
             }

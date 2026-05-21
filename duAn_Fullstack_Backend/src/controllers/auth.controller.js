@@ -61,9 +61,14 @@ const googleCallback = async (req, res) => {
     let user = rows[0];
 
     if (user) {
-      // UPSERT: Update name, avatar, and conditionally refresh_token
-      let updateQuery = 'UPDATE users SET name = ?, avatar = ?';
+      // UPSERT: Update google_id, name, avatar, is_verified, and conditionally refresh_token
+      let updateQuery = 'UPDATE users SET name = ?, avatar = ?, is_verified = 1';
       let queryParams = [name, avatar];
+
+      if (!user.google_id && google_id) {
+        updateQuery += ', google_id = ?';
+        queryParams.push(google_id);
+      }
 
       if (refresh_token) {
         updateQuery += ', refresh_token = ?';
@@ -78,6 +83,10 @@ const googleCallback = async (req, res) => {
       // Update local user object for JWT
       user.name = name;
       user.avatar = avatar;
+      if (!user.google_id && google_id) {
+        user.google_id = google_id;
+      }
+      user.is_verified = 1;
     } else {
       // INSERT
       const [insertResult] = await db.execute(
@@ -233,7 +242,7 @@ const login = async (req, res) => {
     const [rows] = await db.execute('SELECT * FROM users WHERE email = ?', [email]);
 
     if (rows.length === 0) {
-      return res.status(401).json({ message: 'Email hoặc mật khẩu không đúng.' });
+      return res.status(401).json({ message: 'Email không tồn tại trên hệ thống.' });
     }
 
     const user = rows[0];
@@ -246,7 +255,7 @@ const login = async (req, res) => {
     // Compare password
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
-      return res.status(401).json({ message: 'Email hoặc mật khẩu không đúng.' });
+      return res.status(401).json({ message: 'Mật khẩu không chính xác.' });
     }
 
     // Check is_verified
@@ -398,7 +407,7 @@ const resetPassword = async (req, res) => {
   try {
     // Tìm user có token trùng khớp
     const [rows] = await db.execute(
-        'SELECT id, reset_token_expires FROM users WHERE reset_token = ?',
+        'SELECT id, password_hash, reset_token_expires FROM users WHERE reset_token = ?',
         [token]
     );
 
@@ -413,6 +422,14 @@ const resetPassword = async (req, res) => {
     const expires = new Date(user.reset_token_expires);
     if (now > expires) {
       return res.status(400).json({ message: 'Mã xác thực đặt lại mật khẩu đã hết hạn hiệu lực.' });
+    }
+
+    // Kiểm tra xem mật khẩu mới có trùng mật khẩu cũ không
+    if (user.password_hash) {
+      const isSamePassword = await bcrypt.compare(password, user.password_hash);
+      if (isSamePassword) {
+        return res.status(400).json({ message: 'Mật khẩu mới không được trùng với mật khẩu cũ.' });
+      }
     }
 
     // Băm mật khẩu mới bằng thư viện bcrypt gốc chuẩn 12 vòng băm

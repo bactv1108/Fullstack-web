@@ -177,7 +177,17 @@ const AuthForm = () => {
         setShowUnverifiedAlert(true);
         setUnverifiedEmail(formData.email);
       } else {
-        setServerError(msg);
+        if (mode === 'login') {
+          if (msg === 'Mật khẩu không chính xác.') {
+            setServerError('vui lòng kiểm tra lại mật khẩu');
+          } else if (msg === 'Email không tồn tại trên hệ thống.') {
+            setServerError('vui lòng kiểm tra lại tài khoản');
+          } else {
+            setServerError(msg);
+          }
+        } else {
+          setServerError(msg);
+        }
       }
     } finally {
       setLoading(false);

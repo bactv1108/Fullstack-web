@@ -13,9 +13,12 @@ export const AuthProvider = ({ children }) => {
     const checkAuth = async () => {
       const token = localStorage.getItem('access_token');
       if (token) {
-        // Mô phỏng lấy user info từ token hoặc API
-        // Trong thực tế, bạn gọi API lấy thông tin user ở đây
-        setUser({ name: 'User' }); // Tạm thời set
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          setUser({ id: payload.id, email: payload.email, role: payload.role, name: payload.email.split('@')[0] });
+        } catch (e) {
+          setUser({ name: 'User' });
+        }
         setIsAuthenticated(true);
       }
       setLoading(false);

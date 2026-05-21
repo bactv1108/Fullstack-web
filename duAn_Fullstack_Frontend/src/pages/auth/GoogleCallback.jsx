@@ -15,7 +15,7 @@ const GoogleCallback = () => {
       if (token) {
         try {
           loginWithGoogleToken(token);
-          navigate('/');
+          window.location.href = '/dashboard';
         } catch (err) {
           setError('Đăng nhập Google thất bại');
           setTimeout(() => navigate('/login'), 2000);

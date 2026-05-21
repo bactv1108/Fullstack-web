@@ -18,7 +18,7 @@ const AdminLogin = () => {
     setError('');
     try {
       await login({ email, password });
-      navigate('/dashboard');
+      navigate('/Dashboard');
     } catch (err) {
       setError(err.message || 'Đăng nhập thất bại');
     } finally {

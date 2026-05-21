@@ -9,7 +9,7 @@ const MainLayout = () => {
       <Header />
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <Sidebar />
-        <main style={{ flex: 1, padding: '2rem', overflowY: 'auto', backgroundColor: 'var(--bg-primary)' }}>
+        <main style={{ flex: 1, padding: '0', overflowY: 'auto', backgroundColor: 'var(--bg-primary)' }}>
           <Outlet />
         </main>
       </div>

@@ -1,5 +1,19 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
 
+#root {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+main {
+  padding: 0 !important;
+  overflow: hidden !important;
+  background-color: #1e1e1e !important;
+  height: 100% !important;
+}
 :root {
   --bg-primary: #0f0f13;
   --bg-secondary: #18181b;
