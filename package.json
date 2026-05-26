@@ -7,7 +7,8 @@
     "dev:backend": "cd duAn_Fullstack_Backend && npm run dev",
     "dev:frontend": "cd duAn_Fullstack_Frontend && npm run dev",
     "dev:admin": "cd duAn_Fullstack_Admin && npm run dev",
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:admin\""
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:admin\"",
+    "build": "npm run build --prefix duAn_Fullstack_Frontend && npm run build --prefix duan_Fullstack_Admin"
   },
   "repository": {
     "type": "git",

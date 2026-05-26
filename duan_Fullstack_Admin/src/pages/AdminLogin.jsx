@@ -66,6 +66,7 @@ const AdminLogin = () => {
                   type="email"
                   required
                   className="admin-input pl-10"
+                  style={{ paddingLeft: '2.75rem' }}
                   placeholder="admin@system.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -85,6 +86,7 @@ const AdminLogin = () => {
                   type="password"
                   required
                   className="admin-input pl-10"
+                  style={{ paddingLeft: '2.75rem' }}
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

@@ -6,6 +6,7 @@ import AdminLayout from '../components/layout/AdminLayout';
 // Pages
 const AdminLogin = lazy(() => import('../pages/AdminLogin'));
 const AdminDashboard = lazy(() => import('../pages/AdminDashboard'));
+const AdminProfile = lazy(() => import('../pages/admin/AdminProfile'));
 
 const LoadingFallback = () => (
   <div className="min-h-screen flex items-center justify-center bg-admin-bg text-admin-text">
@@ -29,6 +30,7 @@ const AdminRoutes = () => {
             <Route path="/api-resources" element={<AdminDashboard tab="api" />} />
             <Route path="/moderation" element={<AdminDashboard tab="moderation" />} />
             <Route path="/users" element={<AdminDashboard tab="users" />} />
+            <Route path="/profile" element={<AdminProfile />} />
           </Route>
         </Route>
 
