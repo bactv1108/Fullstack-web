@@ -12,13 +12,13 @@ const BlacklistWord = () => {
 
   const handleAdd = () => {
     if (newWord && !words.includes(newWord)) {
-      setWords([...words, newWord]);
+      configService.addBlacklistWord(newWord).then(setWords);
       setNewWord('');
     }
   };
 
   const handleRemove = (word) => {
-    setWords(words.filter(w => w !== word));
+    configService.removeBlacklistWord(word).then(setWords);
   };
 
   return (

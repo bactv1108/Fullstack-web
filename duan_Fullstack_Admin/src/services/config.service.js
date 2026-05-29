@@ -1,17 +1,21 @@
+import axiosAdminClient from './axiosAdminClient';
+
 export const configService = {
   getApiKeys: async () => {
-    return {
-      openai: 'sk-xxxxxxxxxxxxxxxxx',
-      elevenlabs: 'xxxxxxxxxxxxxxxxxxx',
-    };
+    return axiosAdminClient.get('/config/keys');
   },
   updateApiKeys: async (keys) => {
-    return { success: true };
+    return axiosAdminClient.put('/config/keys', keys);
   },
   getBlacklist: async () => {
-    return ['banned_word_1', 'illegal_content', 'nsfw_term'];
+    return axiosAdminClient.get('/moderation/blacklist');
   },
-  updateBlacklist: async (words) => {
-    return { success: true };
+  addBlacklistWord: async (word) => {
+    const response = await axiosAdminClient.post('/moderation/blacklist', { word });
+    return response.blacklist;
+  },
+  removeBlacklistWord: async (word) => {
+    const response = await axiosAdminClient.delete(`/moderation/blacklist?word=${encodeURIComponent(word)}`);
+    return response.blacklist;
   }
 };

@@ -4,7 +4,20 @@ const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const db = require('../config/db');
+const queueService = require('../services/queue.service');
+const authService = require('../services/auth.service');
 require('dotenv').config();
+
+// Helper to parse cookies manually from raw headers
+const parseCookies = (cookieHeader) => {
+  const list = {};
+  if (!cookieHeader) return list;
+  cookieHeader.split(';').forEach(cookie => {
+    let parts = cookie.split('=');
+    list[parts.shift().trim()] = decodeURI(parts.join('='));
+  });
+  return list;
+};
 
 // ── Nodemailer Transporter ──────────────────────────────────────────
 const transporter = nodemailer.createTransport({
@@ -169,8 +182,7 @@ const register = async (req, res) => {
     // Send verification email
     const verifyUrl = `http://localhost:3000/api/auth/verify-email?token=${verification_token}`;
 
-    await transporter.sendMail({
-      from: `"Fullstack App" <${process.env.EMAIL_USER}>`,
+    await queueService.enqueue('send_email', {
       to: email,
       subject: 'Xác thực tài khoản của bạn',
       html: `
@@ -232,9 +244,7 @@ const login = async (req, res) => {
   const { email, password } = req.body;
   console.log(`[AUTH] POST /login — email: ${email}`);
 
-  // ── Validation ──
   if (!email || !password) {
-    console.log('[AUTH] Validation failed: Missing email or password');
     return res.status(400).json({ message: 'Vui lòng nhập email và mật khẩu.' });
   }
 
@@ -247,18 +257,15 @@ const login = async (req, res) => {
 
     const user = rows[0];
 
-    // Must have a password_hash (not a Google-only account)
     if (!user.password_hash) {
       return res.status(401).json({ message: 'Tài khoản này sử dụng đăng nhập Google. Vui lòng đăng nhập bằng Google.' });
     }
 
-    // Compare password
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
       return res.status(401).json({ message: 'Mật khẩu không chính xác.' });
     }
 
-    // Check is_verified
     if (user.is_verified !== 1) {
       return res.status(403).json({
         code: 'EMAIL_NOT_VERIFIED',
@@ -266,17 +273,22 @@ const login = async (req, res) => {
       });
     }
 
-    // Sign JWT
-    const access_token = jwt.sign(
-        { id: user.id, email: user.email, role: user.role || 'user' },
-        process.env.JWT_SECRET || 'secret',
-        { expiresIn: '15m' }
-    );
+    if (user.status === 'Banned') {
+      return res.status(403).json({ message: 'Tài khoản của bạn đã bị khoá.' });
+    }
+
+    // Generate real tokens via authService
+    const tokens = authService.generateTokens(user);
+    await authService.storeRefreshToken(user.id, tokens.refresh_token);
+
+    // Save refresh token in HttpOnly cookie
+    res.cookie('refresh_token', tokens.refresh_token, authService.getCookieOptions());
 
     return res.status(200).json({
       message: 'Đăng nhập thành công!',
-      user: { id: user.id, name: user.name, email: user.email, role: user.role || 'user', avatar: user.avatar },
-      access_token,
+      user: { id: user.id, name: user.name, email: user.email, role: user.role, avatar: user.avatar },
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
     });
 
   } catch (error) {
@@ -284,6 +296,32 @@ const login = async (req, res) => {
     return res.status(500).json({ message: 'Lỗi hệ thống. Vui lòng thử lại sau.' });
   }
 };
+
+// ── REFRESH TOKEN ───────────────────────────────────────────────────
+const refreshToken = async (req, res) => {
+  try {
+    const cookies = parseCookies(req.headers.cookie);
+    const oldRefreshToken = cookies.refresh_token || req.body.refresh_token;
+
+    if (!oldRefreshToken) {
+      return res.status(400).json({ message: 'Thiếu Refresh Token.' });
+    }
+
+    const result = await authService.rotateTokens(oldRefreshToken);
+    
+    // Save new refresh token in HttpOnly cookie
+    res.cookie('refresh_token', result.tokens.refresh_token, authService.getCookieOptions());
+
+    return res.status(200).json({
+      access_token: result.tokens.access_token,
+      refresh_token: result.tokens.refresh_token
+    });
+  } catch (err) {
+    console.error('[AUTH] Refresh Token error:', err.message);
+    return res.status(403).json({ message: 'Refresh Token không hợp lệ hoặc đã hết hạn.' });
+  }
+};
+
 
 // ── RESEND VERIFICATION ─────────────────────────────────────────────
 const resendVerification = async (req, res) => {
@@ -315,8 +353,7 @@ const resendVerification = async (req, res) => {
 
     const verifyUrl = `http://localhost:3000/api/auth/verify-email?token=${verification_token}`;
 
-    await transporter.sendMail({
-      from: `"Fullstack App" <${process.env.EMAIL_USER}>`,
+    await queueService.enqueue('send_email', {
       to: email,
       subject: 'Xác thực tài khoản của bạn (gửi lại)',
       html: `
@@ -367,8 +404,7 @@ const forgotPassword = async (req, res) => {
 
     const resetUrl = `http://localhost:5173/reset-password?token=${reset_token}`;
 
-    await transporter.sendMail({
-      from: `"Fullstack App" <${process.env.EMAIL_USER}>`,
+    await queueService.enqueue('send_email', {
       to: email,
       subject: 'Đặt lại mật khẩu',
       html: `
@@ -456,6 +492,7 @@ module.exports = {
   register,
   verifyEmail,
   login,
+  refreshToken,
   resendVerification,
   forgotPassword,
   resetPassword, // Đã kích nổ export hàm mới

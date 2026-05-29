@@ -1,13 +1,25 @@
 import React from 'react';
 import { Video, Mic, Clock, Settings, X } from 'lucide-react';
 
-export default function Sidebar({ currentMenu = 'video', setCurrentMenu, onOpenModal, isOpen, setIsOpen }) {
+export default function Sidebar({ 
+    currentMenu = 'video', 
+    setCurrentMenu, 
+    onOpenModal, 
+    isOpen, 
+    setIsOpen,
+    previewJob,
+    setPreviewJob,
+    historyList = []
+}) {
     const menus = [
         { id: 'video', label: 'Tạo Video', icon: Video },
         { id: 'tts', label: 'Tạo Giọng Nói', icon: Mic },
         { id: 'history', label: 'Lịch sử', icon: Clock },
         { id: 'settings', label: 'Cài đặt', icon: Settings },
     ];
+
+    // Filter to completed/available voice/TTS tasks
+    const ttsJobs = historyList.filter(item => item.type === 'tts').slice(0, 5);
 
     return (
         <aside 
@@ -16,7 +28,7 @@ export default function Sidebar({ currentMenu = 'video', setCurrentMenu, onOpenM
             } shrink-0 p-4`}
             style={{ backgroundColor: '#0f0f13', borderRight: '1px solid rgba(255,255,255,0.06)' }}
         >
-            <div className="flex flex-col gap-1 w-full">
+            <div className="flex flex-col gap-1 w-full flex-1 min-h-0">
                 {/* Mobile close button in sidebar */}
                 <div className="flex items-center justify-between pb-4 border-b border-zinc-800/40 mb-2 px-1">
                     <span className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Menu</span>
@@ -28,34 +40,37 @@ export default function Sidebar({ currentMenu = 'video', setCurrentMenu, onOpenM
                     </button>
                 </div>
 
-                {menus.map((item) => {
-                    const Icon = item.icon;
-                    const isActive = currentMenu === item.id;
-                    return (
-                        <button
-                            key={item.id}
-                            onClick={() => {
-                                if (item.id === 'settings') {
-                                    if (onOpenModal) onOpenModal('settings');
-                                } else if (setCurrentMenu) {
-                                    setCurrentMenu(item.id);
-                                }
-                                if (setIsOpen) setIsOpen(false); // Auto close sidebar
-                            }}
-                            style={{
-                                backgroundColor: isActive ? 'rgba(245, 158, 11, 0.1)' : 'transparent',
-                                color: isActive ? '#f59e0b' : '#8a8a93'
-                            }}
-                            className="w-full flex items-center gap-3.5 px-5 py-3.5 rounded-xl text-xs font-bold transition-all duration-300 text-left border-none cursor-pointer hover:bg-zinc-900/60 hover:text-[#f59e0b] hover:translate-x-1"
-                        >
-                            <Icon size={14} className={isActive ? "text-[#f59e0b]" : "text-zinc-400"} />
-                            <span>{item.label}</span>
-                        </button>
-                    );
-                })}
+                <div className="space-y-1">
+                    {menus.map((item) => {
+                        const Icon = item.icon;
+                        const isActive = currentMenu === item.id;
+                        return (
+                            <button
+                                key={item.id}
+                                onClick={() => {
+                                    if (item.id === 'settings') {
+                                        if (onOpenModal) onOpenModal('settings');
+                                    } else if (setCurrentMenu) {
+                                        setCurrentMenu(item.id);
+                                    }
+                                    if (setIsOpen) setIsOpen(false); // Auto close sidebar
+                                }}
+                                style={{
+                                    backgroundColor: isActive ? 'rgba(245, 158, 11, 0.1)' : 'transparent',
+                                    color: isActive ? '#f59e0b' : '#8a8a93'
+                                }}
+                                className="w-full flex items-center gap-3.5 px-5 py-3.5 rounded-xl text-xs font-bold transition-all duration-300 text-left border-none cursor-pointer hover:bg-zinc-900/60 hover:text-[#f59e0b] hover:translate-x-1"
+                            >
+                                <Icon size={14} className={isActive ? "text-[#f59e0b]" : "text-zinc-400"} />
+                                <span>{item.label}</span>
+                            </button>
+                        );
+                    })}
+                </div>
+
             </div>
             
-            {/* Empty footer area to align with the screenshot */}
+            {/* Empty footer area */}
             <div></div>
         </aside>
     );

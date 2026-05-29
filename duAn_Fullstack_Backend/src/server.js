@@ -1,8 +1,12 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 require('dotenv').config();
 
 const authRoutes = require('./routes/auth.routes');
+const adminRoutes = require('./routes/admin.routes');
+const userRoutes = require('./routes/user.routes');
+const assetRouter = require('./routes/asset.route');
 
 const app = express();
 
@@ -11,7 +15,9 @@ app.use(cors({
   credentials: true
 }));
 
+// Body-parsing middleware
 app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Real-time notification stream (SSE) for Admin
 let clients = [];
@@ -64,9 +70,28 @@ setInterval(() => {
   }
 }, 10000); // Broadcast every 10 seconds
 
-// Routes
+// Routes mounted below body-parser middlewares
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/user', userRoutes);
+app.use('/api/assets', assetRouter);
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+
+const db = require('./models');
+const { startScheduler } = require('./services/scheduler.service');
+
+// Database synchronization executing correctly on startup
+db.sequelize.sync({ force: false }).then(() => {
+  console.log('Database synced successfully.');
+  startScheduler();
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+}).catch(err => {
+  console.error('Failed to sync database:', err.message);
+  // Start server even if DB connection fails temporarily
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT} (Database sync failed)`);
+  });
 });

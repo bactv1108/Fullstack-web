@@ -1,13 +1,15 @@
+import axiosAdminClient from './axiosAdminClient';
+
 export const userService = {
-  getUsers: async () => {
-    return [
-      { id: 1, name: 'Alice Smith', email: 'alice@example.com', credits: 150, status: 'Active' },
-      { id: 2, name: 'Bob Jones', email: 'bob@example.com', credits: 0, status: 'Banned' },
-      { id: 3, name: 'Charlie Brown', email: 'charlie@example.com', credits: 500, status: 'Active' },
-    ];
+  getUsers: async (search = '', page = 1, limit = 100) => {
+    const response = await axiosAdminClient.get(`/users?search=${encodeURIComponent(search)}&page=${page}&limit=${limit}`);
+    // Unpack array from paginated response wrapper for compatibility
+    return response && response.users ? response.users : response;
   },
   updateCredits: async (userId, amount) => {
-    console.log(`Updated credits for ${userId} by ${amount}`);
-    return { success: true };
+    return axiosAdminClient.put(`/users/${userId}/credits`, { amount });
+  },
+  updateStatus: async (userId, status) => {
+    return axiosAdminClient.put(`/users/${userId}/status`, { status });
   }
 };

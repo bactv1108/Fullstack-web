@@ -12,6 +12,16 @@ const UserTable = () => {
     userService.getUsers().then(setUsers);
   }, []);
 
+  const handleToggleStatus = (user) => {
+    const newStatus = user.status === 'Active' ? 'Banned' : 'Active';
+    userService.updateStatus(user.id, newStatus).then(() => {
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, status: newStatus } : u));
+    }).catch(err => {
+      console.error('[STATUS UPDATE] Failed:', err.message);
+      alert(err.response?.data?.message || err.message || 'Cập nhật trạng thái thất bại.');
+    });
+  };
+
   const filteredUsers = users.filter(u => 
     u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     u.email.toLowerCase().includes(searchTerm.toLowerCase())
@@ -66,6 +76,13 @@ const UserTable = () => {
                   >
                     <Edit2 size={16} />
                   </button>
+                  <button 
+                    onClick={() => handleToggleStatus(user)}
+                    className={`p-1 ${user.status === 'Active' ? 'text-admin-text-muted hover:text-admin-danger' : 'text-admin-danger hover:text-green-500'}`}
+                    title={user.status === 'Active' ? "Khoá Tài Khoản" : "Mở Khoá Tài Khoản"}
+                  >
+                    {user.status === 'Active' ? <Ban size={16} /> : <CheckCircle size={16} />}
+                  </button>
                   <button className="text-admin-text-muted hover:text-admin-text p-1">
                     <MoreVertical size={16} />
                   </button>
@@ -77,7 +94,13 @@ const UserTable = () => {
       </div>
 
       {selectedUser && (
-        <CreditModal user={selectedUser} onClose={() => setSelectedUser(null)} />
+        <CreditModal 
+          user={selectedUser} 
+          onClose={() => setSelectedUser(null)} 
+          onSuccess={(userId, newCredits) => {
+            setUsers(prev => prev.map(u => u.id === userId ? { ...u, credits: newCredits } : u));
+          }}
+        />
       )}
     </div>
   );

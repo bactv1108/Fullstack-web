@@ -2,12 +2,25 @@ import React, { useState } from 'react';
 import { X, Save } from 'lucide-react';
 import { userService } from '../../services/user.service';
 
-const CreditModal = ({ user, onClose }) => {
+const CreditModal = ({ user, onClose, onSuccess }) => {
   const [amount, setAmount] = useState(0);
+  const [loading, setLoading] = useState(false);
 
   const handleSave = async () => {
-    await userService.updateCredits(user.id, amount);
-    onClose();
+    setLoading(true);
+    try {
+      const res = await userService.updateCredits(user.id, amount);
+      const newCredits = res?.user ? res.user.credits : (user.credits + amount);
+      if (onSuccess) {
+        onSuccess(user.id, newCredits);
+      }
+      onClose();
+    } catch (err) {
+      console.error('[CREDIT UPDATE] Failed:', err.message);
+      alert(err.response?.data?.message || err.message || 'Cập nhật credit thất bại.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -15,7 +28,7 @@ const CreditModal = ({ user, onClose }) => {
       <div className="bg-admin-card border border-admin-border rounded-xl p-6 w-96 shadow-2xl">
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-lg font-semibold">Điều chỉnh Credit</h3>
-          <button onClick={onClose} className="text-admin-text-muted hover:text-white">
+          <button onClick={onClose} className="text-admin-text-muted hover:text-white" disabled={loading}>
             <X size={20} />
           </button>
         </div>
@@ -36,16 +49,17 @@ const CreditModal = ({ user, onClose }) => {
               className="admin-input" 
               value={amount}
               onChange={(e) => setAmount(Number(e.target.value))}
+              disabled={loading}
             />
           </div>
         </div>
 
         <div className="mt-8 flex justify-end gap-3">
-          <button onClick={onClose} className="admin-btn border border-admin-border hover:bg-admin-bg">
+          <button onClick={onClose} className="admin-btn border border-admin-border hover:bg-admin-bg" disabled={loading}>
             Hủy
           </button>
-          <button onClick={handleSave} className="admin-btn admin-btn-primary">
-            <Save size={18} /> Lưu Thay Đổi
+          <button onClick={handleSave} className="admin-btn admin-btn-primary flex items-center gap-2" disabled={loading}>
+            <Save size={18} /> {loading ? 'Đang lưu...' : 'Lưu Thay Đổi'}
           </button>
         </div>
       </div>

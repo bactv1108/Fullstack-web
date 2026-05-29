@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect } from 'react';
-import axiosAdminClient from '../services/axiosAdminClient';
+import axios from 'axios';
 
 export const AdminAuthContext = createContext();
 
@@ -12,9 +12,28 @@ export const AdminAuthProvider = ({ children }) => {
     const checkAuth = async () => {
       const token = localStorage.getItem('admin_access_token');
       if (token) {
-        // Tạm thời set admin, thực tế sẽ call API verify token
-        setAdmin({ name: 'Super Admin', role: 'admin' });
-        setIsAuthenticated(true);
+        try {
+          const base64Url = token.split('.')[1];
+          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+          const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+              return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+          }).join(''));
+          const payload = JSON.parse(jsonPayload);
+          const normalizedRole = payload.role?.toLowerCase();
+          
+          if (normalizedRole === 'admin' || normalizedRole === 'super admin') {
+            setAdmin({ name: payload.email || 'Admin', role: payload.role });
+            setIsAuthenticated(true);
+          } else {
+            throw new Error('Not an admin');
+          }
+        } catch (e) {
+          console.error('[ADMIN AUTH] Session restore failed:', e.message);
+          localStorage.removeItem('admin_access_token');
+          localStorage.removeItem('admin_refresh_token');
+          setAdmin(null);
+          setIsAuthenticated(false);
+        }
       }
       setLoading(false);
     };
@@ -22,21 +41,36 @@ export const AdminAuthProvider = ({ children }) => {
   }, []);
 
   const login = async (credentials) => {
-    // Gọi API login thực tế ở đây
-    // const response = await axiosAdminClient.post('/auth/login', credentials);
-    // Mô phỏng:
-    if (credentials.email === 'admin@system.com' && credentials.password === 'admin123') {
-      const data = { token: 'mock_admin_token', user: { name: 'Super Admin', role: 'admin' } };
-      localStorage.setItem('admin_access_token', data.token);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/admin';
+      const authUrl = apiUrl.replace(/\/admin\/?$/, '/auth/login');
+      
+      const response = await axios.post(authUrl, credentials);
+      const data = response.data; // { user, access_token, refresh_token }
+      const normalizedRole = data.user?.role?.toLowerCase();
+      
+      if (!data.access_token || !data.user || (normalizedRole !== 'admin' && normalizedRole !== 'super admin')) {
+        throw new Error('Bạn không có quyền truy cập trang quản trị.');
+      }
+      
+      localStorage.setItem('admin_access_token', data.access_token);
+      if (data.refresh_token) {
+        localStorage.setItem('admin_refresh_token', data.refresh_token);
+      }
+      
       setAdmin(data.user);
       setIsAuthenticated(true);
       return data;
+    } catch (err) {
+      console.error('[ADMIN AUTH] Login failed:', err.message);
+      const errMsg = err.response?.data?.message || err.message || 'Đăng nhập Admin thất bại.';
+      throw new Error(errMsg);
     }
-    throw new Error('Sai thông tin đăng nhập Admin');
   };
 
   const logout = () => {
     localStorage.removeItem('admin_access_token');
+    localStorage.removeItem('admin_refresh_token');
     setAdmin(null);
     setIsAuthenticated(false);
   };
