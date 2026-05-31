@@ -58,8 +58,8 @@ const authService = {
          console.error('Logout failed:', error);
        }
     }
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('Access_token');
+    localStorage.removeItem('admin_refresh_token');
   },
 
   // Phương thức gọi khi nhận được token từ Google

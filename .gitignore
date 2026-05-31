@@ -1,14 +1,48 @@
-# Không track thư mục chứa thư viện ở tất cả các cấp
+# ==========================================
+# CẤU HÌNH GITIGNORE CHO DỰ ÁN AI STUDIO
+# ==========================================
+
+# 1. THƯ VIỆN & PHỤ THUỘC (DEPENDENCIES)
+# Loại bỏ thư mục node_modules ở tất cả các cấp độ dự án con
 node_modules/
 **/node_modules/
 
-# Không track các file môi trường chứa mã bảo mật (Rất quan trọng!)
+# 2. CÁC TẬP TIN BẢO MẬT & MÔI TRƯỜNG (ENVIRONMENT FILES)
+# Loại bỏ tất cả các file .env chứa thông tin nhạy cảm
 .env
 .env.local
+.env.development
+.env.production
 **/.env
-**/.env.local
+**/.env.*
 
-# Không track các file build đầu ra
+# 3. THƯ MỤC BUILD & SẢN PHẨM ĐẦU RA (BUILD OUTPUTS)
+# Loại bỏ các thư mục build sản phẩm
 dist/
+**/dist/
 build/
+**/build/
+out/
+**/out/
+
+# 4. TÀI NGUYÊN SINH RA KHI RUNTIME & FILE AUDIO/VIDEO (GENERATED ASSETS)
+# Loại bỏ thư mục lưu file do người dùng upload/sinh ra ở mọi cấp độ
+**/uploads/
+# Loại bỏ thư mục chứa các file nghe thử tĩnh ở mọi cấp độ
+**/previews/
+# Loại bỏ toàn bộ các file audio .mp3 và video .mp4 ở mọi ngóc ngách
+**/*.mp3
+**/*.mp4
+**/*.wav
+
+# 5. HỆ THỐNG & TRÌNH SOẠN THẢO (SYSTEM & IDE FILES)
+# Hệ điều hành và trình soạn thảo
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp

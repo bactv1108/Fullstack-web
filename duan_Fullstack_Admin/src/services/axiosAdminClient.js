@@ -37,7 +37,22 @@ axiosAdminClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (!originalRequest) {
+      return Promise.reject(error);
+    }
+
+    const isUnauthorized = error.response?.status === 401 || error.response?.status === 403;
+
+    if (isUnauthorized && !originalRequest.url?.includes('/auth/login')) {
+      
+      // Nếu request này đã thử retry rồi mà vẫn bị 401/403 -> Force Logout
+      if (originalRequest._retry) {
+        localStorage.removeItem('admin_access_token');
+        localStorage.removeItem('admin_refresh_token');
+        window.location.href = '/login';
+        return Promise.reject(error);
+      }
+
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -53,37 +68,52 @@ axiosAdminClient.interceptors.response.use(
       isRefreshing = true;
 
       const refreshToken = localStorage.getItem('admin_refresh_token');
-      if (refreshToken) {
-        try {
-          const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/admin';
-          const refreshURL = baseURL.replace(/\/admin\/?$/, '/auth/refresh');
-
-          const response = await axios.post(refreshURL, { refresh_token: refreshToken });
-          const { access_token } = response.data;
-
-          localStorage.setItem('admin_access_token', access_token);
-          originalRequest.headers.Authorization = `Bearer ${access_token}`;
-
-          processQueue(null, access_token);
-          isRefreshing = false;
-
-          return axiosAdminClient(originalRequest);
-        } catch (refreshError) {
-          processQueue(refreshError, null);
-          isRefreshing = false;
-
-          localStorage.removeItem('admin_access_token');
-          localStorage.removeItem('admin_refresh_token');
-          window.location.href = '/login';
-          return Promise.reject(refreshError);
-        }
+      if (!refreshToken || refreshToken === 'undefined' || refreshToken === 'null') {
+        isRefreshing = false;
+        localStorage.removeItem('admin_access_token');
+        localStorage.removeItem('admin_refresh_token');
+        window.location.href = '/login';
+        return Promise.reject(error);
       }
-    }
 
-    if (error.response?.status === 401 || error.response?.status === 403) {
-      localStorage.removeItem('admin_access_token');
-      localStorage.removeItem('admin_refresh_token');
-      window.location.href = '/login';
+      try {
+        const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/admin';
+        const refreshURL = baseURL.replace(/\/admin\/?$/, '/auth/refresh');
+
+        const response = await axios.post(refreshURL, { refresh_token: refreshToken });
+        const { access_token, accessToken, refresh_token, refreshToken: newRefreshToken } = response.data;
+        const newAccessToken = access_token || accessToken;
+
+        const isValidToken = (tk) => {
+          return tk && typeof tk === 'string' && tk.trim() !== '' && tk !== 'undefined' && tk !== 'null';
+        };
+
+        if (!isValidToken(newAccessToken)) {
+          throw new Error('Corrupt access token returned from rotation');
+        }
+
+        localStorage.setItem('admin_access_token', newAccessToken);
+        const resolvedRefreshToken = refresh_token || newRefreshToken;
+        if (isValidToken(resolvedRefreshToken)) {
+          localStorage.setItem('admin_refresh_token', resolvedRefreshToken);
+        }
+
+        axiosAdminClient.defaults.headers.common['Authorization'] = `Bearer ${newAccessToken}`;
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+
+        processQueue(null, newAccessToken);
+        isRefreshing = false;
+
+        return axiosAdminClient(originalRequest);
+      } catch (refreshError) {
+        processQueue(refreshError, null);
+        isRefreshing = false;
+
+        localStorage.removeItem('admin_access_token');
+        localStorage.removeItem('admin_refresh_token');
+        window.location.href = '/login';
+        return Promise.reject(refreshError);
+      }
     }
 
     return Promise.reject(error);

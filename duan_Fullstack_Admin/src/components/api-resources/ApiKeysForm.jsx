@@ -3,29 +3,28 @@ import { configService } from '../../services/config.service';
 import { Eye, EyeOff, Save } from 'lucide-react';
 
 const ApiKeysForm = () => {
-  const [keys, setKeys] = useState({ openai: '', elevenlabs: '' });
-  const [show, setShow] = useState({ openai: false, elevenlabs: false });
+  const [openaiApiKey, setOpenaiApiKey] = useState('');
+  const [elevenlabsApiKey, setElevenlabsApiKey] = useState('');
+  const [geminiApiKey, setGeminiApiKey] = useState('');
+
+  const [show, setShow] = useState({ openai: false, elevenlabs: false, gemini: false });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    configService.getApiKeys().then(data => {
-      if (data) {
-        setKeys({
-          openai: data.openai || '',
-          elevenlabs: data.elevenlabs || ''
-        });
+    configService.getSystemConfigs().then(res => {
+      if (res) {
+        const data = res.data || res;
+        setOpenaiApiKey(data.openai_api_key || '');
+        setElevenlabsApiKey(data.elevenlabs_api_key || '');
+        setGeminiApiKey(data.gemini_api_key || '');
       }
     }).catch(err => {
       console.error('[API KEYS] Load failed:', err.message);
       setErrorMsg('Không thể tải cấu hình API Keys.');
     });
   }, []);
-
-  const handleChange = (e) => {
-    setKeys({ ...keys, [e.target.name]: e.target.value });
-  };
 
   const toggleShow = (provider) => {
     setShow({ ...show, [provider]: !show[provider] });
@@ -38,8 +37,12 @@ const ApiKeysForm = () => {
     setErrorMsg('');
 
     try {
-      await configService.updateApiKeys(keys);
-      setMessage('Cập nhật API Keys thành công!');
+      await configService.updateSystemConfigs({
+        openai_api_key: openaiApiKey,
+        elevenlabs_api_key: elevenlabsApiKey,
+        gemini_api_key: geminiApiKey
+      });
+      setMessage('🎉 Cập nhật khóa API hệ thống thành công!');
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
       console.error('[API KEYS] Save failed:', err.message);
@@ -73,8 +76,8 @@ const ApiKeysForm = () => {
             <input 
               type={show.openai ? "text" : "password"} 
               name="openai"
-              value={keys.openai}
-              onChange={handleChange}
+              value={openaiApiKey}
+              onChange={(e) => setOpenaiApiKey(e.target.value)}
               className="admin-input pr-10" 
             />
             <button 
@@ -93,8 +96,8 @@ const ApiKeysForm = () => {
             <input 
               type={show.elevenlabs ? "text" : "password"} 
               name="elevenlabs"
-              value={keys.elevenlabs}
-              onChange={handleChange}
+              value={elevenlabsApiKey}
+              onChange={(e) => setElevenlabsApiKey(e.target.value)}
               className="admin-input pr-10" 
             />
             <button 
@@ -103,6 +106,26 @@ const ApiKeysForm = () => {
               className="absolute right-3 top-1/2 -translate-y-1/2 text-admin-text-muted hover:text-white"
             >
               {show.elevenlabs ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-admin-text-muted mb-2">Gemini API Key</label>
+          <div className="relative">
+            <input 
+              type={show.gemini ? "text" : "password"} 
+              name="gemini"
+              value={geminiApiKey}
+              onChange={(e) => setGeminiApiKey(e.target.value)}
+              className="w-full p-3 bg-zinc-900/50 text-zinc-100 border border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm pr-10" 
+            />
+            <button 
+              type="button" 
+              onClick={() => toggleShow('gemini')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-admin-text-muted hover:text-white"
+            >
+              {show.gemini ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
         </div>
@@ -118,4 +141,3 @@ const ApiKeysForm = () => {
 };
 
 export default ApiKeysForm;
-

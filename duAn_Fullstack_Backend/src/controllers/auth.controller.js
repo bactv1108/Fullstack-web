@@ -301,10 +301,10 @@ const login = async (req, res) => {
 const refreshToken = async (req, res) => {
   try {
     const cookies = parseCookies(req.headers.cookie);
-    const oldRefreshToken = cookies.refresh_token || req.body.refresh_token;
+    const oldRefreshToken = req.body.refreshToken || req.body.refresh_token || cookies.refresh_token || req.query.refreshToken || req.query.refresh_token;
 
     if (!oldRefreshToken) {
-      return res.status(400).json({ message: 'Thiếu Refresh Token.' });
+      return res.status(400).json({ success: false, message: 'Thiếu Refresh Token.' });
     }
 
     const result = await authService.rotateTokens(oldRefreshToken);
@@ -313,12 +313,40 @@ const refreshToken = async (req, res) => {
     res.cookie('refresh_token', result.tokens.refresh_token, authService.getCookieOptions());
 
     return res.status(200).json({
+      success: true,
+      accessToken: result.tokens.access_token,
       access_token: result.tokens.access_token,
-      refresh_token: result.tokens.refresh_token
+      refresh_token: result.tokens.refresh_token,
+      refreshToken: result.tokens.refresh_token
     });
   } catch (err) {
     console.error('[AUTH] Refresh Token error:', err.message);
-    return res.status(403).json({ message: 'Refresh Token không hợp lệ hoặc đã hết hạn.' });
+
+    // If token invalid, attempt to clear token database record for the user session
+    try {
+      const cookies = parseCookies(req.headers.cookie);
+      const oldRefreshToken = req.body.refreshToken || req.body.refresh_token || cookies.refresh_token || req.query.refreshToken || req.query.refresh_token;
+      if (oldRefreshToken) {
+        const decoded = jwt.decode(oldRefreshToken);
+        if (decoded && decoded.id) {
+          const { User } = require('../models');
+          const user = await User.findByPk(decoded.id);
+          if (user) {
+            user.refresh_token = null;
+            await user.save();
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[AUTH] Failed to clear invalid token record:', e.message);
+    }
+
+    res.clearCookie('refresh_token');
+
+    return res.status(403).json({ 
+      success: false, 
+      message: 'Refresh Token không hợp lệ hoặc đã hết hạn.' 
+    });
   }
 };
 

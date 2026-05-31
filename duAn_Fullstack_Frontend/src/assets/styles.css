@@ -10,8 +10,8 @@
 
 main {
   padding: 0 !important;
-  overflow: hidden !important;
-  background-color: #1e1e1e !important;
+  overflow-y: auto !important;
+  background-color: var(--bg-primary) !important;
   height: 100% !important;
 }
 :root {
@@ -156,4 +156,25 @@ a {
 
 a:hover {
   color: var(--accent-hover);
+}
+
+/* Custom Scrollbar Utility */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(18, 18, 22, 0.6);
+  border-radius: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(245, 158, 11, 0.45);
+  border-radius: 8px;
+  border: 1px solid rgba(24, 24, 27, 0.1);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 158, 11, 0.8);
 }

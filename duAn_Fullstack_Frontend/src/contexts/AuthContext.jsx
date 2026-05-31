@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect } from 'react';
 import authService from '../services/auth.service';
+import axiosClient from '../services/axiosClient';
 
 export const AuthContext = createContext();
 
@@ -8,18 +9,60 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Khôi phục session từ token khi tải trang (có thể cần gọi API /me)
+  // Khôi phục session từ token khi tải trang (xử lý validation và silent refresh)
   useEffect(() => {
     const checkAuth = async () => {
-      const token = localStorage.getItem('access_token');
+      // Clear corrupt literal string values like "undefined" or "null"
+      ['Access_token', 'token', 'admin_refresh_token'].forEach(key => {
+        const val = localStorage.getItem(key);
+        if (val === 'undefined' || val === 'null') {
+          localStorage.removeItem(key);
+        }
+      });
+
+      const token = localStorage.getItem('Access_token');
+      const refreshToken = localStorage.getItem('admin_refresh_token');
+      
       if (token) {
         try {
+          // Decode sơ bộ thông tin từ payload để hiển thị nhanh
           const payload = JSON.parse(atob(token.split('.')[1]));
           setUser({ id: payload.id, email: payload.email, role: payload.role, name: payload.email.split('@')[0] });
+          setIsAuthenticated(true);
+
+          // Silent profile validation check
+          // Nếu token hết hạn, request này sẽ được axiosClient Response Interceptor tự động refresh
+          const profile = await axiosClient.get('/user/profile');
+          setUser({ id: profile.id, name: profile.name, email: profile.email, role: profile.role, avatar: profile.avatar });
+          setIsAuthenticated(true);
         } catch (e) {
-          setUser({ name: 'User' });
+          console.warn('[AUTH BOOT] Silent token check failed, checking fallback:', e.message);
+          if (!localStorage.getItem('Access_token')) {
+            setUser(null);
+            setIsAuthenticated(false);
+          }
         }
-        setIsAuthenticated(true);
+      } else if (refreshToken) {
+        // Có refresh token nhưng mất access token (ví dụ do xoá/hết hạn sớm)
+        // Gọi trực tiếp refresh token api
+        try {
+          const res = await axiosClient.post('/auth/refresh-token', { refreshToken, refresh_token: refreshToken });
+          const newAccessToken = res.access_token || res.accessToken;
+          const payload = JSON.parse(atob(newAccessToken.split('.')[1]));
+          setUser({ id: payload.id, email: payload.email, role: payload.role, name: payload.email.split('@')[0] });
+          setIsAuthenticated(true);
+          
+          const profile = await axiosClient.get('/user/profile');
+          setUser({ id: profile.id, name: profile.name, email: profile.email, role: profile.role, avatar: profile.avatar });
+          setIsAuthenticated(true);
+        } catch (e) {
+          console.error('[AUTH BOOT] Direct refresh failed:', e.message);
+          localStorage.removeItem('Access_token');
+          localStorage.removeItem('token');
+          localStorage.removeItem('admin_refresh_token');
+          setUser(null);
+          setIsAuthenticated(false);
+        }
       }
       setLoading(false);
     };
@@ -28,9 +71,10 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (credentials) => {
     const data = await authService.login(credentials);
-    localStorage.setItem('access_token', data.access_token);
+    localStorage.setItem('Access_token', data.access_token);
+    localStorage.setItem('token', data.access_token); // Backup key
     if (data.refresh_token) {
-      localStorage.setItem('refresh_token', data.refresh_token);
+      localStorage.setItem('admin_refresh_token', data.refresh_token);
     }
     setUser(data.user);
     setIsAuthenticated(true);
@@ -38,7 +82,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   const loginWithGoogleToken = (token) => {
-    localStorage.setItem('access_token', token);
+    localStorage.setItem('Access_token', token);
+    localStorage.setItem('token', token); // Backup key
     
     try {
       // Decode JWT token directly in frontend (cơ bản)
@@ -53,6 +98,9 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     await authService.logout();
+    localStorage.removeItem('Access_token');
+    localStorage.removeItem('token');
+    localStorage.removeItem('admin_refresh_token');
     setUser(null);
     setIsAuthenticated(false);
   };

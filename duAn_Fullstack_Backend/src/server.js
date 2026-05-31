@@ -7,6 +7,9 @@ const authRoutes = require('./routes/auth.routes');
 const adminRoutes = require('./routes/admin.routes');
 const userRoutes = require('./routes/user.routes');
 const assetRouter = require('./routes/asset.route');
+const videoRoutes = require('./routes/video.route');
+const systemConfigRouter = require('./routes/systemConfig.route');
+const voiceRouter = require('./routes/voice.route');
 
 const app = express();
 
@@ -18,6 +21,8 @@ app.use(cors({
 // Body-parsing middleware
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
+app.use('/previews', express.static(path.join(__dirname, '../public/previews')));
 
 // Real-time notification stream (SSE) for Admin
 let clients = [];
@@ -72,9 +77,12 @@ setInterval(() => {
 
 // Routes mounted below body-parser middlewares
 app.use('/api/auth', authRoutes);
+app.use('/api/admin/system-configs', systemConfigRouter);
 app.use('/api/admin', adminRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/assets', assetRouter);
+app.use('/api/video', videoRoutes);
+app.use('/api/voices', voiceRouter);
 
 const PORT = process.env.PORT || 3000;
 
