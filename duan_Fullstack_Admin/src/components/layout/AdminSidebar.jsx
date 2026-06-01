@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CreditCard, Key, ShieldAlert, Users, X } from 'lucide-react';
+import { LayoutDashboard, CreditCard, Key, ShieldAlert, Users, X, Eye } from 'lucide-react';
 
 const AdminSidebar = ({ isOpen, setIsOpen }) => {
   const navigate = useNavigate();
@@ -9,6 +9,7 @@ const AdminSidebar = ({ isOpen, setIsOpen }) => {
     { name: 'Thanh toán & Gói dịch vụ', path: '/billing', icon: <CreditCard size={20} /> },
     { name: 'Tài nguyên API', path: '/api-resources', icon: <Key size={20} /> },
     { name: 'Kiểm duyệt', path: '/moderation', icon: <ShieldAlert size={20} /> },
+    { name: 'Lịch sử Mắt Thần', path: '/image-analyses', icon: <Eye size={20} /> },
     { name: 'Người dùng', path: '/users', icon: <Users size={20} /> },
   ];
 

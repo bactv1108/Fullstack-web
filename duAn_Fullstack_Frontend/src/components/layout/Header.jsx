@@ -1,7 +1,10 @@
 import React from 'react';
 import { Bell, Menu } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
-export default function Header({ credits = 140, onOpenModal, toggleSidebar }) {
+export default function Header({ credits = 140, toggleSidebar, avatar, name }) {
+    const navigate = useNavigate();
+    
     return (
         <header 
             className="h-16 w-full bg-[#0f0f13] border-b border-zinc-850 px-4 sm:px-6 flex items-center justify-between z-30 relative select-none animate-fade-in"
@@ -11,7 +14,7 @@ export default function Header({ credits = 140, onOpenModal, toggleSidebar }) {
             <div className="flex items-center gap-2">
                 <button 
                     onClick={toggleSidebar}
-                    className="text-zinc-400 hover:text-white transition-colors cursor-pointer p-1.5 rounded-lg hover:bg-zinc-900/60 flex items-center justify-center border-none"
+                    className="text-zinc-400 hover:text-white transition-colors cursor-pointer p-1.5 rounded-lg hover:bg-zinc-900/60 flex items-center justify-center border-none bg-transparent"
                 >
                     <Menu size={18} />
                 </button>
@@ -40,7 +43,7 @@ export default function Header({ credits = 140, onOpenModal, toggleSidebar }) {
 
                 {/* Button Nạp */}
                 <button 
-                    onClick={() => onOpenModal && onOpenModal('recharge')} 
+                    onClick={() => navigate('/dashboard/settings#billing-section')} 
                     className="border border-zinc-800 bg-[#161616]/40 hover:bg-[#1c1c22] text-zinc-400 hover:text-white px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-semibold transition-all cursor-pointer border-solid"
                 >
                     + Nạp
@@ -52,12 +55,22 @@ export default function Header({ credits = 140, onOpenModal, toggleSidebar }) {
                     <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full"></span>
                 </div>
 
-                {/* Profile TD initials bubble */}
+                {/* Profile Avatar bubble */}
                 <div 
-                    onClick={() => onOpenModal && onOpenModal('profile')}
-                    className="w-8 h-8 rounded-full bg-[#854d0e] text-white flex items-center justify-center font-bold text-xs cursor-pointer shadow-md shadow-amber-500/10 hover:ring-1 hover:ring-[#f59e0b]/30 transition-all shrink-0"
+                    onClick={() => navigate('/dashboard/settings#profile-section')}
+                    className="w-8 h-8 rounded-full border border-zinc-850 overflow-hidden cursor-pointer shadow-md hover:ring-1 hover:ring-[#f59e0b]/30 transition-all shrink-0 flex items-center justify-center bg-zinc-900"
                 >
-                    TD
+                    {avatar ? (
+                        <img 
+                            src={avatar.startsWith('http') ? avatar : `http://localhost:3000${avatar}`} 
+                            alt="Avatar" 
+                            className="w-full h-full object-cover" 
+                        />
+                    ) : (
+                        <span className="text-white font-bold text-xs">
+                            {name ? name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'TD'}
+                        </span>
+                    )}
                 </div>
             </div>
         </header>

@@ -33,6 +33,10 @@ db.ApiCost = require('./ApiCost')(sequelize);
 db.CreditStat = require('./CreditStat')(sequelize);
 db.QueueJob = require('./QueueJob')(sequelize);
 db.Asset = require('./asset.model')(sequelize);
+db.ImageAnalysis = require('./ImageAnalysis')(sequelize);
+db.Package = require('./package.model')(sequelize);
+db.Transaction = require('./transaction.model')(sequelize);
+db.Notification = require('./notification.model')(sequelize);
 
 // Define associations exactly as specified:
 // User.hasMany(Job, { foreignKey: 'userId', as: 'renderJobs' })
@@ -42,5 +46,16 @@ db.Job.belongsTo(db.User, { foreignKey: 'userId', as: 'owner' });
 
 db.User.hasMany(db.VideoJob, { foreignKey: 'userId', as: 'videoJobs' });
 db.VideoJob.belongsTo(db.User, { foreignKey: 'userId', as: 'owner' });
+
+db.User.hasMany(db.ImageAnalysis, { foreignKey: 'user_id', as: 'imageAnalyses' });
+db.ImageAnalysis.belongsTo(db.User, { foreignKey: 'user_id', as: 'owner' });
+
+// Associations for User & Transaction (Billing Recharge feature)
+db.User.hasMany(db.Transaction, { foreignKey: 'userId', as: 'transactions' });
+db.Transaction.belongsTo(db.User, { foreignKey: 'userId', as: 'user' });
+
+// Notifications
+db.User.hasMany(db.Notification, { foreignKey: 'user_id', as: 'notifications' });
+db.Notification.belongsTo(db.User, { foreignKey: 'user_id', as: 'user' });
 
 module.exports = db;

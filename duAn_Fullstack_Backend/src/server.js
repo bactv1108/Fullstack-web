@@ -10,6 +10,8 @@ const assetRouter = require('./routes/asset.route');
 const videoRoutes = require('./routes/video.route');
 const systemConfigRouter = require('./routes/systemConfig.route');
 const voiceRouter = require('./routes/voice.route');
+const imageAnalyzerRouter = require('./routes/imageAnalyzer.routes');
+const profileRoutes = require('./routes/profile.routes');
 
 const app = express();
 
@@ -83,6 +85,8 @@ app.use('/api/user', userRoutes);
 app.use('/api/assets', assetRouter);
 app.use('/api/video', videoRoutes);
 app.use('/api/voices', voiceRouter);
+app.use('/api/image-analyzer', imageAnalyzerRouter);
+app.use('/api/profile', profileRoutes);
 
 const PORT = process.env.PORT || 3000;
 

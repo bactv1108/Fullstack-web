@@ -10,12 +10,15 @@ const PlanConfig = () => {
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    systemService.getBillingPlans()
-      .then(data => {
-        setPlans(data || {
-          Free: { credits: 50, price: 0 },
-          Basic: { credits: 500, price: 10 },
-          Premium: { credits: 2000, price: 30 }
+    const adminToken = localStorage.getItem('admin_access_token' || 'token') || localStorage.getItem('token') || localStorage.getItem('Access_token');
+    systemService.getBillingPlans(adminToken)
+      .then(res => {
+        // Support both { success: true, plans: {...} } and direct plans object
+        const plansData = res && res.plans ? res.plans : res;
+        setPlans(plansData || {
+          free: { credits: 60, price: 0 },
+          basic: { credits: 200, price: 150000 },
+          premium: { credits: 1000, price: 500000 }
         });
         setLoading(false);
       })
@@ -42,8 +45,18 @@ const PlanConfig = () => {
     setMessage('');
     setErrorMsg('');
     try {
-      await systemService.updateBillingPlans(plans);
-      setMessage('Cập nhật cấu hình gói cước thành công!');
+      const adminToken = localStorage.getItem('admin_access_token' || 'token') || localStorage.getItem('token');
+      
+      const formattedPlans = {};
+      Object.keys(plans).forEach(key => {
+        formattedPlans[key] = {
+          credits: Math.round(Number(plans[key].credits)),
+          price: Math.round(Number(plans[key].price))
+        };
+      });
+
+      await systemService.updateBillingPlans(formattedPlans, adminToken);
+      setMessage('Cấu hình gói cước đã được cập nhật đồng bộ vào cả hai bảng dữ liệu thành công!');
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
       console.error('[PLANS] Save failed:', err.message);
@@ -80,25 +93,25 @@ const PlanConfig = () => {
             <div 
               key={planName} 
               className={`bg-admin-bg p-5 rounded-lg border ${
-                planName === 'Basic' ? 'border-admin-primary' : 'border-admin-border'
+                planName === 'basic' ? 'border-admin-primary' : 'border-admin-border'
               }`}
             >
               <h3 className={`text-md font-medium mb-4 ${
-                planName === 'Basic' ? 'text-admin-primary' : 'text-admin-text'
+                planName === 'basic' ? 'text-admin-primary' : 'text-admin-text'
               }`}>
-                Gói {planName}
+                Gói {planName.charAt(0).toUpperCase() + planName.slice(1)}
               </h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm text-admin-text-muted mb-1">Giá ($ / Gói)</label>
+                  <label className="block text-sm text-admin-text-muted mb-1">Giá (VNĐ / Gói)</label>
                   <input 
                     type="number" 
                     value={plans[planName].price} 
                     onChange={(e) => handleChange(planName, 'price', e.target.value)}
                     className="admin-input" 
                     min="0"
-                    step="0.01"
-                    disabled={planName === 'Free'}
+                    step="1"
+                    disabled={planName === 'free'}
                   />
                 </div>
                 <div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import Toast from '../ui/Toast';
@@ -12,6 +12,20 @@ const MainLayout = () => {
   const [activeModal, setActiveModal] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [userProfile, setUserProfile] = useState({ name: '', email: '', role: '', avatar: null });
+  const location = useLocation();
+
+  useEffect(() => {
+    const path = location.pathname;
+    if (path.includes('/dashboard/image-analyzer') || path.includes('/dashboard/mat-than')) {
+      setCurrentMenu('image-analyzer');
+    } else if (path.includes('/dashboard/settings')) {
+      setCurrentMenu('settings');
+    } else if (path.includes('/dashboard')) {
+      if (currentMenu === 'image-analyzer' || currentMenu === 'settings') {
+        setCurrentMenu('video');
+      }
+    }
+  }, [location.pathname]);
 
   // Preview Dialog state lifted globally
   const [previewJob, setPreviewJob] = useState(null);
@@ -211,7 +225,12 @@ const MainLayout = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }} className="relative">
-      <Header credits={credits} onOpenModal={setActiveModal} toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
+      <Header 
+        credits={credits} 
+        toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
+        avatar={userProfile.avatar}
+        name={userProfile.name}
+      />
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }} className="relative">
         {/* Backdrop for mobile/tablet when sidebar is open */}
         {isSidebarOpen && (

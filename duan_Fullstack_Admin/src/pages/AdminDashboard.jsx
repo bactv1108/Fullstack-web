@@ -9,6 +9,7 @@ import AssetManager from '../components/api-resources/AssetManager';
 import BlacklistWord from '../components/moderation/BlacklistWord';
 import VideoModerator from '../components/moderation/VideoModerator';
 import UserTable from '../components/users/UserTable';
+import ImageAnalysesTable from '../components/image-analyses/ImageAnalysesTable';
 
 const AdminDashboard = ({ tab }) => {
   
@@ -44,6 +45,13 @@ const AdminDashboard = ({ tab }) => {
           <div className="space-y-6 animate-fade-in h-[calc(100vh-8rem)] flex flex-col">
             <h1 className="text-2xl font-bold text-admin-text mb-2 flex-shrink-0">Quản Lý Người Dùng</h1>
             <UserTable />
+          </div>
+        );
+      case 'image-analyses':
+        return (
+          <div className="space-y-6 animate-fade-in h-[calc(100vh-8rem)] flex flex-col">
+            <h1 className="text-2xl font-bold text-admin-text mb-2 flex-shrink-0">Quản Lý Lịch Sử Mắt Thần</h1>
+            <ImageAnalysesTable />
           </div>
         );
       default:

@@ -5,34 +5,6 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="e7824fe4-ccbc-491b-8e6b-7d310b1f691f" name="Changes" comment="update">
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/.sequelizerc" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/database/migrations/20260526000000-create-all-tables.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/database/seeders/20260526000000-seed-all-data.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/insert_admin.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/config/sequelize-cli-config.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/controllers/admin.controller.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/controllers/asset.controller.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/controllers/user.controller.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/middlewares/auth.middleware.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/middlewares/rate-limiter.middleware.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/models/ApiCost.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/models/CreditStat.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/models/Job.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/models/QueueJob.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/models/SystemConfig.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/models/User.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/models/asset.model.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/models/index.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/routes/admin.routes.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/routes/asset.route.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/routes/user.routes.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/services/admin.service.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/services/auth.service.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/services/cleanup.service.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/services/queue.service.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/services/scheduler.service.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/services/voice.service.js" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/uploads/voices/AI_Studio_Voice_ID_16.mp3" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/uploads/voices/AI_Studio_Voice_ID_17.mp3" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/uploads/voices/AI_Studio_Voice_ID_18.mp3" afterDir="false" />
@@ -60,32 +32,30 @@
       <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/uploads/voices/AI_Studio_Voice_ID_40.mp3" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/uploads/voices/AI_Studio_Voice_ID_6.mp3" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/uploads/voices/AI_Studio_Voice_ID_direct_test.mp3" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/components/VoiceStudio.jsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/components/ui/Toast.jsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/pages/user/dashboard/HistoryView.jsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/pages/user/dashboard/SettingsView.jsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/pages/user/dashboard/TtsView.jsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/pages/user/dashboard/VideoView.jsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/pages/user/dashboard/useDashboard.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/services/user.service.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/duan_Fullstack_Admin/src/pages/admin/AdminProfile.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Backend/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/package-lock.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Backend/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/controllers/auth.controller.js" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/controllers/auth.controller.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/routes/auth.routes.js" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/routes/auth.routes.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/controllers/admin.controller.js" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/controllers/admin.controller.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/controllers/user.controller.js" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/controllers/user.controller.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/models/User.js" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/models/User.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/models/index.js" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/models/index.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/routes/admin.routes.js" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/routes/admin.routes.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/routes/user.routes.js" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/routes/user.routes.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/server.js" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Backend/src/server.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Frontend/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/.gitignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/assets/styles.css" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/assets/styles.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/contexts/AuthContext.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/contexts/AuthContext.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/pages/auth/Login.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/pages/auth/Login.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/components/layout/Header.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/components/layout/Header.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/components/layout/MainLayout.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/components/layout/MainLayout.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/components/layout/Sidebar.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/components/layout/Sidebar.jsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/pages/user/Dashboard.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/pages/user/Dashboard.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/pages/user/dashboard/SettingsView.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/pages/user/dashboard/SettingsView.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/pages/user/dashboard/TtsView.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/pages/user/dashboard/TtsView.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/pages/user/dashboard/VideoView.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/pages/user/dashboard/VideoView.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/pages/user/dashboard/useDashboard.js" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/pages/user/dashboard/useDashboard.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/routes/AppRoutes.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/routes/AppRoutes.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/services/auth.service.js" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/services/auth.service.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/services/axiosClient.js" beforeDir="false" afterPath="$PROJECT_DIR$/duAn_Fullstack_Frontend/src/services/axiosClient.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/duan_Fullstack_Admin/src/components/api-resources/ApiKeysForm.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/duan_Fullstack_Admin/src/components/api-resources/ApiKeysForm.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/duan_Fullstack_Admin/src/services/axiosAdminClient.js" beforeDir="false" afterPath="$PROJECT_DIR$/duan_Fullstack_Admin/src/services/axiosAdminClient.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/duan_Fullstack_Admin/src/services/config.service.js" beforeDir="false" afterPath="$PROJECT_DIR$/duan_Fullstack_Admin/src/services/config.service.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/duan_Fullstack_Admin/src/components/billing/PlanConfig.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/duan_Fullstack_Admin/src/components/billing/PlanConfig.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/duan_Fullstack_Admin/src/components/layout/AdminSidebar.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/duan_Fullstack_Admin/src/components/layout/AdminSidebar.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/duan_Fullstack_Admin/src/pages/AdminDashboard.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/duan_Fullstack_Admin/src/pages/AdminDashboard.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/duan_Fullstack_Admin/src/routes/AdminRoutes.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/duan_Fullstack_Admin/src/routes/AdminRoutes.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/duan_Fullstack_Admin/src/services/system.service.js" beforeDir="false" afterPath="$PROJECT_DIR$/duan_Fullstack_Admin/src/services/system.service.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -166,7 +136,15 @@
       <workItem from="1780154208323" duration="3421000" />
       <workItem from="1780159163566" duration="111000" />
       <workItem from="1780191504358" duration="3314000" />
-      <workItem from="1780202160073" duration="1758000" />
+      <workItem from="1780202160073" duration="2983000" />
+      <workItem from="1780205915236" duration="1709000" />
+      <workItem from="1780207665447" duration="173000" />
+      <workItem from="1780208259154" duration="770000" />
+      <workItem from="1780209052695" duration="3501000" />
+      <workItem from="1780214614469" duration="828000" />
+      <workItem from="1780216332463" duration="970000" />
+      <workItem from="1780226170860" duration="1792000" />
+      <workItem from="1780277462355" duration="6369000" />
     </task>
     <task id="LOCAL-00001" summary="lấy lại mật khẩu với email">
       <option name="closed" value="true" />
@@ -200,7 +178,15 @@
       <option name="project" value="LOCAL" />
       <updated>1780018356800</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="update">
+      <option name="closed" value="true" />
+      <created>1780204023566</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1780204023566</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -233,5 +219,17 @@
     <MESSAGE value="tạo giọng nói với văn bản" />
     <MESSAGE value="update" />
     <option name="LAST_COMMIT_MESSAGE" value="update" />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/duAn_Fullstack_Backend/src/controllers/admin.controller.js</url>
+          <line>83</line>
+          <properties lambdaOrdinal="-1" />
+          <option name="timeStamp" value="1" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
   </component>
 </project>

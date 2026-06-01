@@ -29,6 +29,7 @@ const AdminRoutes = () => {
             <Route path="/billing" element={<AdminDashboard tab="billing" />} />
             <Route path="/api-resources" element={<AdminDashboard tab="api" />} />
             <Route path="/moderation" element={<AdminDashboard tab="moderation" />} />
+            <Route path="/image-analyses" element={<AdminDashboard tab="image-analyses" />} />
             <Route path="/users" element={<AdminDashboard tab="users" />} />
             <Route path="/profile" element={<AdminProfile />} />
           </Route>

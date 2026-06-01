@@ -1,25 +1,23 @@
 import React from 'react';
-import { Video, Mic, Clock, Settings, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Video, Mic, Eye, Clock, Settings, X } from 'lucide-react';
 
 export default function Sidebar({ 
     currentMenu = 'video', 
     setCurrentMenu, 
-    onOpenModal, 
     isOpen, 
     setIsOpen,
-    previewJob,
-    setPreviewJob,
     historyList = []
 }) {
-    const menus = [
-        { id: 'video', label: 'Tạo Video', icon: Video },
-        { id: 'tts', label: 'Tạo Giọng Nói', icon: Mic },
-        { id: 'history', label: 'Lịch sử', icon: Clock },
-        { id: 'settings', label: 'Cài đặt', icon: Settings },
-    ];
+    const navigate = useNavigate();
 
-    // Filter to completed/available voice/TTS tasks
-    const ttsJobs = historyList.filter(item => item.type === 'tts').slice(0, 5);
+    const menus = [
+        { id: 'video', label: 'Tạo Video', icon: Video, path: '/dashboard' },
+        { id: 'tts', label: 'Tạo Giọng Nói', icon: Mic, path: '/dashboard' },
+        { id: 'image-analyzer', label: 'Mắt Thần AI', icon: Eye, path: '/dashboard/mat-than' },
+        { id: 'history', label: 'Lịch sử', icon: Clock, path: '/dashboard' },
+        { id: 'settings', label: 'Cài đặt', icon: Settings, path: '/dashboard/settings' },
+    ];
 
     return (
         <aside 
@@ -48,11 +46,10 @@ export default function Sidebar({
                             <button
                                 key={item.id}
                                 onClick={() => {
-                                    if (item.id === 'settings') {
-                                        if (onOpenModal) onOpenModal('settings');
-                                    } else if (setCurrentMenu) {
+                                    if (setCurrentMenu) {
                                         setCurrentMenu(item.id);
                                     }
+                                    navigate(item.path);
                                     if (setIsOpen) setIsOpen(false); // Auto close sidebar
                                 }}
                                 style={{

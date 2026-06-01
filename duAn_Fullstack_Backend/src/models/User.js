@@ -16,12 +16,17 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING(255),
       allowNull: true,
     },
+    password: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      field: 'password_hash',
+    },
     name: {
       type: DataTypes.STRING(255),
       allowNull: true,
     },
     avatar: {
-      type: DataTypes.STRING(255),
+      type: DataTypes.TEXT('long'),
       allowNull: true,
     },
     role: {
@@ -33,6 +38,12 @@ module.exports = (sequelize) => {
       type: DataTypes.INTEGER,
       defaultValue: 140,
       allowNull: false,
+    },
+    credits_balance: {
+      type: DataTypes.INTEGER,
+      defaultValue: 60,
+      allowNull: false,
+      field: 'credits_balance',
     },
     status: {
       type: DataTypes.ENUM('Active', 'Banned'),

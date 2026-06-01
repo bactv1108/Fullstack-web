@@ -48,13 +48,29 @@ const getDashboardStats = async (req, res) => {
  */
 const getBillingPlans = async (req, res) => {
   try {
-    const config = await require('../models').SystemConfig.findByPk('billing_plans');
-    const plans = config && config.value ? JSON.parse(config.value) : {
-      Free: { credits: 50, price: 0 },
-      Basic: { credits: 500, price: 10 },
-      Premium: { credits: 2000, price: 30 }
-    };
-    return res.status(200).json(plans);
+    const { Package } = require('../models');
+    const packages = await Package.findAll();
+    
+    const plans = {};
+    packages.forEach(pkg => {
+      const key = pkg.id.toLowerCase();
+      plans[key] = {
+        credits: pkg.credits,
+        price: Math.round(Number(pkg.price))
+      };
+    });
+    
+    // Fallback if packages table is empty
+    if (Object.keys(plans).length === 0) {
+      plans['free'] = { credits: 60, price: 0 };
+      plans['basic'] = { credits: 200, price: 150000 };
+      plans['premium'] = { credits: 1000, price: 500000 };
+    }
+    
+    return res.status(200).json({
+      success: true,
+      plans
+    });
   } catch (err) {
     console.error('[ADMIN CONTROLLER] getBillingPlans error:', err.message);
     return res.status(500).json({ message: 'Lỗi hệ thống khi tải cấu hình gói cước.' });
@@ -67,13 +83,37 @@ const getBillingPlans = async (req, res) => {
  */
 const updateBillingPlans = async (req, res) => {
   const { plans } = req.body;
-  if (!plans || typeof plans !== 'object') {
+  
+  // Validation chặt chẽ cấu trúc bọc vỏ plans từ Frontend Admin gửi lên
+  if (!plans || !plans.free || !plans.basic || !plans.premium) {
     return res.status(400).json({ message: 'Dữ liệu cấu hình gói cước không hợp lệ.' });
   }
 
   try {
-    await require('../models').SystemConfig.upsert({ key: 'billing_plans', value: JSON.stringify(plans) });
-    return res.status(200).json({ success: true, message: 'Cập nhật cấu hình gói cước thành công.' });
+    const { Package, SystemConfig } = require('../models');
+    
+    // BƯỚC 1: Duyệt qua các key và cập nhật trực tiếp vào từng hàng tương ứng của bảng packages trong MySQL
+    for (const key of Object.keys(plans)) {
+      const targetId = key.toLowerCase(); // Ép chữ thường: 'free', 'basic', 'premium' để khớp khóa chính id trong DB
+      await Package.update(
+        {
+          price: parseInt(plans[key].price, 10) || 0,
+          credits: parseInt(plans[key].credits, 10) || 0
+        },
+        { where: { id: targetId } }
+      );
+    }
+
+    // BƯỚC 2: Ghi đè chuỗi JSON vào bảng system_configs để đảm bảo tính tương thích ngược toàn cục
+    await SystemConfig.upsert({ 
+      key: 'billing_plans', 
+      value: JSON.stringify(plans) 
+    });
+
+    return res.status(200).json({ 
+      success: true, 
+      message: 'Cấu hình gói cước đã được cập nhật đồng bộ vào cả hai bảng dữ liệu thành công!' 
+    });
   } catch (err) {
     console.error('[ADMIN CONTROLLER] updateBillingPlans error:', err.message);
     return res.status(500).json({ message: 'Lỗi hệ thống khi cập nhật gói cước.' });
@@ -327,6 +367,28 @@ const getCreditStats = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/admin/image-analyses
+ * Retrieve all product image analyses history logs
+ */
+const getImageAnalyses = async (req, res) => {
+  try {
+    const { ImageAnalysis, User } = require('../models');
+    const analyses = await ImageAnalysis.findAll({
+      order: [['id', 'DESC']],
+      include: [{
+        model: User,
+        as: 'owner',
+        attributes: ['name', 'email']
+      }]
+    });
+    return res.status(200).json(analyses);
+  } catch (err) {
+    console.error('[ADMIN CONTROLLER] getImageAnalyses error:', err.message);
+    return res.status(500).json({ message: 'Lỗi hệ thống khi tải lịch sử Mắt Thần.' });
+  }
+};
+
 module.exports = {
   getDashboardStats,
   getBillingPlans,
@@ -342,7 +404,6 @@ module.exports = {
   updateApiKeys,
   getQueueStatus,
   getApiCosts,
-  getCreditStats
+  getCreditStats,
+  getImageAnalyses
 };
-
-

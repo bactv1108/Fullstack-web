@@ -368,6 +368,8 @@ export default function useDashboard() {
     audioModel,
     setAudioModel,
     savedSettings,
+    setUserName,
+    setAvatarImage,
     
     toastState,
     closeToast,

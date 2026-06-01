@@ -47,6 +47,9 @@ const AppRoutes = () => {
         <Route element={<ProtectedRoute />}>
           <Route element={<MainLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/dashboard/image-analyzer" element={<Dashboard />} />
+            <Route path="/dashboard/mat-than" element={<Dashboard />} />
+            <Route path="/dashboard/settings" element={<Dashboard />} />
             {/* Các sub-routes của dashboard có thể thêm ở đây */}
           </Route>
         </Route>

@@ -10,11 +10,13 @@ export const systemService = {
   getCreditStats: async () => {
     return axiosAdminClient.get('/system/credits');
   },
-  getBillingPlans: async () => {
-    return axiosAdminClient.get('/billing/plans');
+  getBillingPlans: async (token) => {
+    const headers = { Authorization: `Bearer ${token || localStorage.getItem('admin_access_token' || 'token') || localStorage.getItem('token')}` };
+    return axiosAdminClient.get('/billing/plans', { headers });
   },
-  updateBillingPlans: async (plans) => {
-    return axiosAdminClient.put('/billing/plans', { plans });
+  updateBillingPlans: async (plans, token) => {
+    const headers = { Authorization: `Bearer ${token || localStorage.getItem('admin_access_token' || 'token') || localStorage.getItem('token')}` };
+    return axiosAdminClient.put('/billing/plans', { plans }, { headers });
   },
   getBillingTransactions: async (page = 1, limit = 10) => {
     return axiosAdminClient.get(`/billing/transactions?page=${page}&limit=${limit}`);

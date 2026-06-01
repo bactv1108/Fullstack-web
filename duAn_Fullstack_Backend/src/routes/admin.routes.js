@@ -39,5 +39,6 @@ router.put('/users/:id/status', adminController.updateUserStatus);
 router.get('/system/queue', adminController.getQueueStatus);
 router.get('/system/costs', adminController.getApiCosts);
 router.get('/system/credits', adminController.getCreditStats);
+router.get('/image-analyses', adminController.getImageAnalyses);
 
 module.exports = router;
