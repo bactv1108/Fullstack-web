@@ -34,7 +34,7 @@ out/
 **/*.mp3
 **/*.mp4
 **/*.wav
-
+**/uploads/voices/*.mp3
 # 5. HỆ THỐNG & TRÌNH SOẠN THẢO (SYSTEM & IDE FILES)
 # Hệ điều hành và trình soạn thảo
 .DS_Store
@@ -46,3 +46,12 @@ Thumbs.db
 *.njsproj
 *.sln
 *.swp
+*.xml
+
+
+
+
+
+
+
+
