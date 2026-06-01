@@ -389,6 +389,103 @@ const getImageAnalyses = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/admin/transactions
+ * GET /api/admin/admin/transactions
+ * Retrieve a paginated array matrix tracking actual transaction logs from the database
+ */
+const getAllTransactions = async (req, res) => {
+  const page = parseInt(req.query.page, 10) || 1;
+  const limit = parseInt(req.query.limit, 10) || 10;
+  const offset = (page - 1) * limit;
+  const search = req.query.search || '';
+
+  try {
+    const { Transaction, User } = require('../models');
+    const { Op } = require('sequelize');
+
+    let whereClause = {};
+    if (search) {
+      whereClause = {
+        [Op.or]: [
+          { id: { [Op.like]: `%${search}%` } },
+          { '$user.email$': { [Op.like]: `%${search}%` } }
+        ]
+      };
+    }
+
+    const { count, rows: transactions } = await Transaction.findAndCountAll({
+      limit,
+      offset,
+      order: [['createdAt', 'DESC']],
+      where: whereClause,
+      subQuery: false,
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['email']
+        }
+      ]
+    });
+
+    return res.status(200).json({
+      transactions,
+      count,
+      totalPages: Math.ceil(count / limit)
+    });
+  } catch (err) {
+    console.error('[ADMIN CONTROLLER] getAllTransactions error:', err.message);
+    return res.status(500).json({ message: 'Lỗi hệ thống khi tải tất cả lịch sử giao dịch.' });
+  }
+};
+
+/**
+ * PUT /api/admin/transactions/:id/approve
+ * Manually approve a pending payment transaction and award credits to user
+ */
+const approveTransactionManually = async (req, res) => {
+  const transactionId = req.params.id;
+
+  try {
+    const { Transaction, User, sequelize } = require('../models');
+    
+    // Find transaction
+    const transaction = await Transaction.findByPk(transactionId);
+    if (!transaction) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy giao dịch nạp tiền.' });
+    }
+
+    // Check duplicate approval
+    if (transaction.status === 'success') {
+      return res.status(400).json({ success: false, message: 'Giao dịch này đã được xử lý từ trước' });
+    }
+
+    // Initialize atomic Sequelize transaction
+    const t = await sequelize.transaction();
+    try {
+      // 1. Update status
+      await transaction.update({ status: 'success' }, { transaction: t });
+
+      // 2. Increment user credits
+      await User.increment(
+        { credits: transaction.credits_added },
+        { where: { id: transaction.userId }, transaction: t }
+      );
+
+      await t.commit();
+      console.log(`[MANUAL APPROVAL SUCCESS] Transaction ${transactionId} approved manually by Admin. Added ${transaction.credits_added} credits to user ID ${transaction.userId}.`);
+      return res.status(200).json({ success: true, message: 'Duyệt đơn hàng thành công!' });
+    } catch (transactionError) {
+      await t.rollback();
+      throw transactionError;
+    }
+  } catch (err) {
+    console.error('[ADMIN CONTROLLER] approveTransactionManually error:', err.message);
+    return res.status(500).json({ success: false, message: 'Lỗi hệ thống khi duyệt giao dịch thủ công.' });
+  }
+};
+
 module.exports = {
   getDashboardStats,
   getBillingPlans,
@@ -405,5 +502,9 @@ module.exports = {
   getQueueStatus,
   getApiCosts,
   getCreditStats,
-  getImageAnalyses
+  getImageAnalyses,
+  getAllTransactions,
+  approveTransactionManually
 };
+
+

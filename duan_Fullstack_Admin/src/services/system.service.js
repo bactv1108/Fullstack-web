@@ -19,6 +19,6 @@ export const systemService = {
     return axiosAdminClient.put('/billing/plans', { plans }, { headers });
   },
   getBillingTransactions: async (page = 1, limit = 10) => {
-    return axiosAdminClient.get(`/billing/transactions?page=${page}&limit=${limit}`);
+    return axiosAdminClient.get(`/transactions?page=${page}&limit=${limit}`);
   }
 };

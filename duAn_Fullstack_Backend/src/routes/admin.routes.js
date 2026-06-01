@@ -5,6 +5,9 @@ const adminController = require('../controllers/admin.controller');
 const { authenticateJWT, isAdmin } = require('../middlewares/auth.middleware');
 const { adminLimiter } = require('../middlewares/rate-limiter.middleware');
 
+// Security middleware declaration for explicit endpoint routing
+const adminMiddleware = [authenticateJWT, isAdmin];
+
 // Apply common admin security middlewares to all endpoints
 router.use(adminLimiter);
 router.use(authenticateJWT);
@@ -17,6 +20,11 @@ router.get('/dashboard/stats', adminController.getDashboardStats);
 router.get('/billing/plans', adminController.getBillingPlans);
 router.put('/billing/plans', adminController.updateBillingPlans);
 router.get('/billing/transactions', adminController.getBillingTransactions);
+router.get('/admin/transactions', adminMiddleware, adminController.getAllTransactions);
+router.get('/transactions', adminMiddleware, adminController.getAllTransactions);
+router.put('/transactions/:id/approve', adminMiddleware, adminController.approveTransactionManually);
+router.put('/admin/transactions/:id/approve', adminMiddleware, adminController.approveTransactionManually);
+
 
 // API Configuration Keys
 router.get('/config/keys', adminController.getApiKeys);

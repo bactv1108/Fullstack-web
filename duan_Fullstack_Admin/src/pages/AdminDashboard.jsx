@@ -3,7 +3,7 @@ import QueueStatus from '../components/dashboard/QueueStatus';
 import ApiCostCard from '../components/dashboard/ApiCostCard';
 import CreditStats from '../components/dashboard/CreditStats';
 import PlanConfig from '../components/billing/PlanConfig';
-import TransactionList from '../components/billing/TransactionList';
+import BillingView from '../components/billing/BillingView';
 import ApiKeysForm from '../components/api-resources/ApiKeysForm';
 import AssetManager from '../components/api-resources/AssetManager';
 import BlacklistWord from '../components/moderation/BlacklistWord';
@@ -21,7 +21,7 @@ const AdminDashboard = ({ tab }) => {
           <div className="space-y-6 animate-fade-in">
             <h1 className="text-2xl font-bold text-admin-text mb-6">Quản Lý Gói Cước & Tín Dụng</h1>
             <PlanConfig />
-            <TransactionList />
+            <BillingView />
           </div>
         );
       case 'api':
