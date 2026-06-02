@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { User, KeyRound, CreditCard, Save, Lock, X, Coins, History, Camera, Trash2, CheckCircle2, Sliders, Eye, EyeOff } from 'lucide-react';
 import axiosClient from '../../../services/axiosClient';
+import { useAuth } from '../../../hooks/useAuth';
 
 const packageMeta = {
   free: {
@@ -51,6 +52,11 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
   const navigate = useNavigate();
   const location = useLocation();
   const fileInputRef = useRef(null);
+  const { user, updateUserState, logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+  };
 
   const [showScrollTop, setShowScrollTop] = useState(false);
   useEffect(() => {
@@ -75,12 +81,10 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
   const [showConfirmPass, setShowConfirmPass] = useState(false);
 
   const [profileMsg, setProfileMsg] = useState('');
+  const [avatarError, setAvatarError] = useState('');
   const [passwordMsg, setPasswordMsg] = useState('');
 
-  const [transactions, setTransactions] = useState([
-    { id: 'TRX-001', package: 'Gói Basic', type: 'Thanh toán', amount: '150.000 đ', credits: '+600', status: 'Thành công', date: '14:25:34 31/05/2026' },
-    { id: 'TRX-002', package: 'Gói Free', type: 'Hệ thống tặng', amount: '0 đ', credits: '+60', status: 'Thành công', date: '09:12:05 01/05/2026' }
-  ]);
+  const [transactions, setTransactions] = useState([]);
 
   const [packages, setPackages] = useState([]);
   
@@ -106,21 +110,24 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
       }
 
       try {
-        const transRes = await axiosClient.get('/profile/transactions');
-        if (transRes && transRes.success && transRes.data && transRes.data.length > 0) {
-          const mapped = transRes.data.map(tx => ({
+        const transRes = await axiosClient.get('/user/transactions');
+        if (transRes && Array.isArray(transRes)) {
+          const mapped = transRes.map(tx => ({
             id: tx.id,
-            package: tx.package?.name || tx.package_id || 'Gói cước',
-            type: tx.amount > 0 ? 'Thanh toán' : 'Hệ thống tặng',
+            package: tx.package_name || 'Gói cước',
+            type: tx.type || (tx.amount > 0 ? 'Thanh toán' : 'Hệ thống tặng'),
             amount: new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(tx.amount).replace('₫', 'đ'),
             credits: `+${tx.credits_added}`,
             status: tx.status === 'success' ? 'Thành công' : tx.status === 'pending' ? 'Chờ xử lý' : 'Thất bại',
             date: new Date(tx.createdAt).toLocaleString('vi-VN')
           }));
           setTransactions(mapped);
+        } else {
+          setTransactions([]);
         }
       } catch (err) {
         console.error('[SETTINGS] Error fetching transactions:', err);
+        setTransactions([]);
       }
 
       try {
@@ -164,12 +171,12 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
               }
 
               // Also refetch transaction list
-              const transRes = await axiosClient.get('/profile/transactions');
-              if (transRes && transRes.success && transRes.data && transRes.data.length > 0) {
-                const mapped = transRes.data.map(tx => ({
+              const transRes = await axiosClient.get('/user/transactions');
+              if (transRes && Array.isArray(transRes)) {
+                const mapped = transRes.map(tx => ({
                   id: tx.id,
-                  package: tx.package?.name || tx.package_id || 'Gói cước',
-                  type: tx.amount > 0 ? 'Thanh toán' : 'Hệ thống tặng',
+                  package: tx.package_name || 'Gói cước',
+                  type: tx.type || (tx.amount > 0 ? 'Thanh toán' : 'Hệ thống tặng'),
                   amount: new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(tx.amount).replace('₫', 'đ'),
                   credits: `+${tx.credits_added}`,
                   status: tx.status === 'success' ? 'Thành công' : tx.status === 'pending' ? 'Chờ xử lý' : 'Thất bại',
@@ -212,12 +219,25 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
 
   const handleSaveProfile = async (e) => {
     e.preventDefault();
+    if (avatarError) {
+      setProfileMsg('Vui lòng sửa các lỗi trước khi lưu.');
+      return;
+    }
+    // Tự động kiểm tra dung lượng chuỗi base64 nếu có
+    if (avatar && avatar.startsWith('data:image') && (avatar.length * 0.75) > 1.5 * 1024 * 1024) {
+      setAvatarError('Dung lượng ảnh đại diện vượt quá 1.5MB. Vui lòng chọn ảnh khác!');
+      setProfileMsg('Vui lòng sửa các lỗi trước khi lưu.');
+      return;
+    }
     try {
       setProfileMsg('Đang lưu thông tin...');
       const response = await axiosClient.put('/user/update-profile', { fullname, avatar });
       setProfileMsg(response?.message || 'Cập nhật thông tin hồ sơ thành công!');
       if (setUserName) setUserName(fullname);
       if (setAvatarImage) setAvatarImage(avatar);
+      if (updateUserState) {
+        updateUserState({ name: fullname, avatar });
+      }
     } catch (err) {
       console.error('[SETTINGS] Save profile error:', err);
       setProfileMsg(err.response?.data?.message || err.message || 'Cập nhật thông tin hồ sơ thất bại.');
@@ -316,9 +336,22 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
   const handleAvatarUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
-      if (!file.type.startsWith('image/')) { alert('Vui lòng chọn một file ảnh hợp lệ.'); return; }
+      setAvatarError('');
+      if (!file.type.startsWith('image/')) { 
+        setAvatarError('Vui lòng chọn một file ảnh hợp lệ.'); 
+        return; 
+      }
+      // Giới hạn dung lượng tối đa 1.5MB (1.5 * 1024 * 1024 = 1572864 Bytes)
+      if (file.size > 1.5 * 1024 * 1024) {
+        setAvatarError('Dung lượng ảnh đại diện vượt quá 1.5MB. Vui lòng chọn ảnh khác!');
+        return;
+      }
       const reader = new FileReader();
-      reader.onloadend = () => { const base64Data = reader.result; localStorage.setItem('user_avatar', base64Data); setAvatar(base64Data); };
+      reader.onloadend = () => { 
+        const base64Data = reader.result; 
+        localStorage.setItem('user_avatar', base64Data); 
+        setAvatar(base64Data); 
+      };
       reader.readAsDataURL(file);
     }
   };
@@ -327,6 +360,7 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
     e.stopPropagation(); 
     localStorage.removeItem('user_avatar'); 
     setAvatar(''); 
+    setAvatarError('');
     if (setAvatarImage) setAvatarImage('');
   };
 
@@ -367,9 +401,14 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
       {/* Form điền thông tin lồng hộp có chiều sâu (Giống hệt trang Admin) */}
       <div className="!p-6 !bg-[#111114] !border !border-[#222226] !rounded-2xl p-5 sm:p-6 md:p-8 !w-full !shadow-2xl !flex !flex-col !gap-8">
           <section id="profile-section" className="!p-3 bg-[#18181c] border border-[#222226] rounded-xl p-5 md:p-6 flex flex-col gap-5 w-full text-left">
-        <div className="flex items-center gap-3 border-b border-[#222226]/50 pb-3">
-          <User className="text-[#f59e0b]" size={20} />
-          <h2 className="text-xl font-black text-white uppercase tracking-wider">Hồ sơ cá nhân & Bảo mật</h2>
+        <div className="flex items-center justify-between border-b border-[#222226]/50 pb-3 w-full">
+          <div className="flex items-center gap-3">
+            <User className="text-[#f59e0b]" size={20} />
+            <h2 className="text-xl font-black text-white uppercase tracking-wider"> Hồ sơ cá nhân & Bảo mật</h2>
+          </div>
+          <button onClick={handleLogout} className="hidden md:flex items-center gap-2 px-4 py-2 bg-rose-600/10 hover:bg-rose-600 text-rose-500 hover:text-white rounded-lg text-xs font-bold transition-all duration-300 border-none cursor-pointer">
+            Đăng xuất
+          </button>
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-5 bg-[#0f0f11] p-4 rounded-xl border border-[#222226]/40 w-full">
           <div onClick={handleAvatarClick} className="w-20 h-20 rounded-full bg-[#854d0e] text-white flex items-center justify-center font-bold text-xl cursor-pointer relative group overflow-hidden border border-[#222226] shrink-0">
@@ -383,7 +422,13 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
           <div className="flex flex-col gap-1.5 text-center sm:text-left">
             <h3 className="text-xs font-bold text-white uppercase tracking-wide">Ảnh đại diện người dùng</h3>
             <p className="text-[10px] text-zinc-400 leading-relaxed max-w-md">Hỗ trợ định dạng JPG, PNG, WEBP. Dung lượng tối đa không vượt quá 2MB để đảm bảo tối ưu hóa lưu trữ Cloud DB.</p>
+            {avatarError && <span className="text-[10px] font-bold text-red-500 mt-1 block">{avatarError}</span>}
             {avatar && <button type="button" onClick={handleRemoveAvatar} className="text-[9px] font-bold text-red-400 hover:text-red-300 flex items-center justify-center mx-auto text-center w-full sm:w-auto sm:justify-start sm:mx-0 gap-1 mt-1 cursor-pointer bg-transparent border-none"><Trash2 size={10} /> Xoá ảnh đại diện hiện tại</button>}
+            <div className="block md:hidden mt-4 pt-2 border-t border-[#222226]/40">
+              <button onClick={handleLogout} className="w-full py-2.5 px-4 bg-rose-600/10 active:bg-rose-600 text-rose-500 active:text-white rounded-lg text-xs font-bold transition-all duration-300 border-none cursor-pointer flex items-center justify-center gap-2">
+                Đăng xuất tài khoản
+              </button>
+            </div>
           </div>
         </div>
         <form onSubmit={handleSaveProfile} className="flex flex-col gap-5 w-full">
@@ -500,7 +545,7 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
              <h2 className="text-xx font-black text-white uppercase tracking-wider">Ví Credit & Quản lý gói cước dịch vụ</h2>
           </div>
           <div className="flex items-center gap-2 bg-[#f59e0b]/10 text-[#f59e0b] border border-[#f59e0b]/20 px-4 py-1.5 rounded-full">
-             <span className=" !p-2 text-xs font-black uppercase tracking-wide">Tín dụng: {credits ?? 0} Credits</span>
+             <span className=" !p-2 text-xs font-black uppercase tracking-wide">TÍN DỤNG: {user?.credits || 0} CREDITS</span>
           </div>
         </div>
         <div className="flex flex-col gap-2 mt-1">
@@ -587,7 +632,8 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
                 </tr>
                 </thead>
                 <tbody className="divide-y divide-[#222226]/40 text-white font-medium">
-                {transactions && transactions.map((tx) => (
+                {transactions && transactions.length > 0 ? (
+                  transactions.map((tx) => (
                     <tr key={tx.id} className="hover:bg-[#131316]/50 transition-colors">
                       <td className="!p-2 p-3 font-mono text-zinc-500">{tx.id}</td>
                       <td className="p-3 font-bold text-zinc-200">{tx.package}</td>
@@ -607,7 +653,14 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
                       </td>
                       <td className="p-3 text-zinc-500">{tx.date}</td>
                     </tr>
-                ))}
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-zinc-500 font-medium">
+                      Chưa có lịch sử giao dịch.
+                    </td>
+                  </tr>
+                )}
                 </tbody>
               </table>
             </div>

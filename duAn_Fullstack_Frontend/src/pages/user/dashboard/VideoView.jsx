@@ -14,7 +14,7 @@ export default function VideoView({
   setVoice,
   speed,
   setSpeed,
-  generating,
+  isRendering,
   progress,
   isPlaying,
   setIsPlaying,
@@ -487,7 +487,7 @@ export default function VideoView({
               <button
                   type="button"
                   onClick={handleGenerateVideo}
-                  disabled={generating}
+                  disabled={isRendering}
                   className="!p-4 py-4 px-8 bg-[#f59e0b] text-black font-black text-xs rounded-xl flex items-center justify-center gap-2 uppercase tracking-widest cursor-pointer disabled:opacity-50 transition-all duration-300 border-none shadow-md hover:bg-amber-600 hover:shadow-[0_0_25px_rgba(245,158,11,0.4)] hover:scale-[1.01] active:scale-[0.98] w-full"
               >
                 <Sparkles size={16} fill="black" className="text-black animate-pulse" />
@@ -557,7 +557,7 @@ export default function VideoView({
                   <Play size={20} className="text-white fill-white ml-0.5" />
                 </div>
               </div>
-              {generating && (
+              {isRendering && (
                 <div className="absolute inset-0 bg-black/85 flex flex-col items-center justify-center z-20">
                   <div className="w-6 h-6 border-2 border-[#f59e0b] border-t-transparent rounded-full animate-spin mb-2"></div>
                   <p className="text-[#f59e0b] text-[10px] font-bold tracking-widest">MÔ HÌNH AI ĐANG RENDERING... {progress}%</p>

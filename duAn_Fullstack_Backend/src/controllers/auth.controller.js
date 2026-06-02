@@ -6,6 +6,7 @@ const nodemailer = require('nodemailer');
 const db = require('../config/db');
 const queueService = require('../services/queue.service');
 const authService = require('../services/auth.service');
+const { User, Transaction, sequelize } = require('../models');
 require('dotenv').config();
 
 // Helper to parse cookies manually from raw headers
@@ -69,51 +70,60 @@ const googleCallback = async (req, res) => {
 
     const refresh_token = tokens.refresh_token;
 
-    // Check if user exists
-    const [rows] = await db.execute('SELECT * FROM users WHERE google_id = ? OR email = ?', [google_id, email]);
-    let user = rows[0];
+    const { Op } = require('sequelize');
+
+    // Check if user exists using standard Sequelize ORM
+    let user = await User.findOne({
+      where: {
+        [Op.or]: [
+          { google_id },
+          { email }
+        ]
+      }
+    });
 
     if (user) {
       // UPSERT: Update google_id, name, avatar, is_verified, and conditionally refresh_token
-      let updateQuery = 'UPDATE users SET name = ?, avatar = ?, is_verified = 1';
-      let queryParams = [name, avatar];
-
-      if (!user.google_id && google_id) {
-        updateQuery += ', google_id = ?';
-        queryParams.push(google_id);
-      }
-
-      if (refresh_token) {
-        updateQuery += ', refresh_token = ?';
-        queryParams.push(refresh_token);
-      }
-
-      updateQuery += ' WHERE id = ?';
-      queryParams.push(user.id);
-
-      await db.execute(updateQuery, queryParams);
-
-      // Update local user object for JWT
       user.name = name;
       user.avatar = avatar;
+      user.is_verified = true;
       if (!user.google_id && google_id) {
         user.google_id = google_id;
       }
-      user.is_verified = 1;
+      if (refresh_token) {
+        user.refresh_token = refresh_token;
+      }
+      await user.save();
     } else {
-      // INSERT
-      const [insertResult] = await db.execute(
-          'INSERT INTO users (google_id, email, name, avatar, refresh_token, is_verified, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)',
-          [google_id, email, name, avatar, refresh_token || null, new Date(), new Date()]
-      );
-      user = {
-        id: insertResult.insertId,
-        google_id,
-        email,
-        name,
-        avatar,
-        role: 'user'
-      };
+      // INSERT using sequelize.transaction() to guarantee atomic registration gifts
+      user = await sequelize.transaction(async (t) => {
+        const newUser = await User.create({
+          google_id,
+          email,
+          name,
+          avatar,
+          refresh_token: refresh_token || null,
+          is_verified: true,
+          credits: 60,
+          credits_balance: 60
+        }, { transaction: t });
+
+        // Sinh mã giao dịch tự động dạng TRX- kết hợp chuỗi ngẫu nhiên
+        const transactionId = 'TRX-' + Date.now().toString().slice(-6) + Math.floor(100 + Math.random() * 900);
+
+        // 2. Tạo tự động một bản ghi lịch sử giao dịch trong bảng transactions
+        await Transaction.create({
+          id: transactionId,
+          userId: newUser.id,
+          package_name: 'Gói Free',
+          amount: 0,
+          credits_added: 60,
+          status: 'success', // Trạng thái "Thành công" theo cấu hình
+          type: 'Hệ thống tặng' // Phân loại giao dịch hiển thị trên UI
+        }, { transaction: t });
+
+        return newUser;
+      });
     }
 
     // Sign system tokens
@@ -160,9 +170,12 @@ const register = async (req, res) => {
   }
 
   try {
-    // Check for existing email
-    const [existing] = await db.execute('SELECT id FROM users WHERE email = ?', [email]);
-    if (existing.length > 0) {
+    // Check for existing email using standard Sequelize ORM
+    const existing = await User.findOne({
+      where: { email },
+      attributes: ['id']
+    });
+    if (existing) {
       console.log(`[AUTH] Validation failed: Email already exists — ${email}`);
       return res.status(409).json({ message: 'Email này đã được đăng ký.' });
     }
@@ -173,11 +186,33 @@ const register = async (req, res) => {
     // Generate verification token
     const verification_token = crypto.randomBytes(32).toString('hex');
 
-    // Insert user with is_verified = 0
-    await db.execute(
-        'INSERT INTO users (name, email, password_hash, is_verified, verification_token, created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?, ?)',
-        [name, email, password_hash, verification_token, new Date(), new Date()]
-    );
+    // Sử dụng sequelize.transaction() để bọc cả hai câu lệnh chèn người dùng mới và chèn giao dịch hệ thống tặng
+    await sequelize.transaction(async (t) => {
+      // 1. Khởi tạo User mới với 60 Credits
+      const newUser = await User.create({
+        name,
+        email,
+        password_hash,
+        is_verified: false,
+        verification_token,
+        credits: 60,
+        credits_balance: 60
+      }, { transaction: t });
+
+      // Sinh mã giao dịch tự động dạng TRX- kết hợp chuỗi ngẫu nhiên
+      const transactionId = 'TRX-' + Date.now().toString().slice(-6) + Math.floor(100 + Math.random() * 900);
+
+      // 2. Tạo tự động một bản ghi lịch sử giao dịch trong bảng transactions
+      await Transaction.create({
+        id: transactionId,
+        userId: newUser.id,
+        package_name: 'Gói Free',
+        amount: 0,
+        credits_added: 60,
+        status: 'success', // Trạng thái "Thành công" theo cấu hình
+        type: 'Hệ thống tặng' // Phân loại giao dịch hiển thị trên UI
+      }, { transaction: t });
+    });
 
     // Send verification email
     const verifyUrl = `http://localhost:3000/api/auth/verify-email?token=${verification_token}`;

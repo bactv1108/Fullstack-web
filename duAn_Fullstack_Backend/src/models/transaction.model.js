@@ -36,6 +36,12 @@ module.exports = (sequelize) => {
       defaultValue: 'pending',
       allowNull: false,
       comment: 'Trạng thái giao dịch nạp tiền'
+    },
+    type: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      defaultValue: 'Trừ phí dịch vụ',
+      comment: 'Phân loại giao dịch'
     }
   }, {
     tableName: 'transactions',

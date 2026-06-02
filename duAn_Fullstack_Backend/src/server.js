@@ -21,7 +21,8 @@ app.use(cors({
 }));
 
 // Body-parsing middleware
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 app.use('/previews', express.static(path.join(__dirname, '../public/previews')));

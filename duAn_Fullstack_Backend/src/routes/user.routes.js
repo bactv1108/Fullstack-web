@@ -18,6 +18,7 @@ router.use(authenticateJWT);
 
 router.get('/profile', userController.getProfile);
 router.get('/history', userController.getHistory);
+router.get('/transactions', userController.getTransactions);
 router.post('/jobs', userController.createJob);
 router.put('/settings', userController.updateSettings);
 router.delete('/jobs/:id', userController.deleteJob);

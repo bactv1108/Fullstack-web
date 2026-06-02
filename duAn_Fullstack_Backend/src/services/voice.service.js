@@ -50,75 +50,126 @@ class VoiceService {
     return ttsStorage.run(ttsInstance, async () => {
       let audioStream = null;
       let writeStream = null;
+      let success = false;
+      const maxAttempts = 5;
+      let currentTts = ttsInstance;
 
-      try {
-        console.log(`[VOICE SERVICE] Synthesizing speech for job #${jobId} using Edge TTS: ${voiceName}`);
-        await this.tts.setVoice(voiceName);
+      const speedPercent = Math.round((speed - 1) * 100);
+      const speedSign = speedPercent >= 0 ? '+' : '';
+      const speedString = `${speedSign}${speedPercent}%`;
 
-        const speedPercent = Math.round((speed - 1) * 100);
-        const speedSign = speedPercent >= 0 ? '+' : '';
-        const speedString = `${speedSign}${speedPercent}%`;
+      const pitchVal = parseInt(pitch);
+      const pitchSign = pitchVal >= 0 ? '+' : '';
+      const pitchString = `${pitchSign}${pitchVal}%`;
 
-        const pitchVal = parseInt(pitch);
-        const pitchSign = pitchVal >= 0 ? '+' : '';
-        const pitchString = `${pitchSign}${pitchVal}%`;
+      const escapeXML = (str) => {
+        if (!str) return '';
+        return str
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&apos;');
+      };
+      const escapedText = escapeXML(text);
 
-        const xmlLang = voiceName.split('-').slice(0, 2).join('-');
-        const requestSSML = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="${xmlLang}"><voice name="${voiceName}"><prosody pitch="${pitchString}" rate="${speedString}">${text}</prosody></voice></speak>`;
+      const xmlLang = voiceName.split('-').slice(0, 2).join('-');
+      const requestSSML = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="${xmlLang}"><voice name="${voiceName}"><prosody pitch="${pitchString}" rate="${speedString}">${escapedText}</prosody></voice></speak>`;
 
-        const result = this.tts.rawToStream(requestSSML);
-        audioStream = result.audioStream;
-
-        writeStream = fs.createWriteStream(absoluteFilePath);
-        audioStream.pipe(writeStream);
-
-        await new Promise((resolve, reject) => {
-          writeStream.on('finish', resolve);
-          writeStream.on('error', reject);
-          audioStream.on('error', reject);
-        });
-
-        // Write compatibility files
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        console.log(`[VOICE SERVICE] Synthesizing speech for job #${jobId} (Attempt ${attempt}/${maxAttempts})`);
         try {
-          const buffer = await fs.promises.readFile(absoluteFilePath);
-          await fs.promises.writeFile(path.join(dirPath, `AI_Studio_Voice_ID_${jobId}.mp3`), buffer);
-          await fs.promises.writeFile(path.join(dirPath, `voice_${jobId}.mp3`), buffer);
-        } catch (copyErr) {
-          console.error('[VOICE SERVICE] Copy compat file failed:', copyErr.message);
-        }
-
-        // Database status finalization for standard jobs
-        try {
-          const { Job } = require('../models');
-          const job = await Job.findByPk(jobId);
-          if (job) {
-            job.status = 'Completed';
-            job.progress = 100;
-            job.output_url = outputUrl;
-            try {
-              job.audio_url = outputUrl;
-              job.setDataValue('audio_url', outputUrl);
-            } catch (e) {}
-            await job.save();
-            console.log(`[VOICE SERVICE] Job #${jobId} status finalized to Completed.`);
+          if (attempt > 1) {
+            // For retry attempts, instantiate a completely fresh MsEdgeTTS client to ensure new WebSocket connection
+            currentTts = new MsEdgeTTS();
+            currentTts.setVoice = async (voice) => {
+              return currentTts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+            };
           }
-        } catch (dbErr) {
-          console.warn('[VOICE SERVICE] Failed to update job model:', dbErr.message);
-        }
 
-        return relativeFilePath;
-      } catch (error) {
-        console.error(`[VOICE SERVICE] Error generating TTS for job #${jobId}:`, error.message);
-        if (writeStream) {
-          try { writeStream.destroy(); } catch (e) {}
-        }
-        try {
+          await currentTts.setVoice(voiceName);
+
           if (fs.existsSync(absoluteFilePath)) {
-            fs.unlinkSync(absoluteFilePath);
+            try { fs.unlinkSync(absoluteFilePath); } catch (e) {}
           }
-        } catch (e) {}
-        throw error;
+
+          await new Promise((resolve, reject) => {
+            writeStream = fs.createWriteStream(absoluteFilePath);
+            
+            const result = currentTts.rawToStream(requestSSML);
+            audioStream = result.audioStream;
+            
+            audioStream.pipe(writeStream);
+
+            writeStream.on('finish', () => resolve());
+            writeStream.on('error', (err) => reject(err));
+            audioStream.on('error', (err) => reject(err));
+          });
+
+          // Ensure streams are closed
+          if (writeStream) {
+            try { writeStream.destroy(); } catch (e) {}
+          }
+
+          const stats = fs.statSync(absoluteFilePath);
+          if (stats.size > 0) {
+            console.log(`[VOICE SERVICE] TTS Attempt ${attempt} succeeded (size: ${stats.size} bytes)`);
+            success = true;
+            break;
+          } else {
+            console.warn(`[VOICE SERVICE] TTS Attempt ${attempt} produced 0-byte file. Retrying...`);
+            if (fs.existsSync(absoluteFilePath)) {
+              try { fs.unlinkSync(absoluteFilePath); } catch (e) {}
+            }
+          }
+        } catch (error) {
+          console.warn(`[VOICE SERVICE] TTS Attempt ${attempt} failed: ${error.message}`);
+          if (writeStream) {
+            try { writeStream.destroy(); } catch (e) {}
+          }
+          if (fs.existsSync(absoluteFilePath)) {
+            try { fs.unlinkSync(absoluteFilePath); } catch (e) {}
+          }
+        }
+
+        // Backoff delay before retry
+        await new Promise(r => setTimeout(r, 600));
       }
+
+      if (!success) {
+        console.error(`❌ [TTS ERROR] All ${maxAttempts} attempts failed or produced 0-byte file for job #${jobId}`);
+        throw new Error("Văn bản nhập vào không hợp lệ hoặc dịch vụ giọng đọc AI đang quá tải. Vui lòng kiểm tra lại kịch bản của bạn!");
+      }
+
+      // Write compatibility files
+      try {
+        const buffer = await fs.promises.readFile(absoluteFilePath);
+        await fs.promises.writeFile(path.join(dirPath, `AI_Studio_Voice_ID_${jobId}.mp3`), buffer);
+        await fs.promises.writeFile(path.join(dirPath, `voice_${jobId}.mp3`), buffer);
+      } catch (copyErr) {
+        console.error('[VOICE SERVICE] Copy compat file failed:', copyErr.message);
+      }
+
+      // Database status finalization for standard jobs
+      try {
+        const { Job } = require('../models');
+        const job = await Job.findByPk(jobId);
+        if (job) {
+          job.status = 'Completed';
+          job.progress = 100;
+          job.output_url = outputUrl;
+          try {
+            job.audio_url = outputUrl;
+            job.setDataValue('audio_url', outputUrl);
+          } catch (e) {}
+          await job.save();
+          console.log(`[VOICE SERVICE] Job #${jobId} status finalized to Completed.`);
+        }
+      } catch (dbErr) {
+        console.warn('[VOICE SERVICE] Failed to update job model:', dbErr.message);
+      }
+
+      return relativeFilePath;
     });
   }
 }

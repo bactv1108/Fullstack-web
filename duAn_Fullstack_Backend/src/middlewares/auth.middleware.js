@@ -1,9 +1,10 @@
 const jwt = require('jsonwebtoken');
+const { User } = require('../models');
 
 /**
  * Verify Bearer token in headers and attach payload to req.user
  */
-const authenticateJWT = (req, res, next) => {
+const authenticateJWT = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -15,6 +16,22 @@ const authenticateJWT = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
     req.user = decoded;
+
+    // Đảm bảo Token của tài khoản mới phải tìm thấy trong DB
+    if (decoded && decoded.id) {
+      const dbUser = await User.findByPk(decoded.id);
+      if (!dbUser) {
+        req.user = null;
+      }
+    } else {
+      req.user = null;
+    }
+
+    if (!req.user) {
+        console.log("❌ [AUTH FAILED] Chặn đứng API do không tìm thấy thông tin User từ Token!");
+        return res.status(401).json({ success: false, message: "Phiên đăng nhập hết hạn, vui lòng đăng nhập lại!" });
+    }
+
     next();
   } catch (error) {
     console.error('[AUTH MIDDLEWARE] Token verification failed:', error.message);

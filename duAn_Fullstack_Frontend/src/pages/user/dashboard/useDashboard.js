@@ -2,18 +2,21 @@ import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { Play, Rocket, Mic } from 'lucide-react';
 import { userService } from '../../../services/user.service';
+import { useAuth } from '../../../hooks/useAuth';
 
 export default function useDashboard() {
   const context = useOutletContext();
+  const { user, updateUserState } = useAuth();
+
   const currentMenu = context?.currentMenu || 'video';
-  const credits = context?.credits ?? 0;
+  const credits = user?.credits || 0;
   const setCredits = context?.setCredits;
-  const userName = context?.userName ?? 'Trần Bắc';
+  const userName = user?.name || '';
   const setUserName = context?.setUserName;
-  const userEmail = context?.userEmail ?? 'dung.tran@aistudio.vn';
+  const userEmail = user?.email || '';
   const setUserEmail = context?.setUserEmail;
-  const userRole = context?.userRole ?? 'VIP Member';
-  const avatarImage = context?.avatarImage ?? null;
+  const userRole = user?.role || '';
+  const avatarImage = user?.avatar || '';
   const setAvatarImage = context?.setAvatarImage;
   const themeMode = context?.themeMode || 'dark';
   const setThemeMode = context?.setThemeMode;
@@ -30,7 +33,7 @@ export default function useDashboard() {
   const [style, setStyle] = useState('realistic');
   const [voice, setVoice] = useState('adam');
   const [speed, setSpeed] = useState(1.3);
-  const [generating, setGenerating] = useState(false);
+  const [isRendering, setIsRendering] = useState(false);
   const [progress, setProgress] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoTab, setVideoTab] = useState('config'); // Mobile tabs: 'config' | 'preview'
@@ -74,7 +77,7 @@ export default function useDashboard() {
   const [waveBars, setWaveBars] = useState([12, 28, 18, 42, 22, 32, 8, 22, 38, 48, 28, 18, 32, 42, 12, 28, 22, 38, 18, 8, 28, 12, 22, 8]);
   useEffect(() => {
     let interval;
-    if (isPlaying || ttsPlaying || generating || ttsGenerating) {
+    if (isPlaying || ttsPlaying || isRendering || ttsGenerating) {
       interval = setInterval(() => {
         setWaveBars(prev => prev.map(() => Math.floor(Math.random() * 35) + 8));
       }, 120);
@@ -82,7 +85,7 @@ export default function useDashboard() {
       setWaveBars([12, 28, 18, 42, 22, 32, 8, 22, 38, 48, 28, 18, 32, 42, 12, 28, 22, 38, 18, 8, 28, 12, 22, 8]);
     }
     return () => clearInterval(interval);
-  }, [isPlaying, ttsPlaying, generating, ttsGenerating]);
+  }, [isPlaying, ttsPlaying, isRendering, ttsGenerating]);
 
   // 3. STATE: UNIFIED HISTORY
   const [historyType, setHistoryType] = useState('all'); // 'all' | 'video' | 'tts'
@@ -101,9 +104,40 @@ export default function useDashboard() {
       toast.error("Vui lòng nhập ý tưởng kịch bản cho video!");
       return;
     }
-    setGenerating(true);
+
+    // Kiểm tra số dư credit của người dùng
+    if (credits < 10) {
+      toast.error("Số dư tín dụng (credits) của bạn không đủ để thực hiện tác vụ này.");
+      return;
+    }
+
+    setIsRendering(true);
     setProgress(0);
     setVideoTab('preview');
+
+    let progressInterval = null;
+    let apiCompleted = false;
+    let apiResponse = null;
+
+    // Chạy bộ đếm mô phỏng render tăng dần mượt mà
+    progressInterval = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 98) {
+          if (apiCompleted) {
+            clearInterval(progressInterval);
+            setIsRendering(false);
+            if (updateUserState && apiResponse) {
+              updateUserState({ credits: apiResponse.credits });
+            }
+            loadHistory();
+            toast.success("Tạo video AI thành công!");
+            return 100;
+          }
+          return 98;
+        }
+        return prev + 2;
+      });
+    }, 150);
 
     try {
       const res = await userService.createJob({
@@ -112,26 +146,16 @@ export default function useDashboard() {
         prompt,
         meta_data: { aspectRatio, style, speed }
       });
-      if (setCredits) {
-        setCredits(res.credits);
-      }
-      loadHistory();
+      apiResponse = res;
+      apiCompleted = true;
     } catch (err) {
       console.error('[VIDEO GEN] Failed:', err.message);
-      alert(err.response?.data?.message || err.message || 'Không thể tạo video.');
-      setGenerating(false);
+      clearInterval(progressInterval);
+      setIsRendering(false);
+      setProgress(0);
+      toast.error(err.response?.data?.message || err.message || 'Không thể tạo video.');
     }
   };
-
-  useEffect(() => {
-    if (generating && progress < 100) {
-      const timer = setTimeout(() => setProgress(prev => prev + 5), 150);
-      return () => clearTimeout(timer);
-    } else if (progress >= 100) {
-      setGenerating(false);
-      loadHistory();
-    }
-  }, [generating, progress]);
 
   // TTS Gen Handler
   const handleGenerateTts = async () => {
@@ -139,6 +163,13 @@ export default function useDashboard() {
       toast.error("Vui lòng nhập kịch bản cần tạo giọng nói!");
       return;
     }
+
+    // Kiểm tra số dư credit của người dùng trước khi tạo TTS
+    if (credits < 2) {
+      toast.error("Số dư tín dụng (credits) của bạn không đủ để thực hiện tác vụ này.");
+      return;
+    }
+
     setTtsGenerating(true);
     setTtsProgress(0);
     setTtsTab('preview');
@@ -150,13 +181,13 @@ export default function useDashboard() {
         prompt: ttsPrompt,
         meta_data: { lang: ttsLang, voice: ttsVoice, speed: ttsSpeed, pitch: ttsPitch, volume: ttsVolume }
       });
-      if (setCredits) {
-        setCredits(res.credits);
+      if (updateUserState) {
+        updateUserState({ credits: res.credits });
       }
       loadHistory();
     } catch (err) {
       console.error('[TTS GEN] Failed:', err.message);
-      alert(err.response?.data?.message || err.message || 'Không thể tạo giọng nói.');
+      toast.error(err.response?.data?.message || err.message || 'Không thể tạo giọng nói.');
       setTtsGenerating(false);
     }
   };
@@ -322,7 +353,8 @@ export default function useDashboard() {
     setVoice,
     speed,
     setSpeed,
-    generating,
+    isRendering,
+    generating: isRendering, // compatibility fallback
     progress,
     isPlaying,
     setIsPlaying,

@@ -88,11 +88,29 @@ const getHistory = async (req, res) => {
  */
 const createJob = async (req, res) => {
   const { name, type, prompt, meta_data } = req.body;
-  if (!prompt) {
-    return res.status(400).json({ message: 'Vui lòng cung cấp mô tả (prompt).' });
-  }
   if (!type || !['Video', 'Voice'].includes(type)) {
     return res.status(400).json({ message: 'Loại tác vụ không hợp lệ.' });
+  }
+
+  let textToSynthesize = '';
+  if (type === 'Voice') {
+    const kịchBản = req.body.text || req.body.prompt || req.body.script || req.body.content;
+    console.log("===> [TTS COMPATIBLE] Dữ liệu kịch bản trích xuất được:", kịchBản);
+
+    if (!kịchBản || String(kịchBản).trim() === "" || kịchBản === "undefined" || kịchBản === "null") {
+        console.log("❌ [TTS VALIDATION FAILED] Chặn đứng request do kịch bản trống hoặc undefined!");
+        return res.status(400).json({ 
+            success: false, 
+            message: "Nội dung văn bản kịch bản gửi lên không hợp lệ hoặc bị để trống. Vui lòng kiểm tra lại!" 
+        });
+    }
+
+    // Sau khi vượt qua check này, gán lại giá trị chuẩn cho biến truyền vào Edge TTS:
+    textToSynthesize = String(kịchBản).trim();
+  } else {
+    if (!prompt) {
+      return res.status(400).json({ message: 'Vui lòng cung cấp mô tả (prompt).' });
+    }
   }
 
   const cost = type === 'Video' ? 10 : 5;
@@ -111,8 +129,93 @@ const createJob = async (req, res) => {
     await user.decrement('credits', { by: cost });
     await user.reload();
 
-    // Create render job in the DB
-    const jobName = name || (type === 'Video' ? 'Tạo Video' : 'Tạo Giọng Nói');
+    // Sinh mã giao dịch tự động dạng TRX- kết hợp chuỗi ngẫu nhiên
+    const transactionId = 'TRX-' + Date.now().toString().slice(-6) + Math.floor(100 + Math.random() * 900);
+
+    // Tạo bản ghi giao dịch trừ phí dịch vụ
+    await Transaction.create({
+      id: transactionId,
+      userId: user.id,
+      package_name: type === 'Video' ? 'Tạo Video' : 'Tạo Giọng Nói',
+      amount: 0,
+      credits_added: -cost,
+      status: 'success',
+      type: 'Trừ phí dịch vụ'
+    });
+
+    if (type === 'Voice') {
+      const voiceService = require('../services/voice.service');
+      const fs = require('fs');
+      const path = require('path');
+
+      let meta = meta_data;
+      if (typeof meta === 'string') {
+        try { meta = JSON.parse(meta); } catch (e) {}
+      }
+      const targetVoice = meta?.voiceModel || meta?.voice || 'vi-VN-NamMinhNeural';
+      const speed = meta?.speed !== undefined ? meta.speed : 1.0;
+      const pitch = meta?.pitch !== undefined ? meta.pitch : 0;
+
+      const tempId = Date.now() + '_' + Math.floor(Math.random() * 1000);
+      const relativeFilePath = await voiceService.textToSpeech(textToSynthesize, targetVoice, tempId, speed, pitch);
+
+      const dirPath = path.join(__dirname, '../../public/uploads/voices');
+      const filePath = path.join(dirPath, `voice_job_${tempId}.mp3`);
+
+      if (fs.existsSync(filePath)) {
+          const stats = fs.statSync(filePath);
+          if (stats.size === 0) {
+              console.error(`❌ [TTS ERROR] Phát hiện file sinh ra bị rỗng (0 bytes): ${filePath}`);
+              try { fs.unlinkSync(filePath); } catch (e) { console.error("Không thể xóa file rỗng:", e); } // Xóa file lỗi tránh rác ổ đĩa
+              return res.status(400).json({ success: false, message: "Văn bản nhập vào không hợp lệ hoặc dịch vụ giọng đọc AI đang quá tải. Vui lòng kiểm tra lại kịch bản của bạn!" });
+          }
+      } else {
+          return res.status(500).json({ success: false, message: "Không tìm thấy file âm thanh vật lý sau khi khởi tạo!" });
+      }
+
+      // Create render job in the DB (MySQL INSERT)
+      const jobName = name || 'Tạo Giọng Nói';
+      const job = await Job.create({
+        userId: user.id,
+        name: jobName,
+        type,
+        prompt: textToSynthesize,
+        meta_data,
+        status: 'Completed',
+        progress: 100,
+        credits_used: cost
+      });
+
+      // Rename generated files to final job ID filenames
+      const finalFilePath = path.join(dirPath, `voice_job_${job.id}.mp3`);
+      fs.renameSync(filePath, finalFilePath);
+      
+      const tempCompat1 = path.join(dirPath, `AI_Studio_Voice_ID_${tempId}.mp3`);
+      const finalCompat1 = path.join(dirPath, `AI_Studio_Voice_ID_${job.id}.mp3`);
+      if (fs.existsSync(tempCompat1)) fs.renameSync(tempCompat1, finalCompat1);
+      
+      const tempCompat2 = path.join(dirPath, `voice_${tempId}.mp3`);
+      const finalCompat2 = path.join(dirPath, `voice_${job.id}.mp3`);
+      if (fs.existsSync(tempCompat2)) fs.renameSync(tempCompat2, finalCompat2);
+
+      const port = process.env.PORT || 3000;
+      const outputUrl = `http://localhost:${port}/uploads/voices/voice_job_${job.id}.mp3`;
+      job.output_url = outputUrl;
+      try {
+        job.audio_url = outputUrl;
+        job.setDataValue('audio_url', outputUrl);
+      } catch (e) {}
+      await job.save();
+
+      return res.status(201).json({
+        message: 'Tạo tác vụ thành công, tiến trình đang được xử lý.',
+        job,
+        credits: user.credits
+      });
+    }
+
+    // Create standard video render job in the DB
+    const jobName = name || 'Tạo Video';
     const job = await Job.create({
       userId: user.id,
       name: jobName,
@@ -131,6 +234,9 @@ const createJob = async (req, res) => {
     });
   } catch (err) {
     console.error('[USER CONTROLLER] createJob error:', err.message);
+    if (err.message === "Văn bản nhập vào không hợp lệ hoặc dịch vụ giọng đọc AI đang quá tải. Vui lòng kiểm tra lại kịch bản của bạn!") {
+      return res.status(400).json({ success: false, message: err.message });
+    }
     return res.status(500).json({ message: 'Lỗi hệ thống khi tạo tác vụ.' });
   }
 };
@@ -193,21 +299,22 @@ const deleteJob = async (req, res) => {
  * Update user's fullname and avatar
  */
 const updateProfile = async (req, res) => {
-  const { fullname, avatar } = req.body;
+  const { fullname, avatar: inputAvatar } = req.body;
   try {
+    // 1. Tìm user bằng Sequelize ORM
     const user = await User.findByPk(req.user.id);
     if (!user) {
       return res.status(404).json({ message: 'Không tìm thấy người dùng.' });
     }
 
-    if (fullname !== undefined) {
-      user.name = fullname;
-    }
-    if (avatar !== undefined) {
-      user.avatar = avatar;
-    }
+    // 2. Gán giá trị mới nếu có truyền lên, nếu không thì giữ nguyên cũ
+    user.name = fullname !== undefined ? fullname : user.name;
+    user.avatar = inputAvatar !== undefined ? inputAvatar : user.avatar;
 
+    // 3. Lưu trực tiếp xuống DB thông qua ORM (An toàn, tự động xử lý SQL)
     await user.save();
+
+    // 4. Trả về kết quả (Không cần user.reload() vì user.save() đã tự cập nhật instance)
     return res.status(200).json({
       message: 'Cập nhật thông tin hồ sơ thành công!',
       user: {
@@ -224,7 +331,6 @@ const updateProfile = async (req, res) => {
     return res.status(500).json({ message: 'Lỗi hệ thống khi cập nhật hồ sơ.' });
   }
 };
-
 /**
  * PUT /api/user/change-password
  * Change user password
@@ -432,6 +538,24 @@ const receiveWebhook = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/user/transactions
+ * Retrieve transaction history of logged-in user using Sequelize ORM
+ */
+const getTransactions = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const transactions = await Transaction.findAll({
+      where: { userId },
+      order: [['createdAt', 'DESC']]
+    });
+    return res.status(200).json(transactions);
+  } catch (err) {
+    console.error('[USER CONTROLLER] getTransactions error:', err.message);
+    return res.status(500).json({ message: 'Lỗi hệ thống khi tải lịch sử giao dịch.' });
+  }
+};
+
 module.exports = {
   getProfile,
   getHistory,
@@ -443,5 +567,6 @@ module.exports = {
   getPackages,
   createPayment,
   checkPaymentStatus,
-  receiveWebhook
+  receiveWebhook,
+  getTransactions
 };

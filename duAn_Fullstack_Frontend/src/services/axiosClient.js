@@ -30,24 +30,13 @@ const processQueue = (error, token = null) => {
 };
 
 // ── REQUEST INTERCEPTOR: Tự động đính kèm Access Token vào Header ──
-axiosClient.interceptors.request.use(
-  (config) => {
-    // Đọc bất kỳ biến Access token nào có sẵn từ Local Storage
-    const token = localStorage.getItem('Access_token') || localStorage.getItem('access_token') || localStorage.getItem('token');
-    
-    // Nếu token tồn tại và hợp lệ, đính kèm vào Authorization Header dưới dạng Bearer
-    if (token && token !== 'undefined' && token !== 'null') {
-      config.headers.Authorization = `Bearer ${token}`;
-    } else {
-      // Dọn sạch nếu token bị lỗi chuỗi đại diện
-      ['Access_token', 'access_token', 'token'].forEach(k => localStorage.removeItem(k));
+axiosClient.interceptors.request.use((config) => {
+    const token = localStorage.getItem('access_token');
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
+});
 
 // ── RESPONSE INTERCEPTOR: Tự động xử lý Refresh Token khi gặp lỗi 401/403 ──
 axiosClient.interceptors.response.use(
