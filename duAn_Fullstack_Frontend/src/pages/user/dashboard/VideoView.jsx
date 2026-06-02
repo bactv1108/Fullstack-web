@@ -231,14 +231,14 @@ export default function VideoView({
               <Video size={18} />
             </div>
             <div>
-              <h2 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-wider">Tạo Video AI</h2>
+              <h2 className="text-xl font-black text-[var(--text-primary)] uppercase tracking-wider">Tạo Video AI</h2>
               <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">Thiết lập các tham số để tạo video chất lượng cao</p>
             </div>
           </div>
         </div>
 
         {/* Outer panel container styled matching geometric layout */}
-        <div className="!bg-[#111114] !border !border-[#222226] !rounded-2xl p-5 sm:p-6 md:p-8 !w-full !shadow-2xl flex flex-col lg:flex-row gap-8 relative select-none">
+        <div className="!bg-[#111114] !p-6 !border !border-[#222226] !rounded-2xl p-5 sm:p-6 md:p-8 !w-full !shadow-2xl flex flex-col lg:flex-row gap-8 relative select-none">
         
         {/* Configuration Panel */}
         <section
@@ -255,7 +255,7 @@ export default function VideoView({
                   : 'text-zinc-400 bg-transparent'
               }`}
             >
-              ⚙️ Cấu hình
+               Cấu hình
             </button>
             <button 
               type="button"
@@ -266,7 +266,7 @@ export default function VideoView({
                   : 'text-zinc-400 bg-transparent'
               }`}
             >
-              🎬 Xem thử
+               Xem thử
             </button>
           </div>
 
@@ -276,14 +276,14 @@ export default function VideoView({
             <div className="flex flex-col gap-2">
               <div className="flex justify-between items-center">
                 <label className="text-xs font-bold text-zinc-450">1. Ý tưởng video (Kịch bản AI)</label>
-                <span className="text-[10px] text-zinc-500 font-bold">{prompt.length}/1000</span>
+                <span className="text-[10px] text-zinc-500 font-bold">{prompt.length}/2000</span>
               </div>
               <textarea
                 ref={videoTextareaRef}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                className="w-full min-h-[160px] h-44 bg-[#0f0f11] text-white p-4 rounded-xl border border-[#222226] placeholder-zinc-500 transition-all focus:outline-none focus:border-[#f59e0b] resize-none font-medium text-sm shadow-inner"
-                maxLength={1000}
+                className="w-full !p-3 min-h-[160px] h-44 bg-[#0f0f11] text-white p-4 rounded-xl border border-[#222226] placeholder-zinc-500 transition-all focus:outline-none focus:border-[#f59e0b] resize-none font-medium text-sm shadow-inner"
+                maxLength={2000}
                 placeholder="Nhập mô tả ý tưởng chi tiết cho video..."
               />
             </div>
@@ -294,13 +294,13 @@ export default function VideoView({
                 <button
                   type="button"
                   onClick={() => setAspectRatio('169')}
-                  className={`py-3.5 px-4 rounded-xl border flex items-center justify-center gap-2 text-xs font-black transition-all cursor-pointer ${
+                  className={`!p-3 py-3.5 px-4 rounded-xl border flex items-center justify-center gap-2 text-xs font-black transition-all cursor-pointer ${
                     aspectRatio === '169' 
                       ? 'border-[#f59e0b] bg-[#f59e0b]/5 text-[#f59e0b] shadow-md' 
                       : 'border-[#222226] bg-[#0f0f11] text-zinc-400 hover:text-white'
                   }`}
                 >
-                  <span>📺</span> 16:9 Ngang
+                   16:9 Ngang
                 </button>
                 <button
                   type="button"
@@ -311,7 +311,7 @@ export default function VideoView({
                       : 'border-[#222226] bg-[#0f0f11] text-zinc-400 hover:text-white'
                   }`}
                 >
-                  <span>📱</span> 9:16 Dọc
+                  9:16 Dọc
                 </button>
               </div>
             </div>
@@ -325,6 +325,7 @@ export default function VideoView({
                   setIsStyleOpen(!isStyleOpen);
                   setStyleSearch("");
                 }}
+                style={{padding:'8px'}}
                 className="w-full py-3 px-4 rounded-xl bg-[#0f0f11] text-white border border-[#222226] cursor-pointer transition-all focus:outline-none focus:border-[#f59e0b] flex justify-between items-center font-bold text-xs"
               >
                 <span>{styleOptions.find(o => o.value === style)?.label || "Chọn phong cách"}</span>
@@ -372,6 +373,7 @@ export default function VideoView({
                   setIsVoiceOpen(!isVoiceOpen);
                   setVoiceSearch("");
                 }}
+                style={{padding:'8px'}}
                 className="w-full py-3 px-4 rounded-xl bg-[#0f0f11] text-white border border-[#222226] cursor-pointer transition-all focus:outline-none focus:border-[#f59e0b] flex justify-between items-center font-bold text-xs"
               >
                 <div className="flex items-center min-w-0">
@@ -388,6 +390,7 @@ export default function VideoView({
                               ? "flex items-center justify-center p-2 rounded-full bg-[#f59e0b] text-zinc-950 animate-pulse text-[10px] cursor-pointer ml-2 border-none shrink-0"
                               : "flex items-center justify-center p-2 rounded-full bg-zinc-800 hover:bg-[#f59e0b] text-zinc-300 hover:text-zinc-950 transition-all shadow-md text-[10px] cursor-pointer ml-2 border-none shrink-0"
                           }
+                          style={{padding:'2px',marginLeft:'10px'}}
                           title="Nghe thử"
                         >
                           {playingVoiceId === (activeVoice.identifier || activeVoice.id) ? (
@@ -460,7 +463,7 @@ export default function VideoView({
                 <label className="text-xs font-bold text-zinc-450">5. Tốc độ video / giọng nói</label>
                 <span className="text-xs font-bold text-[#f59e0b] bg-[#f59e0b]/10 px-2 py-0.5 rounded-full">{speed}x</span>
               </div>
-              <div className="relative pt-1 px-1">
+              <div className="relative pt-1 px-1 ">
                 <input
                   type="range"
                   min="0.5"
@@ -470,7 +473,7 @@ export default function VideoView({
                   onChange={(e) => setSpeed(parseFloat(e.target.value))}
                   className="w-full cursor-pointer accent-[#f59e0b] h-2 bg-zinc-800 rounded-lg appearance-none"
                 />
-                <div className="flex justify-between text-[9px] text-zinc-500 mt-2 font-bold tracking-wide">
+                <div className="flex justify-between text-[9px] text-zinc-500 mt-2 font-bold tracking-wide ">
                   <span>Chậm 0.5x</span>
                   <span>Chuẩn 1.0x</span>
                   <span>Nhanh 2.0x</span>
@@ -480,17 +483,17 @@ export default function VideoView({
 
             {/* Generate Trigger */}
             <div className="pt-2">
-              <div className="border-t border-[#222226]/40 my-4 w-full"></div>
+              <div className="!border-t !border-[#ccc]/40 !my-4 !w-full"></div>
               <button
                   type="button"
                   onClick={handleGenerateVideo}
                   disabled={generating}
-                  className="py-4 px-8 bg-[#f59e0b] text-black font-black text-xs rounded-xl flex items-center justify-center gap-2 uppercase tracking-widest cursor-pointer disabled:opacity-50 transition-all duration-300 border-none shadow-md hover:bg-amber-600 hover:shadow-[0_0_25px_rgba(245,158,11,0.4)] hover:scale-[1.01] active:scale-[0.98] w-full"
+                  className="!p-4 py-4 px-8 bg-[#f59e0b] text-black font-black text-xs rounded-xl flex items-center justify-center gap-2 uppercase tracking-widest cursor-pointer disabled:opacity-50 transition-all duration-300 border-none shadow-md hover:bg-amber-600 hover:shadow-[0_0_25px_rgba(245,158,11,0.4)] hover:scale-[1.01] active:scale-[0.98] w-full"
               >
                 <Sparkles size={16} fill="black" className="text-black animate-pulse" />
                 <span>Tạo Video Ngay — 10 Credits</span>
               </button>
-              <div className="flex flex-col gap-1 text-center mt-3 select-none">
+              <div className="flex !mt-4 flex-col gap-1 text-center mt-3 select-none">
                 <p className="text-[10px] text-zinc-400 font-medium">Mỗi lần tạo video tiêu thụ 10 credits từ số dư của bạn.</p>
                 <p className="text-[10px] text-zinc-400 font-medium">Thời gian xử lý dự kiến từ 5-10 giây.</p>
               </div>
@@ -499,7 +502,7 @@ export default function VideoView({
         </section>
 
         {/* Vertical divider line for desktop */}
-        <div className="hidden lg:block w-[1px] bg-[#222226]/60 self-stretch"></div>
+        <div className="hidden lg:block w-[1px] bg-[#ccc]/60 self-stretch"></div>
 
         {/* Preview Panel */}
         <section className={`flex-grow flex flex-col gap-6 text-left min-w-0 ${videoTab === 'preview' ? 'flex' : 'hidden lg:flex'}`}>
@@ -514,7 +517,7 @@ export default function VideoView({
                   : 'text-zinc-400 bg-transparent'
               }`}
             >
-              ⚙️ Cấu hình
+               Cấu hình
             </button>
             <button 
               type="button"
@@ -525,7 +528,7 @@ export default function VideoView({
                   : 'text-zinc-400 bg-transparent'
               }`}
             >
-              🎬 Xem thử
+               Xem thử
             </button>
           </div>
           
@@ -562,9 +565,7 @@ export default function VideoView({
               )}
             </div>
 
-            <p className="text-xs italic text-zinc-400 text-center max-w-xl mx-auto leading-relaxed px-4 py-1">
-              "{prompt}"
-            </p>
+
 
             <div className="flex items-center gap-3 bg-[#0d0d10] border border-[#222226]/60 rounded-xl px-4 py-2.5 w-full">
               {/* Play button */}
@@ -650,13 +651,13 @@ export default function VideoView({
                     </span>
                   </div>
 
-                  <div className="flex flex-col gap-1 min-w-0">
+                  <div className="flex flex-col gap-1 min-w-0 !p-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-white truncate">{item.title}</span>
+                      <span className="text-xs font-bold text-white truncate">Tên:{item.title}</span>
                       <span className="text-[8px] text-zinc-500 font-mono font-bold shrink-0">{item.time}</span>
                     </div>
                     <p className="text-[10px] text-zinc-450 line-clamp-2 h-7 overflow-hidden select-text leading-tight">
-                      "{item.sub}"
+                      Nội Dung:"{item.sub}"
                     </p>
                   </div>
 
@@ -678,7 +679,7 @@ export default function VideoView({
                         e.stopPropagation();
                         if (triggerDeleteHistory) triggerDeleteHistory(item);
                       }}
-                      className="px-3.5 py-2 border border-red-500/25 hover:border-red-500/40 bg-red-955/10 hover:bg-red-955/20 text-red-400 rounded-xl text-xs font-bold flex items-center justify-center gap-1 border-solid transition-all cursor-pointer"
+                      className="!p-1 px-3.5 py-2 border border-red-500/25 hover:border-red-500/40 bg-red-955/10 hover:bg-red-955/20 text-red-400 rounded-xl text-xs font-bold flex items-center justify-center gap-1 border-solid transition-all cursor-pointer"
                     >
                       <Trash2 size={13} />
                       <span>Xóa</span>

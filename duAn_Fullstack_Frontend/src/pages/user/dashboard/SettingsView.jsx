@@ -9,7 +9,7 @@ const packageMeta = {
     badgeClass: 'text-zinc-500',
     description: 'Trải nghiệm ban đầu các tính năng tạo video & giọng nói AI cơ bản.',
     priceSuffix: 'vĩnh viễn',
-    cardClass: 'bg-[#0f0f11] p-5 rounded-xl border border-[#222226]/60 flex flex-col justify-between gap-4 text-left',
+    cardClass: '!p-2 bg-[#0f0f11] p-5 rounded-xl border border-[#222226]/60  flex flex-col justify-between gap-4 text-left  cursor-pointer',
     titleColorClass: 'text-white',
     checkColorClass: 'text-emerald-500',
     features: (credits) => [
@@ -22,7 +22,7 @@ const packageMeta = {
     badgeClass: 'text-[#f59e0b]',
     description: 'Phù hợp nhu cầu cá nhân sáng tạo nội dung hàng tuần chuyên nghiệp.',
     priceSuffix: 'gói',
-    cardClass: 'bg-[#0f0f11] p-5 rounded-xl border border-[#f59e0b]/30 bg-gradient-to-b from-[#f59e0b]/5 to-transparent flex flex-col justify-between gap-4 text-left',
+    cardClass: '!p-2 bg-[#0f0f11] p-5 rounded-xl border border-[#f59e0b]/30 bg-gradient-to-b from-[#f59e0b]/5 to-transparent  hover:bg-[#222226] flex flex-col justify-between gap-4 text-left cursor-pointer',
     titleColorClass: 'text-white',
     checkColorClass: 'text-[#f59e0b]',
     features: (credits) => [
@@ -36,7 +36,7 @@ const packageMeta = {
     badgeClass: 'text-purple-400',
     description: 'Giải pháp toàn diện tối ưu cho Studio & Agency chuyên nghiệp.',
     priceSuffix: 'gói',
-    cardClass: 'bg-[#0f0f11] p-5 rounded-xl border border-[#222226]/60 flex flex-col justify-between gap-4 text-left',
+    cardClass: '!p-2 bg-[#0f0f11] p-5 rounded-xl border bg-[#0f0f11] p-5 rounded-xl border border-[#222226]/60 flex flex-col justify-between gap-4 text-left transition-all duration-300 hover:border-purple-500/40 hover:bg-gradient-to-b hover:from-purple-500/10 hover:to-transparent hover:shadow-2xl hover:shadow-purple-500/5  flex flex-col justify-between gap-4 text-left cursor-pointer',
     titleColorClass: 'text-white',
     checkColorClass: 'text-emerald-500',
     features: (credits) => [
@@ -365,11 +365,11 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
         </div>
 
       {/* Form điền thông tin lồng hộp có chiều sâu (Giống hệt trang Admin) */}
-      <div className="!bg-[#111114] !border !border-[#222226] !rounded-2xl p-5 sm:p-6 md:p-8 !w-full !shadow-2xl !flex !flex-col !gap-8">
-          <section id="profile-section" className="bg-[#18181c] border border-[#222226] rounded-xl p-5 md:p-6 flex flex-col gap-5 w-full text-left">
+      <div className="!p-6 !bg-[#111114] !border !border-[#222226] !rounded-2xl p-5 sm:p-6 md:p-8 !w-full !shadow-2xl !flex !flex-col !gap-8">
+          <section id="profile-section" className="!p-3 bg-[#18181c] border border-[#222226] rounded-xl p-5 md:p-6 flex flex-col gap-5 w-full text-left">
         <div className="flex items-center gap-3 border-b border-[#222226]/50 pb-3">
           <User className="text-[#f59e0b]" size={20} />
-          <h2 className="text-sm font-black text-white uppercase tracking-wider">Hồ sơ cá nhân & Bảo mật</h2>
+          <h2 className="text-xl font-black text-white uppercase tracking-wider">Hồ sơ cá nhân & Bảo mật</h2>
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-5 bg-[#0f0f11] p-4 rounded-xl border border-[#222226]/40 w-full">
           <div onClick={handleAvatarClick} className="w-20 h-20 rounded-full bg-[#854d0e] text-white flex items-center justify-center font-bold text-xl cursor-pointer relative group overflow-hidden border border-[#222226] shrink-0">
@@ -390,16 +390,18 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
             <div className="flex flex-col gap-2">
               <label className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Họ và tên thành viên</label>
-              <input type="text" value={fullname} onChange={(e) => setFullname(e.target.value)} className="w-full bg-[#131316] border border-[#222226] rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f59e0b] focus:ring-1 focus:ring-[#f59e0b] transition-all" required />
+              <input type="text" value={fullname} onChange={(e) => setFullname(e.target.value)}
+                     className="!p-2 w-full bg-[#131316] border border-[#222226] rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f59e0b] focus:ring-1 focus:ring-[#f59e0b] transition-all" required />
             </div>
             <div className="flex flex-col gap-2">
               <label className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Địa chỉ Email (Không thể thay đổi)</label>
-              <input type="email" value={email} disabled className="w-full bg-[#1b1b22] border border-[#222226]/60 rounded-lg px-4 py-3 text-sm text-zinc-500 cursor-not-allowed" />
+              <input type="email" value={email} disabled
+                     className="!p-2 w-full bg-[#1b1b22] border border-[#222226]/60 rounded-lg px-4 py-3 text-sm text-zinc-500 cursor-not-allowed" />
             </div>
           </div>
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 border-t border-[#222226]/30 pt-4">
             <span className="text-xs font-bold text-green-400">{profileMsg}</span>
-            <button type="submit" className="w-full md:w-auto py-3 px-6 bg-[#f59e0b] hover:bg-amber-600 text-black font-black uppercase text-xs tracking-wider rounded-xl transition-all hover:scale-[1.01] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"><Save size={14} /> LƯU THAY ĐỔI HỒ SƠ</button>
+            <button type="submit" className="!p-2 w-full md:w-auto py-3 px-6 bg-[#f59e0b] hover:bg-amber-600 text-black font-black uppercase text-xs tracking-wider rounded-xl transition-all hover:scale-[1.01] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"><Save size={14} /> LƯU THAY ĐỔI HỒ SƠ</button>
           </div>
         </form>
         <div className="flex items-center gap-3 border-b border-[#222226]/50 pb-2 mt-4">
@@ -409,14 +411,14 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
         <form onSubmit={handleSavePassword} className="flex flex-col gap-5 w-full">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Mật khẩu hiện tại</label>
+              <label className=" text-xs font-bold text-zinc-400 uppercase tracking-wide">Mật khẩu hiện tại</label>
               <div className="relative">
                 <input 
                   type={showCurrentPass ? "text" : "password"} 
                   value={currentPassword} 
                   onChange={(e) => { setCurrentPassword(e.target.value); setCurrentPasswordError(''); }} 
                   placeholder="••••••••" 
-                  className={`w-full bg-[#131316] border ${currentPasswordError ? 'border-red-500' : 'border-[#222226]'} rounded-lg pl-4 pr-10 py-3 text-sm text-white focus:outline-none focus:border-[#f59e0b] focus:ring-1 focus:ring-[#f59e0b] transition-all`} 
+                  className={`!p-2 w-full bg-[#131316] border ${currentPasswordError ? 'border-red-500' : 'border-[#222226]'} rounded-lg pl-4 pr-10 py-3 text-sm text-white focus:outline-none focus:border-[#f59e0b] focus:ring-1 focus:ring-[#f59e0b] transition-all`}
                 />
                 <button 
                   type="button" 
@@ -438,7 +440,7 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
                 onCopy={(e) => e.preventDefault()}
                 onCut={(e) => e.preventDefault()}
                 placeholder="••••••••" 
-                className={`w-full bg-[#131316] border ${newPasswordError ? 'border-red-500' : 'border-[#222226]'} rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f59e0b] focus:ring-1 focus:ring-[#f59e0b] transition-all`} 
+                className={`!p-2 w-full bg-[#131316] border ${newPasswordError ? 'border-red-500' : 'border-[#222226]'} rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f59e0b] focus:ring-1 focus:ring-[#f59e0b] transition-all`}
               />
               {newPasswordError && <span className="text-[10px] text-red-500 font-bold mt-1 text-left">{newPasswordError}</span>}
               
@@ -472,7 +474,7 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
                   value={confirmPassword} 
                   onChange={(e) => { setConfirmPassword(e.target.value); setConfirmPasswordError(''); }} 
                   placeholder="••••••••" 
-                  className={`w-full bg-[#131316] border ${confirmPasswordError ? 'border-red-500' : 'border-[#222226]'} rounded-lg pl-4 pr-10 py-3 text-sm text-white focus:outline-none focus:border-[#f59e0b] focus:ring-1 focus:ring-[#f59e0b] transition-all`} 
+                  className={`!p-2 w-full bg-[#131316] border ${confirmPasswordError ? 'border-red-500' : 'border-[#222226]'} rounded-lg pl-4 pr-10 py-3 text-sm text-white focus:outline-none focus:border-[#f59e0b] focus:ring-1 focus:ring-[#f59e0b] transition-all`}
                 />
                 <button 
                   type="button" 
@@ -487,18 +489,22 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
           </div>
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 border-t border-[#222226]/30 pt-4">
             <span className={`text-xs font-bold ${passwordMsg.includes('không') || passwordMsg.includes('đầy đủ') || passwordMsg.includes('thất bại') || passwordMsg.includes('xác') || passwordMsg.includes('trùng') || passwordMsg.includes('chính xác') ? 'text-red-400' : 'text-green-400'}`}>{passwordMsg}</span>
-            <button type="submit" className="w-full md:w-auto py-3 px-6 bg-[#f59e0b] hover:bg-amber-600 text-black font-black uppercase text-xs tracking-wider rounded-xl transition-all hover:scale-[1.01] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"><Lock size={14} /> CẬP NHẬT MẬT KHẨU MỚI</button>
+            <button type="submit" className="!p-2  w-full md:w-auto py-3 px-6 bg-[#f59e0b] hover:bg-amber-600 text-black font-black uppercase text-xs tracking-wider rounded-xl transition-all hover:scale-[1.01] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer "><Lock size={14} /> CẬP NHẬT MẬT KHẨU MỚI</button>
           </div>
         </form>
       </section>
 
-      <section id="billing-section" className="bg-[#18181c] border border-[#222226] rounded-xl p-5 md:p-6 flex flex-col gap-5 w-full text-left">
+      <section id="billing-section" className="!p-3 bg-[#18181c] border border-[#222226] rounded-xl p-5 md:p-6 flex flex-col gap-5 w-full text-left">
         <div className="flex items-center justify-between border-b border-[#222226]/50 pb-3">
-          <div className="flex items-center gap-3"><CreditCard className="text-[#f59e0b]" size={20} /> <h2 className="text-sm font-black text-white uppercase tracking-wider">Ví Credit & Quản lý gói cước dịch vụ SAAS</h2></div>
-          <div className="flex items-center gap-2 bg-[#f59e0b]/10 text-[#f59e0b] border border-[#f59e0b]/20 px-4 py-1.5 rounded-full"><Coins size={14} /> <span className="text-xs font-black uppercase tracking-wide">Tín dụng: {credits ?? 0} Credits</span></div>
+          <div className="flex items-center gap-3">
+             <h2 className="text-xx font-black text-white uppercase tracking-wider">Ví Credit & Quản lý gói cước dịch vụ</h2>
+          </div>
+          <div className="flex items-center gap-2 bg-[#f59e0b]/10 text-[#f59e0b] border border-[#f59e0b]/20 px-4 py-1.5 rounded-full">
+             <span className=" !p-2 text-xs font-black uppercase tracking-wide">Tín dụng: {credits ?? 0} Credits</span>
+          </div>
         </div>
         <div className="flex flex-col gap-2 mt-1">
-          <h3 className="text-xs font-black text-zinc-400 uppercase tracking-wider">Cấu hình gói cước hệ thống</h3>
+          <h3 className="text-xl font-black text-zinc-400 uppercase tracking-wider">Cấu hình gói cước hệ thống</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mt-2">
             {packages?.map((pkg) => {
               const meta = packageMeta[pkg.id] || {
@@ -535,14 +541,14 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
                     {pkg.id !== 'free' ? (
                       <button 
                         onClick={() => handlePurchasePackage(pkg.id)}
-                        className="w-full mt-3 py-2.5 px-4 bg-[#f59e0b] hover:bg-amber-600 text-black font-black uppercase text-[10px] tracking-wider rounded-lg transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer flex items-center justify-center gap-1.5 border-none"
+                        className="!p-2 w-full mt-3 py-2.5 px-4 bg-[#f59e0b] hover:bg-amber-600 text-black font-black uppercase text-[10px] tracking-wider rounded-lg transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer flex items-center justify-center gap-1.5 border-none"
                       >
                         Nạp gói ngay
                       </button>
                     ) : (
                       <button 
                         disabled 
-                        className="w-full mt-3 py-2.5 px-4 bg-[#1b1b22] text-zinc-500 border border-[#222226]/40 font-black uppercase text-[10px] tracking-wider rounded-lg cursor-not-allowed flex items-center justify-center gap-1.5"
+                        className="!p-2 w-full mt-3 py-2.5 px-4 bg-[#1b1b22] text-zinc-500 border border-[#222226]/40 font-black uppercase text-[10px] tracking-wider rounded-lg cursor-not-allowed flex items-center justify-center gap-1.5"
                       >
                         Gói mặc định
                       </button>
@@ -553,25 +559,25 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
             })}
           </div>
         </div>
+
         <div className="w-full mt-8 pt-6 border-t border-[#222226]/40 text-left">
 
           {/* Hộp con (Sub-box) biệt lập màu nền tối tạo độ sâu layer Admin */}
-          <div className="w-full bg-[#0f0f11] border border-[#222226]/60 rounded-xl p-4 md:p-5 shadow-inner">
+          <div className="w-full bg-[#18181c] border border-[#222226]/60 rounded-xl p-4 md:p-5 shadow-inner">
 
             {/* Tiêu đề hộp con */}
             <div className="flex items-center gap-2 border-b border-[#222226]/30 pb-2 mb-4">
-              <History size={14} className="text-zinc-400" />
-              <h3 className="text-xs font-black text-zinc-400 uppercase tracking-wider">
+              <h3 className="text-xl font-black text-zinc-400 uppercase tracking-wider">
                 Lịch sử giao dịch nạp tiền
               </h3>
             </div>
 
             {/* Bảng dữ liệu chuẩn responsive chống vỡ khung hình trên mọi thiết bị */}
-            <div className="w-full overflow-x-auto rounded-xl border border-[#222226]/40 bg-[#09090b]">
-              <table className="w-full text-left border-collapse text-xs min-w-[700px] sm:min-w-full">
+            <div className="!p-2 w-full overflow-x-auto rounded-xl border border-[#222226]/40 bg-[#18181c]">
+              <table className=" w-full text-left border-collapse text-xs min-w-[700px] sm:min-w-full">
                 <thead>
                 <tr className="bg-[#18181c] border-b border-[#222226] text-zinc-400 font-bold uppercase tracking-wider">
-                  <th className="p-3">Mã giao dịch</th>
+                  <th className="!p-2 p-3">Mã giao dịch</th>
                   <th className="p-3">Gói cước</th>
                   <th className="p-3">Phân loại</th>
                   <th className="p-3">Số tiền</th>
@@ -583,7 +589,7 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
                 <tbody className="divide-y divide-[#222226]/40 text-white font-medium">
                 {transactions && transactions.map((tx) => (
                     <tr key={tx.id} className="hover:bg-[#131316]/50 transition-colors">
-                      <td className="p-3 font-mono text-zinc-500">{tx.id}</td>
+                      <td className="!p-2 p-3 font-mono text-zinc-500">{tx.id}</td>
                       <td className="p-3 font-bold text-zinc-200">{tx.package}</td>
                       <td className="p-3 text-zinc-400">{tx.type}</td>
                       <td className="p-3">{tx.amount}</td>

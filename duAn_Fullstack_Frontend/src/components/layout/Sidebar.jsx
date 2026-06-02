@@ -26,15 +26,15 @@ export default function Sidebar({
             } shrink-0 p-4`}
             style={{ backgroundColor: '#0f0f13', borderRight: '1px solid rgba(255,255,255,0.06)' }}
         >
-            <div className="flex flex-col gap-1 w-full flex-1 min-h-0">
+            <div className="!p-2 flex flex-col gap-1 w-full flex-1 min-h-0">
                 {/* Mobile close button in sidebar */}
                 <div className="flex items-center justify-between pb-4 border-b border-zinc-800/40 mb-2 px-1">
-                    <span className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Menu</span>
+                    <span className="text-[18px] font-black uppercase text-zinc-500 tracking-widest">Menu</span>
                     <button 
                         onClick={() => setIsOpen(false)}
                         className="text-zinc-500 hover:text-white p-1 rounded hover:bg-zinc-800 transition-colors cursor-pointer border-none bg-transparent"
                     >
-                        <X size={16} />
+                        <X size={20} />
                     </button>
                 </div>
 
@@ -56,7 +56,7 @@ export default function Sidebar({
                                     backgroundColor: isActive ? 'rgba(245, 158, 11, 0.1)' : 'transparent',
                                     color: isActive ? '#f59e0b' : '#8a8a93'
                                 }}
-                                className="w-full flex items-center gap-3.5 px-5 py-3.5 rounded-xl text-xs font-bold transition-all duration-300 text-left border-none cursor-pointer hover:bg-zinc-900/60 hover:text-[#f59e0b] hover:translate-x-1"
+                                className="!p-4 w-full flex items-center gap-3.5 px-5 py-3.5 rounded-xl text-xs font-bold transition-all duration-300 text-left border-none cursor-pointer hover:bg-zinc-900/60 hover:text-[#f59e0b] hover:translate-x-1"
                             >
                                 <Icon size={14} className={isActive ? "text-[#f59e0b]" : "text-zinc-400"} />
                                 <span>{item.label}</span>

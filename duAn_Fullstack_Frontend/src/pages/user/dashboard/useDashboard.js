@@ -25,7 +25,7 @@ export default function useDashboard() {
   const loadHistory = context?.loadHistory || (() => {});
 
   // 1. STATE: VIDEO GENERATOR
-  const [prompt, setPrompt] = useState('cưỡi ngựa trên sa mạc sao Hỏa, phong cách điện ảnh với ánh hoàng hôn đỏ rực rỡ.');
+  const [prompt, setPrompt] = useState('');
   const [aspectRatio, setAspectRatio] = useState('169');
   const [style, setStyle] = useState('realistic');
   const [voice, setVoice] = useState('adam');

@@ -58,7 +58,7 @@ export default function HistoryView({
               <LayoutGrid size={18} />
             </div>
             <div>
-              <h2 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-wider">Lịch sử hoạt động</h2>
+              <h2 className="text-xl font-black text-[var(--text-primary)] uppercase tracking-wider">Lịch sử hoạt động</h2>
               <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">Quản lý và tải xuống các nội dung đã tạo</p>
             </div>
           </div>
@@ -113,7 +113,7 @@ export default function HistoryView({
         </div>
 
       {/* Khối danh sách nội dung (Hộp Titan mờ giống Admin) */}
-      <div className="!bg-[#111114] !border !border-[#222226] !rounded-2xl p-5 sm:p-6 md:p-8 !w-full !shadow-2xl !block">
+      <div className="!p-6 !bg-[#111114] !border !border-[#222226] !rounded-2xl p-5 sm:p-6 md:p-8 !w-full !shadow-2xl !block">
           {/* Content list split by layout types */}
           <div className="w-full flex flex-col gap-8 text-left">
             
@@ -123,7 +123,7 @@ export default function HistoryView({
             {(historyType === 'all' || historyType === 'video') && videos.length > 0 && (
               <div className="flex flex-col gap-4 w-full">
                 {historyType === 'all' && (
-                  <h4 className="text-[11px] font-black text-zinc-500 uppercase tracking-widest border-b border-[#222226] pb-2">🎥 Lịch sử Video AI</h4>
+                  <h3 className="!p-3 text-[18px] font-black text-zinc-500 uppercase tracking-widest border-b border-[#ccc] pb-2">1.Lịch sử Video AI</h3>
                 )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 w-full">
                   {videos.map((item) => (
@@ -179,7 +179,7 @@ export default function HistoryView({
                               handleDeleteHistory(item.id);
                             }
                           }}
-                          className="px-3.5 py-2 border border-red-500/20 hover:border-red-500/40 bg-red-955/10 hover:bg-red-955/20 text-red-400 rounded-xl text-xs font-bold flex items-center justify-center gap-1 border-solid transition-all cursor-pointer"
+                          className="!p-1 px-3.5 py-2 border border-red-500/20 hover:border-red-500/40 bg-red-955/10 hover:bg-red-955/20 text-red-400 rounded-xl text-xs font-bold flex items-center justify-center gap-1 border-solid transition-all cursor-pointer"
                         >
                           <Trash2 size={13} />
                           <span>Xóa</span>
@@ -197,13 +197,13 @@ export default function HistoryView({
             {(historyType === 'all' || historyType === 'analysis') && analyses.length > 0 && (
               <div className="flex flex-col gap-4 w-full">
                 {historyType === 'all' && (
-                  <h4 className="text-[11px] font-black text-zinc-500 uppercase tracking-widest border-b border-[#222226] pb-2">👁️ Lịch sử Mắt Thần AI (Phân tích ảnh)</h4>
+                  <h4 className="!p-3 text-[18px] font-black text-zinc-500 uppercase tracking-widest border-b border-t border-[#ccc] pb-2">2.Lịch sử Mắt Thần AI (Phân tích ảnh)</h4>
                 )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 w-full">
                   {analyses.map((item) => (
                     <div key={item.id} className="bg-[#111114] border border-[#222226] hover:border-[#f59e0b]/40 rounded-xl p-3.5 flex flex-col justify-between h-[145px] min-h-[145px] max-h-[145px] transition-all group relative hover:bg-[#151519] overflow-hidden shadow-md">
                       <div className="flex gap-3 items-start w-full min-w-0">
-                        <div className="w-12 h-12 rounded-lg overflow-hidden bg-black flex-shrink-0 border border-[#222226] flex items-center justify-center">
+                        <div className="w-27 h-27 rounded-lg overflow-hidden bg-black flex-shrink-0 border border-[#222226] flex items-center justify-center">
                           <img 
                             src={item.image_path ? getFullImageUrl(item.image_path) : ''} 
                             alt="Product" 
@@ -212,22 +212,24 @@ export default function HistoryView({
                           />
                         </div>
                         <div className="flex flex-col gap-1 min-w-0 flex-grow text-left">
-                          <div className="flex items-center gap-1.5">
+                          <div className="!p-1 flex items-center gap-1.5">
                             <span className="px-1.5 py-0.5 bg-[#f59e0b]/10 text-[#f59e0b] rounded text-[9px] font-black uppercase tracking-wider">Mắt Thần AI</span>
                             <span className="text-[10px] text-zinc-500 font-mono font-bold">#{item.id}</span>
                           </div>
-                          <p className="text-xs font-bold text-zinc-200 truncate group-hover:text-[#f59e0b] transition-all pr-2">{item.image_name || "Phân tích hình ảnh"}</p>
-                          <span className="text-[10px] text-zinc-500 font-medium">{new Date(item.createdAt || item.created_at).toLocaleDateString('vi-VN')}</span>
+                          <p className="!p-1 text-xs font-bold text-zinc-200 truncate group-hover:text-[#f59e0b] transition-all pr-2">{item.image_name || "Phân tích hình ảnh"}</p>
+                          <span className="!p-1 text-[10px] text-zinc-500 font-medium">{new Date(item.createdAt || item.created_at).toLocaleDateString('vi-VN')}</span>
                         </div>
                       </div>
                       
                       {/* Hàng hành động: Nút xem kịch bản và Nút xóa đồng bộ icon hệ thống */}
-                      <div className="flex gap-2 items-center w-full border-t border-[#222226]/60 pt-2.5 mt-auto">
-                        <button type="button" onClick={() => navigate(`/dashboard/mat-than/detail/${item.id}`)} className="flex-1 py-1.5 bg-[#18181c] hover:bg-zinc-800 border border-[#222226] hover:border-zinc-700 text-zinc-350 hover:text-white font-bold text-[11px] rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer">
+                      <div className=" flex gap-2 items-center w-full border-t border-[#222226]/60 pt-2.5 mt-auto">
+                        <button type="button" onClick={() => navigate(`/dashboard/mat-than/detail/${item.id}`)}
+                                className="!p-1 flex-1 py-1.5 bg-[#18181c] hover:bg-zinc-800 border border-[#222226] hover:border-zinc-700 text-zinc-350 hover:text-white font-bold text-[11px] rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer">
                           Xem kịch bản
                         </button>
                         <button 
-                          type="button" 
+                          type="button"
+
                           onClick={(e) => {
                             e.stopPropagation();
                             if (triggerDeleteHistory) {
@@ -236,7 +238,7 @@ export default function HistoryView({
                               handleDeleteHistory(item.id);
                             }
                           }} 
-                          className="p-1.5 border border-red-500/20 hover:border-red-500/40 bg-red-955/10 hover:bg-red-955/20 text-red-400 rounded-lg transition-all cursor-pointer flex items-center justify-center"
+                          className="!p-2 border border-red-500/20 hover:border-red-500/40 bg-red-955/10 hover:bg-red-955/20 text-red-400 rounded-lg transition-all cursor-pointer flex items-center justify-center"
                         >
                           <Trash2 size={13} />
                         </button>
@@ -253,7 +255,7 @@ export default function HistoryView({
             {(historyType === 'all' || historyType === 'audio') && audios.length > 0 && (
               <div className="flex flex-col gap-4 w-full">
                 {historyType === 'all' && (
-                  <h4 className="text-[11px] font-black text-zinc-500 uppercase tracking-widest border-b border-[#222226] pb-2">🎙️ Lịch sử Giọng nói AI</h4>
+                  <h4 className="!p-3 text-[18px] font-black text-zinc-500 uppercase tracking-widest border-b border-t border-[#ccc] pb-2">3.Lịch sử Giọng nói AI</h4>
                 )}
                 <div className="flex flex-col gap-4 w-full">
                   {audios.map((item) => (

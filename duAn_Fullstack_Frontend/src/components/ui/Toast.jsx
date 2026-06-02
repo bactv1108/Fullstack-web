@@ -14,24 +14,24 @@ export default function Toast({ show, message, type = 'success', onClose }) {
     const getIcon = () => {
         switch (type) {
             case 'success':
-                return <Sparkles size={16} className="text-[#f59e0b] shrink-0" />;
+                return <Sparkles size={16} className="!p-3 text-[#f59e0b] shrink-0" />;
             case 'error':
-                return <AlertCircle size={16} className="text-red-500 shrink-0" />;
+                return <AlertCircle size={16} className="!p-3 text-red-500 shrink-0" />;
             case 'info':
             default:
-                return <Info size={16} className="text-blue-400 shrink-0" />;
+                return <Info size={16} className="!p-3 text-blue-400 shrink-0" />;
         }
     };
 
     const getBorderColor = () => {
         switch (type) {
             case 'success':
-                return 'border-[#f59e0b]/30 shadow-amber-500/5';
+                return '!p-3 border-[#f59e0b]/30 shadow-amber-500/5';
             case 'error':
-                return 'border-red-500/30 shadow-red-500/5';
+                return '!p-3 border-red-500/30 shadow-red-500/5';
             case 'info':
             default:
-                return 'border-blue-500/30 shadow-blue-500/5';
+                return '!p-3 border-blue-500/30 shadow-blue-500/5';
         }
     };
 

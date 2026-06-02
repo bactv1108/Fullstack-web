@@ -90,7 +90,7 @@ export default function MatThanDetailView() {
               <ArrowLeft size={16} />
             </button>
             <div>
-              <h2 className="text-sm font-black text-white uppercase tracking-widest">
+              <h2 className=" text-xl font-black text-white uppercase tracking-widest">
                 CHI TIẾT KỊCH BẢN MẮT THẦN AI (MÃ SỐ #{analysis.id})
               </h2>
               <p className="text-[10px] text-zinc-500 font-medium mt-1">
@@ -107,12 +107,12 @@ export default function MatThanDetailView() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
           {/* Left Column: Product Image (1/3) */}
-          <div className="lg:col-span-1 flex flex-col gap-4 bg-[#18181b]/60 border border-zinc-800/80 rounded-2xl p-6 backdrop-blur-md h-fit">
-            <div className="flex items-center gap-2 border-b border-zinc-900 pb-3">
+          <div className=" lg:col-span-1 flex flex-col gap-4 bg-[#18181b]/60 border border-zinc-800/80 rounded-2xl p-6 backdrop-blur-md h-fit">
+            <div className="!p-3 flex items-center gap-2 border-b border-zinc-900 pb-3">
               <div className="p-1.5 bg-[#f59e0b]/10 text-[#f59e0b] rounded-lg">
                 <ImageIcon size={14} />
               </div>
-              <h3 className="text-xs font-black text-zinc-200 uppercase tracking-wider">
+              <h3 className=" text-xs font-black text-zinc-200 uppercase tracking-wider">
                 Hình ảnh sản phẩm gốc
               </h3>
             </div>
@@ -125,7 +125,7 @@ export default function MatThanDetailView() {
               />
             </div>
             
-            <div className="flex flex-col gap-2 text-[10px] text-zinc-500 bg-[#0f0f11] p-3.5 border border-[#222226] rounded-xl font-medium">
+            <div className="!p-3 flex flex-col gap-2 text-[10px] text-zinc-500 bg-[#0f0f11] p-3.5 border border-[#222226] rounded-xl font-medium">
               <p className="flex justify-between">
                 <span>Tên tệp:</span>
                 <strong className="text-zinc-300 font-bold truncate max-w-[150px]">{analysis.image_name}</strong>
@@ -142,7 +142,7 @@ export default function MatThanDetailView() {
           </div>
 
           {/* Right Column: Scenario Content (2/3) */}
-          <div className="lg:col-span-2 flex flex-col gap-4 bg-[#18181b]/60 border border-zinc-800/80 rounded-2xl p-6 backdrop-blur-md">
+          <div className="!p-4 lg:col-span-2 flex flex-col gap-4 bg-[#18181b]/60 border border-zinc-800/80 rounded-2xl p-6 backdrop-blur-md">
             <div className="flex items-center justify-between border-b border-zinc-900 pb-3">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 bg-[#f59e0b]/10 text-[#f59e0b] rounded-lg">
@@ -172,7 +172,7 @@ export default function MatThanDetailView() {
               <button 
                 type="button" 
                 onClick={handleCopy} 
-                className="w-full py-3 bg-[#f59e0b] hover:bg-amber-600 text-black font-black text-xs rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer border-none uppercase tracking-wider shadow-lg shadow-amber-500/10 active:scale-[0.99]"
+                className="!p-3 w-full py-3 bg-[#f59e0b] hover:bg-amber-600 text-black font-black text-xs rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer border-none uppercase tracking-wider shadow-lg shadow-amber-500/10 active:scale-[0.99]"
               >
                 <Copy size={14} />
                 <span>Sao chép toàn bộ kịch bản</span>
@@ -184,7 +184,7 @@ export default function MatThanDetailView() {
 
         {/* Mini Copy Toast Safeguard notification */}
         {copied && (
-          <div className="fixed bottom-6 right-6 z-50 bg-[#18181c] border border-green-500/30 text-green-400 font-bold text-xs px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 animate-fade-in">
+          <div className="!p-3 fixed bottom-6 right-6 z-50 bg-[#18181c] border border-green-500/30 text-green-400 font-bold text-xs px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 animate-fade-in">
             <CheckCircle size={14} />
             <span>Sao chép kịch bản vào clipboard thành công!</span>
           </div>

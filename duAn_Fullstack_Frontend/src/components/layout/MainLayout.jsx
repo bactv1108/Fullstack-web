@@ -292,10 +292,10 @@ const MainLayout = () => {
         onClose={closeToast} 
       />
 
-      {/* High-Specification History Preview Dialog Modal */}
+      {/* High-Specification History Preview Dialog Modal Audio */}
       {previewJob && (
         <div className="backdrop-blur-sm bg-black/60 fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl relative text-left flex flex-col gap-4">
+          <div className="!p-6 bg-zinc-950 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl relative text-left flex flex-col gap-4">
             
             {/* Header */}
             <div className="flex justify-between items-center pb-3 border-b border-zinc-900">
@@ -428,7 +428,7 @@ const MainLayout = () => {
               <button
                 type="button"
                 onClick={() => handleDownloadAsset(previewJob)}
-                className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer border-none"
+                className="!p-2 w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer border-none"
               >
                 <Download size={14} />
                 <span>Tải xuống</span>

@@ -129,13 +129,14 @@ export default function ImageAnalyzerView({ toast }) {
               <Eye size={18} />
             </div>
             <div>
-              <h2 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-wider">Mắt Thần AI (Phân Tích Sản Phẩm)</h2>
+              <h2 className="text-xl  font-black text-[var(--text-primary)] uppercase tracking-wider">Mắt Thần AI (Phân Tích Sản Phẩm)</h2>
               <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">Tải ảnh lên hoặc bấm Ctrl + V tại đây để tự động trích xuất cấu trúc kịch bản và prompt cinematic 4K 9:16 chuẩn lifestyle.</p>
             </div>
           </div>
+
         </div>
 
-        <div className="!bg-[#111114] !border !border-[#222226] !rounded-2xl p-5 sm:p-6 md:p-8 !w-full !shadow-2xl flex flex-col gap-6 relative">
+        <div className="!p-6 !bg-[#111114] !border !border-[#222226] !rounded-2xl p-5 sm:p-6 md:p-8 !w-full !shadow-2xl flex flex-col gap-6 relative">
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
             {/* Cột 1: Thả / Xem trước ảnh */}

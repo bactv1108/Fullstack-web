@@ -80,7 +80,7 @@ export default function Dashboard() {
       {/* Delete Confirmation Modal Dialog */}
       {deleteModalOpen && jobToDelete && (
         <div className="fixed inset-0 z-[1000] bg-black/85 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in select-none">
-          <div className="bg-[#18181c] border border-zinc-800 rounded-2xl overflow-hidden max-w-md w-full shadow-2xl relative text-left">
+          <div className="!p-8 bg-[#18181c] border border-zinc-800 rounded-2xl overflow-hidden max-w-md w-full shadow-2xl relative text-left">
             <div className="p-6 flex flex-col gap-4">
               <h3 className="text-sm font-black text-white uppercase tracking-wider">Xác nhận xóa tác vụ</h3>
               <p className="text-xs text-zinc-300 leading-relaxed">
@@ -90,14 +90,14 @@ export default function Dashboard() {
                 <button
                   type="button"
                   onClick={cancelDeleteHistory}
-                  className="px-4 py-2 bg-zinc-850 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded-xl text-xs font-bold transition-all cursor-pointer border-none"
+                  className="!p-3 px-4 py-2 bg-zinc-850 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded-xl text-xs font-bold transition-all cursor-pointer border-none"
                 >
                   Hủy
                 </button>
                 <button
                   type="button"
                   onClick={confirmDeleteHistory}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer border-none"
+                  className="!p-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer border-none"
                 >
                   Xác nhận xóa
                 </button>

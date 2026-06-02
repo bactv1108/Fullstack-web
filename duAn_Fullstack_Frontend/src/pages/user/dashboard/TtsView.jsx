@@ -379,14 +379,14 @@ export default function TtsView({
               <Mic size={18} />
             </div>
             <div>
-              <h2 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-wider">Cấu hình Giọng nói AI</h2>
+              <h2 className="text-xl font-black text-[var(--text-primary)] uppercase tracking-wider">Cấu hình Giọng nói AI</h2>
               <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">Thiết lập tham số để tạo âm thanh tự nhiên nhất</p>
             </div>
           </div>
         </div>
 
         {/* Outer panel container styled matching geometric layout */}
-        <div className="!bg-[#111114] !border !border-[#222226] !rounded-2xl p-5 sm:p-6 md:p-8 !w-full !shadow-2xl flex flex-col lg:flex-row gap-8 relative select-none">
+        <div className="!p-6 !bg-[#111114] !border !border-[#222226] !rounded-2xl p-5 sm:p-6 md:p-8 !w-full !shadow-2xl flex flex-col lg:flex-row gap-8 relative select-none">
 
         {/* Configuration Panel */}
         <section
@@ -403,7 +403,7 @@ export default function TtsView({
                   : 'text-zinc-400 bg-transparent'
               }`}
             >
-              ⚙️ Cấu hình
+               Cấu hình
             </button>
             <button 
               type="button"
@@ -414,14 +414,12 @@ export default function TtsView({
                   : 'text-zinc-400 bg-transparent'
               }`}
             >
-              🔊 Xem thử
+               Xem thử
             </button>
           </div>
 
-
-
           <div className="flex flex-col gap-6">
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 ">
               <div className="flex justify-between items-center">
                 <label className="text-xs font-bold text-zinc-450">1. Kịch bản đọc (Văn bản AI)</label>
                 <span className="text-[10px] text-zinc-500 font-bold">{text.length}/2000</span>
@@ -430,7 +428,7 @@ export default function TtsView({
                 ref={ttsTextareaRef}
                 value={text}
                 onChange={handleTextChange}
-                className="w-full min-h-[120px] h-32 bg-[#0f0f11] text-white p-4 rounded-xl border border-[#222226] placeholder-zinc-500 transition-all focus:outline-none focus:border-[#f59e0b] resize-none font-medium text-sm shadow-inner"
+                className="w-full !p-3 min-h-[120px] h-32 bg-[#0f0f11] text-white p-4 rounded-xl border border-[#222226] placeholder-zinc-500 transition-all focus:outline-none focus:border-[#f59e0b] resize-none font-medium text-sm shadow-inner"
                 placeholder="Nhập kịch bản văn bản tại đây..."
               />
             </div>
@@ -443,7 +441,7 @@ export default function TtsView({
                   setIsLangOpen(!isLangOpen);
                   setLangSearch("");
                 }}
-                className="w-full bg-[#0f0f11] border border-[#222226] hover:border-zinc-705 rounded-xl p-2.5 text-xs text-white font-bold outline-none cursor-pointer flex justify-between items-center transition-all"
+                className="!p-2 w-full bg-[#0f0f11] border border-[#222226] hover:border-zinc-705 rounded-xl p-2.5 text-xs text-white font-bold outline-none cursor-pointer flex justify-between items-center transition-all"
               >
                 <span>{languages.find(l => l.value === ttsLang)?.label || "Chọn ngôn ngữ"}</span>
                 <span className="text-zinc-500 text-[10px]">▼</span>
@@ -472,7 +470,7 @@ export default function TtsView({
                           else setTtsVoice('ja-JP-NanamiNeural');
                           setIsLangOpen(false);
                         }}
-                        className={`w-full text-left p-2 rounded-lg text-xs font-semibold cursor-pointer transition-colors border-none ${
+                        className={` w-full text-left p-2 rounded-lg text-xs font-semibold cursor-pointer transition-colors border-none ${
                           ttsLang === lang.value 
                             ? "bg-[#f59e0b]/15 text-[#f59e0b]" 
                             : "text-zinc-305 hover:bg-[#18181c] hover:text-white"
@@ -495,7 +493,7 @@ export default function TtsView({
                 }}
                 className="w-full bg-[#0f0f11] border border-[#222226] hover:border-zinc-705 rounded-xl p-2.5 text-xs text-white font-bold outline-none flex justify-between items-center transition-all cursor-pointer"
               >
-                <div className="flex items-center min-w-0">
+                <div className="flex !p-2 items-center min-w-0">
                   <span className="truncate">🎙️ {displayVoices.find(v => v.identifier === ttsVoice || v.id === ttsVoice)?.name || "Chọn giọng độc quyền"}</span>
                   {(() => {
                     const activeVoice = displayVoices.find(v => v.identifier === ttsVoice || v.id === ttsVoice);
@@ -503,6 +501,7 @@ export default function TtsView({
                       return (
                         <button
                           type="button"
+                          style={{marginLeft:'6px'}}
                           onClick={(e) => handlePlayPreview(e, activeVoice.preview_url, activeVoice.identifier || activeVoice.id)}
                           className={
                             playingVoiceId === (activeVoice.identifier || activeVoice.id)
@@ -609,17 +608,17 @@ export default function TtsView({
 
             {/* Generate Trigger */}
             <div className="pt-2">
-              <div className="border-t border-[#222226]/40 my-4 w-full"></div>
+              <div className="!border-t !border-[#ccc]/40 !my-4 !w-full"></div>
               <button 
                 type="button"
                 onClick={handleGenerateTts} 
                 disabled={ttsGenerating}
-                className="w-full py-4 px-8 bg-[#f59e0b] text-black font-black text-xs rounded-xl flex items-center justify-center gap-2 uppercase tracking-widest cursor-pointer disabled:opacity-50 transition-all duration-300 border-none shadow-md hover:bg-amber-600 hover:shadow-[0_0_25px_rgba(245,158,11,0.4)] hover:scale-[1.01] active:scale-[0.98]"
+                className="!p-2 w-full py-4 px-8 bg-[#f59e0b] text-black font-black text-xs rounded-xl flex items-center justify-center gap-2 uppercase tracking-widest cursor-pointer disabled:opacity-50 transition-all duration-300 border-none shadow-md hover:bg-amber-600 hover:shadow-[0_0_25px_rgba(245,158,11,0.4)] hover:scale-[1.01] active:scale-[0.98]"
               >
                 <Mic size={18} className="text-black" />
                 <span>Tạo Giọng Nói — 5 Credits</span>
               </button>
-              <div className="flex flex-col gap-1 text-center mt-3 select-none">
+              <div className="flex !mt-2 flex-col gap-1 text-center mt-3 select-none">
                 <p className="text-[10px] text-zinc-400 font-medium">Mỗi lần tạo giọng nói tiêu thụ 5 credits từ số dư của bạn.</p>
                 <p className="text-[10px] text-zinc-400 font-medium">Thời gian xử lý dự kiến từ 3-5 giây.</p>
               </div>
@@ -628,7 +627,7 @@ export default function TtsView({
         </section>
 
         {/* Vertical divider line for desktop */}
-        <div className="hidden lg:block w-[1px] bg-[#222226]/60 self-stretch"></div>
+        <div className="hidden lg:block w-[1px] bg-[#ccc]/60 self-stretch"></div>
 
         {/* Preview Panel */}
         <section className={`flex-grow flex flex-col gap-6 text-left min-w-0 ${ttsTab === 'preview' ? 'flex' : 'hidden lg:flex'}`}>
