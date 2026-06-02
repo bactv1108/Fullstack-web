@@ -11,10 +11,11 @@ const GoogleCallback = () => {
   useEffect(() => {
     const handleCallback = () => {
       const token = searchParams.get('token');
+      const refreshToken = searchParams.get('refresh_token');
       
       if (token) {
         try {
-          loginWithGoogleToken(token);
+          loginWithGoogleToken(token, refreshToken);
           window.location.href = '/dashboard';
         } catch (err) {
           setError('Đăng nhập Google thất bại');

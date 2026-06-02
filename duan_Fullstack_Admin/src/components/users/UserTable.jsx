@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { userService } from '../../services/user.service';
-import { MoreVertical, Search, Edit2, Ban, CheckCircle } from 'lucide-react';
+import { MoreVertical, Search, Edit2, Ban, CheckCircle, X } from 'lucide-react';
 import CreditModal from './CreditModal';
 
 const UserTable = () => {
@@ -31,15 +31,23 @@ const UserTable = () => {
     <div className="admin-card p-0 overflow-hidden flex flex-col h-full">
       <div className="p-6 border-b border-admin-border flex justify-between items-center">
         <h2 className="text-lg font-semibold">Danh Sách Người Dùng</h2>
-        <div className="relative">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-admin-text-muted" />
+        <div className="relative flex items-center">
           <input 
             type="text" 
             placeholder="Tìm kiếm..." 
-            className="admin-input pl-10 py-1.5 text-sm w-64"
+            className="admin-input pl-10 pr-9 py-1.5 text-sm w-64 bg-[#0e0e11] border border-admin-border rounded-lg text-admin-text outline-none transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm('')}
+              className="absolute right-3 text-admin-text-muted hover:text-white transition-all cursor-pointer p-0.5"
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
       </div>
       

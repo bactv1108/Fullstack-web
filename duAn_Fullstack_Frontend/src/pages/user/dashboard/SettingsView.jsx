@@ -52,6 +52,13 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
   const location = useLocation();
   const fileInputRef = useRef(null);
 
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  useEffect(() => {
+    const handleScroll = () => { setShowScrollTop(window.scrollY > 300); };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   const [fullname, setFullname] = useState('Trần Văn Bắc');
   const [email, setEmail] = useState('tranvanbac2003@gmail.com');
   const [avatar, setAvatar] = useState(localStorage.getItem('user_avatar') || '');
@@ -342,17 +349,24 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
   };
 
   return (
-    <div className="min-h-screen bg-[#131316] text-[#e2e8f0] p-4 md:p-6 lg:p-8 flex flex-col gap-6 md:gap-8 select-none overflow-y-auto w-full">
-      <div className="flex items-center justify-between border-b border-[#222226] pb-4 w-full">
-        <h1 className="text-xl md:text-2xl font-black text-white uppercase tracking-wider flex items-center gap-3 text-left">
-          <Sliders className="text-[#f59e0b]" size={24} /> Cài đặt hệ thống
-        </h1>
-        <button onClick={() => navigate('/dashboard')} className="p-2 bg-[#18181c] hover:bg-[#222226] text-zinc-400 hover:text-white rounded-lg transition-all cursor-pointer border border-[#222226] shrink-0 hover:scale-[1.05] active:scale-[0.95]">
-          <X size={18} />
-        </button>
-      </div>
+    <div className="!w-full !min-h-screen !bg-[#09090b] text-white !py-8 !px-4 sm:!px-6 lg:!px-8 !block !clear-both">
+      <div className="!max-w-7xl !mx-auto !w-full !flex !flex-col !gap-6 md:!gap-8 !items-stretch">
+        
+        {/* Tiêu đề trang cài đặt */}
+        <div className="!flex !flex-col !gap-1 !w-full">
+          <div className="flex items-center justify-between border-b border-[#222226] pb-4 w-full">
+            <h1 className="text-xl md:text-2xl font-black text-white uppercase tracking-wider flex items-center gap-3 text-left">
+              <Sliders className="text-[#f59e0b]" size={24} /> Cài đặt hệ thống
+            </h1>
+            <button onClick={() => navigate('/dashboard')} className="p-2 bg-[#18181c] hover:bg-[#222226] text-zinc-400 hover:text-white rounded-lg transition-all cursor-pointer border border-[#222226] shrink-0 hover:scale-[1.05] active:scale-[0.95]">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
 
-      <section id="profile-section" className="bg-[#18181c] border border-[#222226] rounded-xl p-5 md:p-6 flex flex-col gap-5 w-full text-left">
+      {/* Form điền thông tin lồng hộp có chiều sâu (Giống hệt trang Admin) */}
+      <div className="!bg-[#111114] !border !border-[#222226] !rounded-2xl p-5 sm:p-6 md:p-8 !w-full !shadow-2xl !flex !flex-col !gap-8">
+          <section id="profile-section" className="bg-[#18181c] border border-[#222226] rounded-xl p-5 md:p-6 flex flex-col gap-5 w-full text-left">
         <div className="flex items-center gap-3 border-b border-[#222226]/50 pb-3">
           <User className="text-[#f59e0b]" size={20} />
           <h2 className="text-sm font-black text-white uppercase tracking-wider">Hồ sơ cá nhân & Bảo mật</h2>
@@ -539,105 +553,152 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
             })}
           </div>
         </div>
-        <div className="flex flex-col gap-2 mt-4">
-          <div className="flex items-center gap-2 border-b border-[#222226]/30 pb-2"><History size={14} className="text-zinc-400" /><h3 className="text-xs font-black text-zinc-400 uppercase tracking-wider">Lịch sử giao dịch nạp tiền</h3></div>
-          <div className="w-full overflow-x-auto rounded-xl border border-[#222226]/60 mt-2 bg-[#0f0f11]">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-[#18181c] border-b border-[#222226] text-zinc-400 font-bold uppercase tracking-wider"><th className="p-3">Mã giao dịch</th><th className="p-3">Gói cước</th><th className="p-3">Phân loại</th><th className="p-3">Số tiền</th><th className="p-3 text-amber-500">Tín dụng</th><th className="p-3">Trạng thái</th><th className="p-3">Thời gian</th></tr>
-              </thead>
-              <tbody className="divide-y divide-[#222226]/40 text-white font-medium">
-                {transactions.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-[#131316]/50 transition-colors"><td className="p-3 font-mono text-zinc-500">{tx.id}</td><td className="p-3 font-bold">{tx.package}</td><td className="p-3 text-zinc-400">{tx.type}</td><td className="p-3">{tx.amount}</td><td className="p-3 text-[#f59e0b] font-black">{tx.credits}</td><td className="p-3">
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                      tx.status === 'Thành công' || tx.status === 'success'
-                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                        : tx.status === 'Chờ xử lý' || tx.status === 'pending'
-                        ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                        : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                    }`}>
-                      {tx.status}
-                    </span>
-                  </td><td className="p-3 text-zinc-500">{tx.date}</td></tr>
+        <div className="w-full mt-8 pt-6 border-t border-[#222226]/40 text-left">
+
+          {/* Hộp con (Sub-box) biệt lập màu nền tối tạo độ sâu layer Admin */}
+          <div className="w-full bg-[#0f0f11] border border-[#222226]/60 rounded-xl p-4 md:p-5 shadow-inner">
+
+            {/* Tiêu đề hộp con */}
+            <div className="flex items-center gap-2 border-b border-[#222226]/30 pb-2 mb-4">
+              <History size={14} className="text-zinc-400" />
+              <h3 className="text-xs font-black text-zinc-400 uppercase tracking-wider">
+                Lịch sử giao dịch nạp tiền
+              </h3>
+            </div>
+
+            {/* Bảng dữ liệu chuẩn responsive chống vỡ khung hình trên mọi thiết bị */}
+            <div className="w-full overflow-x-auto rounded-xl border border-[#222226]/40 bg-[#09090b]">
+              <table className="w-full text-left border-collapse text-xs min-w-[700px] sm:min-w-full">
+                <thead>
+                <tr className="bg-[#18181c] border-b border-[#222226] text-zinc-400 font-bold uppercase tracking-wider">
+                  <th className="p-3">Mã giao dịch</th>
+                  <th className="p-3">Gói cước</th>
+                  <th className="p-3">Phân loại</th>
+                  <th className="p-3">Số tiền</th>
+                  <th className="p-3 text-amber-500">Tín dụng</th>
+                  <th className="p-3">Trạng thái</th>
+                  <th className="p-3">Thời gian</th>
+                </tr>
+                </thead>
+                <tbody className="divide-y divide-[#222226]/40 text-white font-medium">
+                {transactions && transactions.map((tx) => (
+                    <tr key={tx.id} className="hover:bg-[#131316]/50 transition-colors">
+                      <td className="p-3 font-mono text-zinc-500">{tx.id}</td>
+                      <td className="p-3 font-bold text-zinc-200">{tx.package}</td>
+                      <td className="p-3 text-zinc-400">{tx.type}</td>
+                      <td className="p-3">{tx.amount}</td>
+                      <td className="p-3 text-[#f59e0b] font-black">{tx.credits}</td>
+                      <td className="p-3">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase inline-block ${
+                                tx.status === 'Thành công' || tx.status === 'success'
+                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                    : tx.status === 'Chờ xử lý' || tx.status === 'pending'
+                                        ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                        : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                            }`}>
+                              {tx.status}
+                            </span>
+                      </td>
+                      <td className="p-3 text-zinc-500">{tx.date}</td>
+                    </tr>
                 ))}
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            </div>
+
           </div>
         </div>
+
       </section>
+      </div>
+
+      </div>
 
       {/* Dynamic VietQR Payment Modal */}
       {isModalOpen && activeTransaction && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#18181c] border border-[#222226] text-[#e2e8f0] rounded-xl max-w-md w-full p-6 relative flex flex-col gap-4 text-center select-none shadow-2xl">
-            <button 
-              onClick={() => { setIsModalOpen(false); setActiveTransaction(null); }}
-              className="absolute right-4 top-4 p-1.5 bg-[#18181c] hover:bg-[#222226] text-zinc-400 hover:text-white rounded-lg transition-all border border-[#222226] cursor-pointer hover:scale-[1.05] active:scale-[0.95]"
-            >
-              <X size={16} />
-            </button>
+          <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-[#18181c] border border-[#222226] text-[#e2e8f0] rounded-xl max-w-md w-full p-6 relative flex flex-col gap-4 text-center select-none shadow-2xl">
+              <button
+                  onClick={() => { setIsModalOpen(false); setActiveTransaction(null); }}
+                  className="absolute right-4 top-4 p-1.5 bg-[#18181c] hover:bg-[#222226] text-zinc-400 hover:text-white rounded-lg transition-all border border-[#222226] cursor-pointer hover:scale-[1.05] active:scale-[0.95]"
+              >
+                <X size={16} />
+              </button>
 
-            <h3 className="text-md font-black uppercase tracking-wider text-white mt-2">Thanh toán chuyển khoản VietQR</h3>
-            <p className="text-[10px] text-zinc-400 -mt-2">Quét mã QR dưới đây bằng ứng dụng Ngân hàng (Mobile Banking) để nạp Credits tự động</p>
+              <h3 className="text-md font-black uppercase tracking-wider text-white mt-2">Thanh toán chuyển khoản VietQR</h3>
+              <p className="text-[10px] text-zinc-400 -mt-2">Quét mã QR dưới đây bằng ứng dụng Ngân hàng (Mobile Banking) để nạp Credits tự động</p>
 
-            <div className="mx-auto bg-white p-3 rounded-lg w-52 h-52 flex items-center justify-center border border-[#222226] mt-1 shadow-inner">
-              <img 
-                src={`https://img.vietqr.io/image/Techcombank-19037672173010-compact2.png?amount=${activeTransaction.amount}&addInfo=${encodeURIComponent(activeTransaction.memo)}&accountName=TRAN%20VAN%20BAC`}
-                alt="VietQR dynamic payment code"
-                className="w-full h-full object-contain"
-              />
-            </div>
-
-            <div className="flex flex-col gap-3 mt-1 bg-[#0f0f11] p-4 rounded-xl border border-[#222226]/40 text-left text-xs">
-              <div className="flex justify-between items-center">
-                <span className="text-zinc-400">Chủ tài khoản:</span>
-                <span className="font-bold text-white uppercase">Trần Văn Bắc</span>
+              <div className="mx-auto bg-white p-3 rounded-lg w-52 h-52 flex items-center justify-center border border-[#222226] mt-1 shadow-inner">
+                <img
+                    src={`https://img.vietqr.io/image/Techcombank-19037672173010-compact2.png?amount=${activeTransaction.amount}&addInfo=${encodeURIComponent(activeTransaction.memo)}&accountName=TRAN%20VAN%20BAC`}
+                    alt="VietQR dynamic payment code"
+                    className="w-full h-full object-contain"
+                />
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-zinc-400">Số tài khoản:</span>
-                <div className="flex items-center gap-1.5 font-mono font-bold text-white">
-                  <span>19037672173010</span>
-                  <button 
-                    onClick={() => { navigator.clipboard.writeText('19037672173010'); alert('Đã sao chép số tài khoản!'); }}
-                    className="text-[#f59e0b] hover:underline cursor-pointer bg-transparent border-none text-[10px] font-bold"
-                  >
-                    Sao chép
-                  </button>
+
+              <div className="flex flex-col gap-3 mt-1 bg-[#0f0f11] p-4 rounded-xl border border-[#222226]/40 text-left text-xs">
+                <div className="flex justify-between items-center">
+                  <span className="text-zinc-400">Chủ tài khoản:</span>
+                  <span className="font-bold text-white uppercase">Trần Văn Bắc</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-zinc-400">Số tài khoản:</span>
+                  <div className="flex items-center gap-1.5 font-mono font-bold text-white">
+                    <span>19037672173010</span>
+                    <button
+                        onClick={() => { navigator.clipboard.writeText('19037672173010'); alert('Đã sao chép số tài khoản!'); }}
+                        className="text-[#f59e0b] hover:underline cursor-pointer bg-transparent border-none text-[10px] font-bold"
+                    >
+                      Sao chép
+                    </button>
+                  </div>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-zinc-400">Số tiền nạp:</span>
+                  <div className="flex items-center gap-1.5 font-bold text-white">
+                    <span>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(activeTransaction.amount).replace('₫', 'đ')}</span>
+                    <button
+                        onClick={() => { navigator.clipboard.writeText(activeTransaction.amount.toString()); alert('Đã sao chép số tiền!'); }}
+                        className="text-[#f59e0b] hover:underline cursor-pointer bg-transparent border-none text-[10px] font-bold"
+                    >
+                      Sao chép
+                    </button>
+                  </div>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-zinc-400">Nội dung chuyển khoản:</span>
+                  <div className="flex items-center gap-1.5 font-mono font-bold text-[#f59e0b]">
+                    <span>{activeTransaction.memo}</span>
+                    <button
+                        onClick={() => { navigator.clipboard.writeText(activeTransaction.memo); alert('Đã sao chép nội dung chuyển khoản!'); }}
+                        className="text-[#f59e0b] hover:underline cursor-pointer bg-transparent border-none text-[10px] font-bold"
+                    >
+                      Sao chép
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-zinc-400">Số tiền nạp:</span>
-                <div className="flex items-center gap-1.5 font-bold text-white">
-                  <span>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(activeTransaction.amount).replace('₫', 'đ')}</span>
-                  <button 
-                    onClick={() => { navigator.clipboard.writeText(activeTransaction.amount.toString()); alert('Đã sao chép số tiền!'); }}
-                    className="text-[#f59e0b] hover:underline cursor-pointer bg-transparent border-none text-[10px] font-bold"
-                  >
-                    Sao chép
-                  </button>
-                </div>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-zinc-400">Nội dung chuyển khoản:</span>
-                <div className="flex items-center gap-1.5 font-mono font-bold text-[#f59e0b]">
-                  <span>{activeTransaction.memo}</span>
-                  <button 
-                    onClick={() => { navigator.clipboard.writeText(activeTransaction.memo); alert('Đã sao chép nội dung chuyển khoản!'); }}
-                    className="text-[#f59e0b] hover:underline cursor-pointer bg-transparent border-none text-[10px] font-bold"
-                  >
-                    Sao chép
-                  </button>
-                </div>
-              </div>
-            </div>
 
-            <div className="flex items-center justify-center gap-3 mt-1 py-1">
-              <div className="animate-spin rounded-full h-4 w-4 border-2 border-t-transparent border-[#f59e0b]"></div>
-              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Hệ thống đang chờ ngân hàng xác nhận chuyển khoản tự động...</span>
+              <div className="flex items-center justify-center gap-3 mt-1 py-1">
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-t-transparent border-[#f59e0b]"></div>
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Hệ thống đang chờ ngân hàng xác nhận chuyển khoản tự động...</span>
+              </div>
             </div>
           </div>
-        </div>
       )}
+
+      {/* Nút bấm Scroll-To-Top thông minh */}
+      <button
+          type="button"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className={`fixed bottom-6 right-6 bg-[#f59e0b] hover:bg-[#d97706] text-black font-black rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 ease-in-out cursor-pointer z-50 text-xs tracking-wider border border-black/10 ${
+              showScrollTop ? '!h-11 !w-11 opacity-100' : '!h-0 !w-0 opacity-0 pointer-events-none overflow-hidden'
+          }`}
+          title="Cuộn về đầu trang"
+      >
+        ▲
+      </button>
+
     </div>
-  );
+);
 }

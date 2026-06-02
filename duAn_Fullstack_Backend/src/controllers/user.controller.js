@@ -1,5 +1,5 @@
 const bcrypt = require('bcrypt');
-const { User, Job, Package, Transaction, sequelize } = require('../models');
+const { User, Job, Package, Transaction, ImageAnalysis, sequelize } = require('../models');
 
 /**
  * GET /api/user/profile
@@ -32,11 +32,50 @@ const getProfile = async (req, res) => {
  */
 const getHistory = async (req, res) => {
   try {
+    const userId = req.user.id;
+
+    // 1. Quét dữ liệu Video AI và Giọng nói (Giữ nguyên)
     const jobs = await Job.findAll({
-      where: { userId: req.user.id },
+      where: { userId },
       order: [['id', 'DESC']]
     });
-    return res.status(200).json(jobs);
+
+    // 2. Quét dữ liệu phân tích ảnh Mắt Thần AI
+    const analyses = await ImageAnalysis.findAll({
+      where: { user_id: userId, status: 'success' },
+      order: [['id', 'DESC']]
+    });
+
+    // 3. Map thuộc tính định danh & gộp mảng
+    const mappedJobs = jobs.map(job => {
+      const jobPlain = job.get({ plain: true });
+      const isVideo = jobPlain.type === 'Video' || jobPlain.type === 'video' || jobPlain.type === 'render_task';
+      return {
+        ...jobPlain,
+        type: isVideo ? 'video' : 'audio'
+      };
+    });
+
+    const mappedAnalyses = analyses.map(analysis => {
+      const analysisPlain = analysis.get({ plain: true });
+      return {
+        ...analysisPlain,
+        type: 'analysis'
+      };
+    });
+
+    // Gộp cả 3 loại dữ liệu
+    const combinedHistory = [...mappedJobs, ...mappedAnalyses];
+
+    // Sắp xếp theo thời gian createdAt mới nhất đến cũ nhất
+    combinedHistory.sort((a, b) => {
+      const dateA = new Date(a.createdAt || a.created_at);
+      const dateB = new Date(b.createdAt || b.created_at);
+      return dateB - dateA;
+    });
+
+    return res.status(200).json(combinedHistory);
+
   } catch (err) {
     console.error('[USER CONTROLLER] getHistory error:', err.message);
     return res.status(500).json({ message: 'Lỗi hệ thống khi tải lịch sử.' });

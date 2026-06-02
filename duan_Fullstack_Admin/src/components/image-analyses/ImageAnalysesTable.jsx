@@ -80,15 +80,23 @@ const ImageAnalysesTable = () => {
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           </button>
         </div>
-        <div className="relative">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-admin-text-muted" />
+        <div className="relative flex items-center">
           <input 
             type="text" 
-            placeholder="Tìm theo tên ảnh, người dùng..." 
-            className="admin-input pl-10 py-1.5 text-sm w-80 bg-[#0f0f13] border border-admin-border focus:border-admin-primary outline-none text-white rounded-lg"
+            placeholder="Tìm theo người dùng,ảnh..."
+            className="admin-input pl-10 pr-9 py-1.5 text-sm w-80 bg-[#0f0f13] border border-admin-border rounded-lg text-white outline-none transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm('')}
+              className="absolute right-3 text-admin-text-muted hover:text-white transition-all cursor-pointer p-0.5"
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
       </div>
       

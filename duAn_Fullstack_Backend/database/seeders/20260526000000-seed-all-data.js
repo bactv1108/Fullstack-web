@@ -1,16 +1,24 @@
 'use strict';
 const bcrypt = require('bcrypt');
+require('dotenv').config();
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
-    // 1. Seed users
-    const adminPasswordHash = await bcrypt.hash('admin', 12);
-    const admin123PasswordHash = await bcrypt.hash('admin123', 12);
-    const userPasswordHash = await bcrypt.hash('user1234', 12);
+    // Dynamic credentials config from process.env with secure fallback options
+    const adminEmail = process.env.SEED_ADMIN_EMAIL || 'admin@system.com';
+    const admin123Email = process.env.SEED_ADMIN123_EMAIL || 'admin@gmail.com';
+    const adminPass = process.env.SEED_ADMIN_PASSWORD || 'admin';
+    const admin123Pass = process.env.SEED_ADMIN123_PASSWORD || 'admin123';
+    const userPass = process.env.SEED_USER_PASSWORD || 'user1234';
+
+    // Hash passwords dynamically using bcrypt rounds = 12
+    const adminPasswordHash = await bcrypt.hash(adminPass, 12);
+    const admin123PasswordHash = await bcrypt.hash(admin123Pass, 12);
+    const userPasswordHash = await bcrypt.hash(userPass, 12);
 
     await queryInterface.bulkInsert('users', [
       {
-        email: 'admin@system.com',
+        email: adminEmail,
         password_hash: adminPasswordHash,
         name: 'System Admin',
         role: 'Admin',
@@ -21,7 +29,7 @@ module.exports = {
         updated_at: new Date()
       },
       {
-        email: 'admin@gmail.com',
+        email: admin123Email,
         password_hash: admin123PasswordHash,
         name: 'AI Studio Admin',
         role: 'Admin',
@@ -170,10 +178,13 @@ module.exports = {
   },
 
   down: async (queryInterface, Sequelize) => {
+    // Remove foreign-key constrained tables (child tables) first
+    await queryInterface.bulkDelete('jobs', null, {});
+
+    // Then safely wipe parent schema tables
     await queryInterface.bulkDelete('users', null, {});
     await queryInterface.bulkDelete('system_configs', null, {});
     await queryInterface.bulkDelete('api_costs', null, {});
     await queryInterface.bulkDelete('credit_stats', null, {});
-    await queryInterface.bulkDelete('jobs', null, {});
   }
 };

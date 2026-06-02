@@ -4,7 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { authenticateJWT } = require('../middlewares/auth.middleware');
-const { analyzeProductImage } = require('../controllers/imageAnalyzer.controller');
+const { analyzeProductImage, getAnalysisDetail } = require('../controllers/imageAnalyzer.controller');
 
 // Đảm bảo thư mục lưu trữ ảnh tồn tại trong dự án
 const uploadDir = path.join(__dirname, '../../uploads/images');
@@ -44,5 +44,6 @@ const upload = multer({
  * Thực hiện upload file ảnh với key 'productImage' và chuyển tiếp xử lý sang Controller
  */
 router.post('/analyze-image', authenticateJWT, upload.single('productImage'), analyzeProductImage);
+router.get('/history/:id', authenticateJWT, getAnalysisDetail);
 
 module.exports = router;

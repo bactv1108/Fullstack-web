@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-const { ImageAnalysis, SystemConfig } = require('../models');
+const { ImageAnalysis, SystemConfig, User } = require('../models');
 
 const analyzeProductImage = async (req, res) => {
   if (!req.file) {
@@ -11,6 +11,11 @@ const analyzeProductImage = async (req, res) => {
   const userId = req.user ? req.user.id : null;
   if (!userId) {
     return res.status(401).json({ success: false, message: 'Người dùng chưa đăng nhập hoặc token không hợp lệ.' });
+  }
+
+  const user = await User.findByPk(userId);
+  if (!user || user.credits < 20) {
+    return res.status(400).json({ success: false, message: 'Tài khoản của bạn không đủ credit (Cần tối thiểu 20 credits) để kích hoạt Mắt Thần AI. Vui lòng nạp thêm!' });
   }
 
   const originalName = req.file.originalname;
@@ -31,7 +36,8 @@ const analyzeProductImage = async (req, res) => {
     });
 
     // 2. Lấy API Key động từ DB
-    const dbRecord = await SystemConfig.findByPk('gemini_api_key');
+    // const dbRecord = await SystemConfig.findByPk('gemini_api_key');
+    const dbRecord = await SystemConfig.findOne({ where: { key: 'gemini_api_key' } });
     const apiKey = (dbRecord && dbRecord.value) ? dbRecord.value : process.env.GEMINI_API_KEY;
 
     console.log("👉 [CHECK KEY ACTUALLY USED]:", apiKey ? apiKey.substring(0, 10) + "..." : "NO KEY");
@@ -49,10 +55,16 @@ const analyzeProductImage = async (req, res) => {
     const base64Data = imageBuffer.toString('base64');
 
     // 4. System Prompt chuẩn Vibe hệ thống
-    const systemPrompt = `Bạn là một Chuyên gia Phân tích Hình ảnh Sản phẩm và Biên kịch Kịch bản Quảng cáo Video hàng đầu. Hãy bóc tách hình ảnh sản phẩm được cung cấp để tạo ra một kịch bản/prompt quay video quảng cáo chi tiết bằng Tiếng Việt định dạng Markdown: 1. Phân tích Sản phẩm & Chất liệu. 2. Kịch bản Quay Phim Chi Tiết (Storyboard 3-4 phân cảnh góc quay Cinematic 4K, khung dọc 9:16, bối cảnh gọn gàng sàn gỗ/thảm, phong cách clean-lifestyle, nam tính nhẹ nhàng). 3. Prompt sinh Video bằng tiếng Anh (60-80 từ) cho Runway/Sora.`;
-
+    const systemPrompt =
+        `Bạn là một Chuyên gia Phân tích Hình ảnh Sản phẩm và Biên kịch Kịch bản Quảng cáo Video hàng đầu.
+         Hãy bóc tách hình ảnh sản phẩm được cung cấp để tạo ra một kịch bản/prompt quay video quảng cáo
+          chi tiết bằng Tiếng Việt định dạng Markdown:
+           1. Phân tích Sản phẩm & Chất liệu. 
+           2. Kịch bản Quay Phim Chi Tiết (Storyboard 3-4 phân cảnh góc quay Cinematic 4K, khung dọc 9:16, 
+           bối cảnh gọn gàng sàn gỗ/thảm, phong cách clean-lifestyle, nam tính nhẹ nhàng). 
+           3. Prompt sinh Video bằng tiếng Anh (60-80 từ) cho Runway/Sora.`;
     // 5. Gọi REST API thuần túy - CƯỠNG CHẾ CỔNG /v1/ và sử dụng model gemini-2.0-flash có sẵn trong hệ thống
-    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     
     const requestBody = {
       contents: [{
@@ -66,7 +78,7 @@ const analyzeProductImage = async (req, res) => {
     console.log(`[MAT THAN AI] Đang bắn REST API cổng v1 chuẩn...`);
     const response = await axios.post(url, requestBody, {
       headers: { 'Content-Type': 'application/json' },
-      timeout: 30000
+      timeout: 60000
     });
 
     if (!response.data || !response.data.candidates || response.data.candidates.length === 0) {
@@ -76,6 +88,8 @@ const analyzeProductImage = async (req, res) => {
     const promptText = response.data.candidates[0].content.parts[0].text;
     const inputTokensCount = response.data.usageMetadata?.promptTokenCount || null;
     const outputTokensCount = response.data.usageMetadata?.candidatesTokenCount || null;
+
+    await user.decrement('credits', { by: 20 });
 
     // 6. Cập nhật DB thành công
     await analysisRecord.update({
@@ -87,10 +101,13 @@ const analyzeProductImage = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Phân tích hình ảnh sản phẩm thành công!',
+      message: 'Phân tích hình ảnh sản phẩm thành công! (Đã trừ 20 credits)',
       data: {
         id: analysisRecord.id,
-        prompt_output: promptText
+        prompt_output: promptText,
+        input_tokens: inputTokensCount,
+        output_tokens: outputTokensCount,
+        current_credits: user.credits - 20
       }
     });
 
@@ -108,4 +125,24 @@ const analyzeProductImage = async (req, res) => {
   }
 };
 
-module.exports = { analyzeProductImage };
+const getAnalysisDetail = async (req, res) => {
+  try {
+    const userId = req.user ? req.user.id : null;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Người dùng chưa đăng nhập hoặc token không hợp lệ.' });
+    }
+    const { id } = req.params;
+    const record = await ImageAnalysis.findOne({
+      where: { id, user_id: userId }
+    });
+    if (!record) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy bản ghi phân tích ảnh.' });
+    }
+    return res.status(200).json({ success: true, data: record });
+  } catch (error) {
+    console.error('[GET ANALYSIS DETAIL ERROR]:', error.message);
+    return res.status(500).json({ success: false, message: 'Lỗi máy chủ', error: error.message });
+  }
+};
+
+module.exports = { analyzeProductImage, getAnalysisDetail };

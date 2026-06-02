@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowUpRight } from 'lucide-react';
+import { ArrowUpRight, X, Search } from 'lucide-react';
 import axiosAdminClient from '../../services/axiosAdminClient';
 
 const BillingView = () => {
@@ -157,24 +157,22 @@ const BillingView = () => {
           </p>
         </div>
 
-        {/* Search Bar Form */}
         <form onSubmit={handleSearchSubmit} className="relative flex items-center w-full sm:max-w-xs">
+          <Search size={18} className="absolute left-3 text-admin-text-muted pointer-events-none" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Tìm kiếm theo mã giao dịch hoặc email..."
-            className="bg-admin-bg/50 border border-admin-border text-admin-text text-xs rounded-lg focus:outline-none focus:ring-1 focus:ring-admin-primary/50 focus:border-admin-primary/50 block w-full pl-3 pr-8 py-2.5 transition-all"
+            className="bg-[#0f0f13] border border-admin-border text-admin-text text-xs rounded-lg block w-full pl-10 pr-9 py-2.5 outline-none transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
           />
           {searchTerm !== '' && (
             <button
               type="button"
               onClick={handleClearSearch}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-admin-text-muted/70 hover:text-admin-text hover:bg-admin-border/30 rounded-full p-0.5 transition-colors cursor-pointer flex items-center justify-center"
+              className="absolute right-3 text-admin-text-muted hover:text-white transition-all cursor-pointer p-0.5"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <X size={14} />
             </button>
           )}
         </form>

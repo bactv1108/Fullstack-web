@@ -10,6 +10,7 @@ const GoogleCallback = lazy(() => import('../pages/auth/GoogleCallback'));
 const Dashboard = lazy(() => import('../pages/user/Dashboard'));
 const AdminDashboard = lazy(() => import('../pages/admin/AdminDashboard'));
 const ResetPassword = lazy(() => import('../pages/auth/ResetPassword'));
+const MatThanDetailView = lazy(() => import('../pages/user/dashboard/MatThanDetailView'));
 
 const LoadingFallback = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -49,6 +50,7 @@ const AppRoutes = () => {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/dashboard/image-analyzer" element={<Dashboard />} />
             <Route path="/dashboard/mat-than" element={<Dashboard />} />
+            <Route path="/dashboard/mat-than/detail/:id" element={<MatThanDetailView />} />
             <Route path="/dashboard/settings" element={<Dashboard />} />
             {/* Các sub-routes của dashboard có thể thêm ở đây */}
           </Route>

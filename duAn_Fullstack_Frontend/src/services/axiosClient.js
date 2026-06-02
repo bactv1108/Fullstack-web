@@ -32,15 +32,15 @@ const processQueue = (error, token = null) => {
 // ── REQUEST INTERCEPTOR: Tự động đính kèm Access Token vào Header ──
 axiosClient.interceptors.request.use(
   (config) => {
-    // Đọc Access_token từ Local Storage (sử dụng đúng Key chữ hoa chữ thường: Access_token)
-    const token = localStorage.getItem('Access_token');
+    // Đọc bất kỳ biến Access token nào có sẵn từ Local Storage
+    const token = localStorage.getItem('Access_token') || localStorage.getItem('access_token') || localStorage.getItem('token');
     
     // Nếu token tồn tại và hợp lệ, đính kèm vào Authorization Header dưới dạng Bearer
     if (token && token !== 'undefined' && token !== 'null') {
       config.headers.Authorization = `Bearer ${token}`;
     } else {
       // Dọn sạch nếu token bị lỗi chuỗi đại diện
-      localStorage.removeItem('Access_token');
+      ['Access_token', 'access_token', 'token'].forEach(k => localStorage.removeItem(k));
     }
     return config;
   },
@@ -69,11 +69,16 @@ axiosClient.interceptors.response.use(
     // Nếu gặp lỗi và đây không phải là request đăng nhập
     if (isUnauthorized && !originalRequest.url?.includes('/auth/login')) {
       
+      const isPublicPage = ['/login', '/register', '/reset-password', '/forgot-password', '/auth/google/callback'].some(
+        (path) => window.location.pathname.startsWith(path)
+      );
+
       // Nếu request này đã được đánh dấu thử lại (_retry = true) nhưng vẫn lỗi -> Đăng nhập lại
       if (originalRequest._retry) {
-        localStorage.removeItem('Access_token');
-        localStorage.removeItem('admin_refresh_token');
-        window.location.href = '/login';
+        ['Access_token', 'access_token', 'token', 'admin_refresh_token', 'refresh_token'].forEach(k => localStorage.removeItem(k));
+        if (!isPublicPage) {
+          window.location.href = '/login';
+        }
         return Promise.reject(error);
       }
 
@@ -97,15 +102,16 @@ axiosClient.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-      // Đọc admin_refresh_token từ Local Storage
-      const refreshToken = localStorage.getItem('admin_refresh_token');
+      // Đọc admin_refresh_token hoặc refresh_token từ Local Storage
+      const refreshToken = localStorage.getItem('admin_refresh_token') || localStorage.getItem('refresh_token');
       
       // Nếu không có Refresh Token -> Thực hiện logout
       if (!refreshToken || refreshToken === 'undefined' || refreshToken === 'null') {
         isRefreshing = false;
-        localStorage.removeItem('Access_token');
-        localStorage.removeItem('admin_refresh_token');
-        window.location.href = '/login';
+        ['Access_token', 'access_token', 'token', 'admin_refresh_token', 'refresh_token'].forEach(k => localStorage.removeItem(k));
+        if (!isPublicPage) {
+          window.location.href = '/login';
+        }
         return Promise.reject(error);
       }
 
@@ -132,10 +138,13 @@ axiosClient.interceptors.response.use(
 
         // Lưu trữ lại Access_token mới vào Local Storage
         localStorage.setItem('Access_token', newAccessToken);
+        localStorage.setItem('access_token', newAccessToken);
+        localStorage.setItem('token', newAccessToken);
         
         // Nếu có refresh token mới xoay vòng, cập nhật lại vào Local Storage
         if (isValidToken(newRefreshToken)) {
           localStorage.setItem('admin_refresh_token', newRefreshToken);
+          localStorage.setItem('refresh_token', newRefreshToken);
         }
 
         // Cập nhật lại header mặc định cho các request tiếp theo
@@ -155,9 +164,10 @@ axiosClient.interceptors.response.use(
         isRefreshing = false;
 
         // Xóa sạch bộ nhớ cục bộ và điều hướng về trang đăng nhập
-        localStorage.removeItem('Access_token');
-        localStorage.removeItem('admin_refresh_token');
-        window.location.href = '/login';
+        ['Access_token', 'access_token', 'token', 'admin_refresh_token', 'refresh_token'].forEach(k => localStorage.removeItem(k));
+        if (!isPublicPage) {
+          window.location.href = '/login';
+        }
         return Promise.reject(refreshError);
       }
     }

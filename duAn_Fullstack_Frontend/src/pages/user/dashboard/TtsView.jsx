@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Mic, Volume2, VolumeX, RefreshCw, Play, Pause, Download, Trash2 } from 'lucide-react';
 import axiosClient from '../../../services/axiosClient';
 
@@ -45,10 +46,18 @@ export default function TtsView({
   audioDuration,
   setAudioDuration
 }) {
+  const navigate = useNavigate();
   const ttsTextareaRef = useRef(null);
   const audioRef = useRef(null);
   const [playingVoiceId, setPlayingVoiceId] = useState(null);
   const previewAudioRef = useRef(null);
+
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  useEffect(() => {
+    const handleScroll = () => { setShowScrollTop(window.scrollY > 300); };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -360,10 +369,24 @@ export default function TtsView({
   }, [text]);
 
   return (
-    <div className="min-h-screen bg-[#131316] text-[#e2e8f0] p-4 md:p-6 lg:p-8 flex flex-col gap-6 md:gap-8 overflow-y-auto w-full select-text text-left relative animate-fade-in">
-      
-      {/* Outer panel container styled matching geometric layout */}
-      <div className="bg-[#18181c] border border-[#222226] rounded-xl p-5 md:p-6 flex flex-col lg:flex-row gap-8 w-full text-left shadow-2xl backdrop-blur-md relative select-none">
+    <div className="!w-full !min-h-[calc(100vh-65px)] !bg-[#09090b] text-white !py-8 !px-4 sm:!px-6 lg:!px-8 !block !clear-both">
+      <div className="!max-w-7xl !mx-auto !w-full !flex !flex-col !gap-6 md:!gap-8 !items-stretch">
+        
+        {/* KHU VỰC TIÊU ĐỀ TRANG */}
+        <div className="!flex !flex-col !gap-1 !w-full">
+          <div className="flex items-center gap-3 border-b border-[#222226] pb-4 w-full">
+            <div className="p-2 bg-[#f59e0b]/10 text-[#f59e0b] rounded-xl border border-[#f59e0b]/10">
+              <Mic size={18} />
+            </div>
+            <div>
+              <h2 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-wider">Cấu hình Giọng nói AI</h2>
+              <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">Thiết lập tham số để tạo âm thanh tự nhiên nhất</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Outer panel container styled matching geometric layout */}
+        <div className="!bg-[#111114] !border !border-[#222226] !rounded-2xl p-5 sm:p-6 md:p-8 !w-full !shadow-2xl flex flex-col lg:flex-row gap-8 relative select-none">
 
         {/* Configuration Panel */}
         <section
@@ -395,13 +418,7 @@ export default function TtsView({
             </button>
           </div>
 
-          <div className="flex flex-col gap-1.5 border-b border-[#222226]/60 pb-3">
-            <div className="flex items-center gap-2.5">
-              <Mic size={18} className="text-[#f59e0b]" />
-              <h2 className="text-sm font-black text-white uppercase tracking-widest">Cấu hình Giọng nói AI</h2>
-            </div>
-            <p className="text-[10px] text-zinc-400">Thiết lập tham số để tạo âm thanh tự nhiên nhất</p>
-          </div>
+
 
           <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-2">
@@ -769,7 +786,10 @@ export default function TtsView({
               <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Lịch sử Giọng nói</span>
               <button 
                 type="button" 
-                onClick={() => setCurrentMenu && setCurrentMenu('history')}
+                onClick={() => {
+                  if (setCurrentMenu) setCurrentMenu('history');
+                  navigate('/dashboard?tab=audio');
+                }}
                 className="text-xs font-bold text-[#f59e0b] hover:text-amber-400 transition-colors cursor-pointer bg-transparent border-none"
               >
                 Xem tất cả
@@ -869,7 +889,19 @@ export default function TtsView({
             </div>
           </div>
         </section>
+        </div>
       </div>
+
+      <button
+        type="button"
+        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        className={`fixed bottom-6 right-6 bg-[#f59e0b] hover:bg-[#d97706] text-black font-black rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 ease-in-out cursor-pointer z-50 text-xs tracking-wider border border-black/10 ${
+          showScrollTop ? '!h-11 !w-11 opacity-100' : '!h-0 !w-0 opacity-0 pointer-events-none overflow-hidden'
+        }`}
+        title="Cuộn về đầu trang"
+      >
+        ▲
+      </button>
     </div>
   );
 }

@@ -103,8 +103,8 @@ const googleCallback = async (req, res) => {
     } else {
       // INSERT
       const [insertResult] = await db.execute(
-          'INSERT INTO users (google_id, email, name, avatar, refresh_token, is_verified) VALUES (?, ?, ?, ?, ?, 1)',
-          [google_id, email, name, avatar, refresh_token || null]
+          'INSERT INTO users (google_id, email, name, avatar, refresh_token, is_verified, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)',
+          [google_id, email, name, avatar, refresh_token || null, new Date(), new Date()]
       );
       user = {
         id: insertResult.insertId,
@@ -116,15 +116,15 @@ const googleCallback = async (req, res) => {
       };
     }
 
-    // Sign local JWT
-    const token = jwt.sign(
-        { id: user.id, email: user.email, role: user.role },
-        process.env.JWT_SECRET || 'secret',
-        { expiresIn: '15m' }
-    );
+    // Sign system tokens
+    const systemTokens = authService.generateTokens(user);
+    await authService.storeRefreshToken(user.id, systemTokens.refresh_token);
 
-    // Redirect back to frontend
-    const frontendRedirectUrl = `http://localhost:5173/auth/google/callback?token=${token}`;
+    // Save refresh token in HttpOnly cookie
+    res.cookie('refresh_token', systemTokens.refresh_token, authService.getCookieOptions());
+
+    // Redirect back to frontend with both access token and refresh token
+    const frontendRedirectUrl = `http://localhost:5173/auth/google/callback?token=${systemTokens.access_token}&refresh_token=${systemTokens.refresh_token}`;
     res.redirect(frontendRedirectUrl);
 
   } catch (error) {
@@ -175,8 +175,8 @@ const register = async (req, res) => {
 
     // Insert user with is_verified = 0
     await db.execute(
-        'INSERT INTO users (name, email, password_hash, is_verified, verification_token) VALUES (?, ?, ?, 0, ?)',
-        [name, email, password_hash, verification_token]
+        'INSERT INTO users (name, email, password_hash, is_verified, verification_token, created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?, ?)',
+        [name, email, password_hash, verification_token, new Date(), new Date()]
     );
 
     // Send verification email
@@ -227,8 +227,8 @@ const verifyEmail = async (req, res) => {
       return res.redirect('http://localhost:5173/login?verified=already');
     }
 
-    // Mark as verified and clear token
-    await db.execute('UPDATE users SET is_verified = 1, verification_token = NULL WHERE id = ?', [rows[0].id]);
+    // Mark as verified
+    await db.execute('UPDATE users SET is_verified = 1 WHERE id = ?', [rows[0].id]);
 
     // Redirect to frontend login page with success flag
     return res.redirect('http://localhost:5173/login?verified=true');
@@ -280,6 +280,11 @@ const login = async (req, res) => {
     // Generate real tokens via authService
     const tokens = authService.generateTokens(user);
     await authService.storeRefreshToken(user.id, tokens.refresh_token);
+
+    // Clear verification token from database upon successful login if present
+    if (user.verification_token) {
+      await db.execute('UPDATE users SET verification_token = NULL WHERE id = ?', [user.id]);
+    }
 
     // Save refresh token in HttpOnly cookie
     res.cookie('refresh_token', tokens.refresh_token, authService.getCookieOptions());

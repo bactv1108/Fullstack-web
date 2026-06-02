@@ -17,5 +17,8 @@ export const userService = {
   },
   deleteJob: async (jobId) => {
     return axiosClient.delete(`/user/jobs/${jobId}`);
+  },
+  getAnalysisDetail: async (id) => {
+    return axiosClient.get(`/image-analyzer/history/${id}`);
   }
 };

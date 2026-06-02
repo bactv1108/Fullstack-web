@@ -282,9 +282,21 @@ export default function useDashboard() {
 
   // Filter history based on type and search query
   const filteredHistory = historyList.filter(item => {
-    const matchesType = historyType === 'all' || item.type === historyType;
-    const matchesSearch = item.title.toLowerCase().includes(historySearch.toLowerCase()) || 
-                          item.sub.toLowerCase().includes(historySearch.toLowerCase());
+    let matchesType = false;
+    if (historyType === 'all') {
+      matchesType = true;
+    } else if (historyType === 'video') {
+      matchesType = item.type === 'video';
+    } else if (historyType === 'audio' || historyType === 'tts') {
+      matchesType = item.type === 'audio' || item.type === 'tts';
+    } else if (historyType === 'analysis') {
+      matchesType = item.type === 'analysis' || item.prompt_output;
+    }
+
+    const title = item.title || '';
+    const sub = item.sub || '';
+    const matchesSearch = title.toLowerCase().includes(historySearch.toLowerCase()) || 
+                          sub.toLowerCase().includes(historySearch.toLowerCase());
     return matchesType && matchesSearch;
   });
 

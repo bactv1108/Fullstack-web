@@ -13,15 +13,15 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const checkAuth = async () => {
       // Clear corrupt literal string values like "undefined" or "null"
-      ['Access_token', 'token', 'admin_refresh_token'].forEach(key => {
+      ['Access_token', 'access_token', 'token', 'admin_refresh_token', 'refresh_token'].forEach(key => {
         const val = localStorage.getItem(key);
         if (val === 'undefined' || val === 'null') {
           localStorage.removeItem(key);
         }
       });
 
-      const token = localStorage.getItem('Access_token');
-      const refreshToken = localStorage.getItem('admin_refresh_token');
+      const token = localStorage.getItem('Access_token') || localStorage.getItem('access_token') || localStorage.getItem('token');
+      const refreshToken = localStorage.getItem('admin_refresh_token') || localStorage.getItem('refresh_token');
       
       if (token) {
         try {
@@ -37,7 +37,8 @@ export const AuthProvider = ({ children }) => {
           setIsAuthenticated(true);
         } catch (e) {
           console.warn('[AUTH BOOT] Silent token check failed, checking fallback:', e.message);
-          if (!localStorage.getItem('Access_token')) {
+          const hasToken = localStorage.getItem('Access_token') || localStorage.getItem('access_token') || localStorage.getItem('token');
+          if (!hasToken) {
             setUser(null);
             setIsAuthenticated(false);
           }
@@ -58,8 +59,10 @@ export const AuthProvider = ({ children }) => {
         } catch (e) {
           console.error('[AUTH BOOT] Direct refresh failed:', e.message);
           localStorage.removeItem('Access_token');
+          localStorage.removeItem('access_token');
           localStorage.removeItem('token');
           localStorage.removeItem('admin_refresh_token');
+          localStorage.removeItem('refresh_token');
           setUser(null);
           setIsAuthenticated(false);
         }
@@ -72,18 +75,25 @@ export const AuthProvider = ({ children }) => {
   const login = async (credentials) => {
     const data = await authService.login(credentials);
     localStorage.setItem('Access_token', data.access_token);
+    localStorage.setItem('access_token', data.access_token);
     localStorage.setItem('token', data.access_token); // Backup key
     if (data.refresh_token) {
       localStorage.setItem('admin_refresh_token', data.refresh_token);
+      localStorage.setItem('refresh_token', data.refresh_token);
     }
     setUser(data.user);
     setIsAuthenticated(true);
     return data;
   };
 
-  const loginWithGoogleToken = (token) => {
+  const loginWithGoogleToken = (token, refreshToken) => {
     localStorage.setItem('Access_token', token);
+    localStorage.setItem('access_token', token);
     localStorage.setItem('token', token); // Backup key
+    if (refreshToken) {
+      localStorage.setItem('admin_refresh_token', refreshToken);
+      localStorage.setItem('refresh_token', refreshToken);
+    }
     
     try {
       // Decode JWT token directly in frontend (cơ bản)
@@ -99,8 +109,10 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     await authService.logout();
     localStorage.removeItem('Access_token');
+    localStorage.removeItem('access_token');
     localStorage.removeItem('token');
     localStorage.removeItem('admin_refresh_token');
+    localStorage.removeItem('refresh_token');
     setUser(null);
     setIsAuthenticated(false);
   };

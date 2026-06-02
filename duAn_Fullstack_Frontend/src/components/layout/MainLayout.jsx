@@ -16,7 +16,12 @@ const MainLayout = () => {
 
   useEffect(() => {
     const path = location.pathname;
-    if (path.includes('/dashboard/image-analyzer') || path.includes('/dashboard/mat-than')) {
+    const searchParams = new URLSearchParams(location.search);
+    const tabParam = searchParams.get('tab');
+
+    if (tabParam && ['all', 'video', 'audio', 'analysis'].includes(tabParam)) {
+      setCurrentMenu('history');
+    } else if (path.includes('/dashboard/image-analyzer') || path.includes('/dashboard/mat-than')) {
       setCurrentMenu('image-analyzer');
     } else if (path.includes('/dashboard/settings')) {
       setCurrentMenu('settings');
@@ -25,7 +30,7 @@ const MainLayout = () => {
         setCurrentMenu('video');
       }
     }
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
 
   // Preview Dialog state lifted globally
   const [previewJob, setPreviewJob] = useState(null);
@@ -58,15 +63,20 @@ const MainLayout = () => {
         if (data) {
           const mapped = data.map(job => {
             const isVideo = job.type === 'Video' || job.type === 'video' || job.type === 'render_task';
+            const isAnalysis = job.type === 'analysis';
             return {
               id: job.id,
-              title: job.name,
-              sub: job.prompt,
-              time: new Date(job.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date(job.createdAt).toLocaleDateString('vi-VN'),
-              type: isVideo ? 'video' : 'tts',
+              title: isAnalysis ? job.image_name : job.name,
+              sub: isAnalysis ? job.prompt_output : job.prompt,
+              time: new Date(job.createdAt || job.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date(job.createdAt || job.created_at).toLocaleDateString('vi-VN'),
+              type: isVideo ? 'video' : isAnalysis ? 'analysis' : 'tts',
               status: job.status,
               progress: job.progress,
               output_url: job.output_url,
+              image_path: job.image_path,
+              image_name: job.image_name,
+              prompt_output: job.prompt_output,
+              createdAt: job.createdAt || job.created_at,
               ratio: job.meta_data?.aspectRatio === '916' ? '9:16 TikTok' : '16:9 Ngang',
               lang: job.meta_data?.lang === 'vi' ? 'Tiếng Việt' : job.meta_data?.lang === 'en' ? 'Tiếng Anh' : 'Tiếng Nhật',
               voice: job.meta_data?.voice === 'vi-VN-NamMinhNeural' || job.meta_data?.voice === 'vi-male-1' ? 'Adam (Nam)' :

@@ -59,7 +59,10 @@ const authService = {
        }
     }
     localStorage.removeItem('Access_token');
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('token');
     localStorage.removeItem('admin_refresh_token');
+    localStorage.removeItem('refresh_token');
   },
 
   // Phương thức gọi khi nhận được token từ Google
