@@ -7,10 +7,26 @@ const UserTable = () => {
   const [users, setUsers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
-    userService.getUsers().then(setUsers);
-  }, []);
+    setCurrentPage(1);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    userService.getUsers(searchTerm, currentPage, 10).then(res => {
+      if (res && res.users) {
+        setUsers(res.users);
+        setTotalPages(res.totalPages || 1);
+      } else {
+        setUsers([]);
+        setTotalPages(1);
+      }
+    }).catch(err => {
+      console.error('[FETCH USERS] Failed:', err.message);
+    });
+  }, [currentPage, searchTerm]);
 
   const handleToggleStatus = (user) => {
     const newStatus = user.status === 'Active' ? 'Banned' : 'Active';
@@ -22,10 +38,7 @@ const UserTable = () => {
     });
   };
 
-  const filteredUsers = users.filter(u => 
-    u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    u.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredUsers = users;
 
   return (
     <div className="admin-card p-0 overflow-hidden flex flex-col h-full">
@@ -99,6 +112,59 @@ const UserTable = () => {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Thanh Phân Trang */}
+      <div className="flex justify-between items-center pt-4 border-t border-gray-800 w-full px-6 pb-6 bg-[#0e0e11] rounded-b-lg">
+        {/* Phía bên trái (Thông tin trang) */}
+        <div className="text-gray-400 text-xs">
+          Trang {currentPage} trên {totalPages} (Hiển thị {users.length} dòng)
+        </div>
+
+        {/* Phía bên phải (Hệ thống nút bấm) */}
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            className={`px-3 py-1.5 text-xs rounded transition-colors font-medium cursor-pointer ${
+              currentPage === 1 
+                ? 'bg-[#1a1a24]/40 text-gray-600 cursor-not-allowed' 
+                : 'bg-[#1a1a24] hover:bg-[#2b2b36] text-white'
+            }`}
+          >
+            &lt; Trước
+          </button>
+
+          {/* Render các nút số trang */}
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+            <button
+              key={pageNum}
+              type="button"
+              onClick={() => setCurrentPage(pageNum)}
+              className={`px-2.5 py-1 text-xs rounded transition-colors font-medium cursor-pointer ${
+                currentPage === pageNum
+                  ? 'bg-blue-600 text-white font-bold'
+                  : 'bg-[#1a1a24] hover:bg-[#2b2b36] text-gray-300 hover:text-white'
+              }`}
+            >
+              {pageNum}
+            </button>
+          ))}
+
+          <button
+            type="button"
+            disabled={currentPage === totalPages || totalPages === 0}
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            className={`px-3 py-1.5 text-xs rounded transition-colors font-medium cursor-pointer ${
+              (currentPage === totalPages || totalPages === 0)
+                ? 'bg-[#1a1a24]/40 text-gray-600 cursor-not-allowed' 
+                : 'bg-[#1a1a24] hover:bg-[#2b2b36] text-white'
+            }`}
+          >
+            Sau &gt;
+          </button>
+        </div>
       </div>
 
       {selectedUser && (

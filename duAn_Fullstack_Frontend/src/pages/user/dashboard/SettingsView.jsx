@@ -70,6 +70,8 @@ export default function SettingsView() {
   const [fullname, setFullname] = useState('Trần Văn Bắc');
   const [email, setEmail] = useState('tranvanbac2003@gmail.com');
   const [avatar, setAvatar] = useState(localStorage.getItem('user_avatar') || '');
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [deleteAvatar, setDeleteAvatar] = useState(false);
   
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -247,20 +249,43 @@ export default function SettingsView() {
       setProfileMsg('Vui lòng sửa các lỗi trước khi lưu.');
       return;
     }
-    // Tự động kiểm tra dung lượng chuỗi base64 nếu có
-    if (avatar && avatar.startsWith('data:image') && (avatar.length * 0.75) > 1.5 * 1024 * 1024) {
-      setAvatarError('Dung lượng ảnh đại diện vượt quá 1.5MB. Vui lòng chọn ảnh khác!');
-      setProfileMsg('Vui lòng sửa các lỗi trước khi lưu.');
-      return;
-    }
     try {
       setProfileMsg('Đang lưu thông tin...');
-      const response = await axiosClient.put('/user/update-profile', { fullname, avatar });
+      
+      const formData = new FormData();
+      formData.append('fullname', fullname);
+      
+      if (deleteAvatar) {
+        formData.append('deleteAvatar', 'true');
+      } else if (avatarFile) {
+        formData.append('avatar', avatarFile);
+      } else {
+        formData.append('avatar', avatar);
+      }
+
+      const response = await axiosClient.put('/user/update-profile', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      const updatedAvatar = response?.user?.avatar || '';
       setProfileMsg(response?.message || 'Cập nhật thông tin hồ sơ thành công!');
+      
+      if (updatedAvatar) {
+        localStorage.setItem('user_avatar', updatedAvatar);
+      } else {
+        localStorage.removeItem('user_avatar');
+      }
+      
+      setAvatar(updatedAvatar);
+      setAvatarFile(null);
+      setDeleteAvatar(false);
+
       if (setUserName) setUserName(fullname);
-      if (setAvatarImage) setAvatarImage(avatar);
+      if (setAvatarImage) setAvatarImage(updatedAvatar);
       if (updateUserState) {
-        updateUserState({ name: fullname, avatar });
+        updateUserState({ name: fullname, avatar: updatedAvatar });
       }
     } catch (err) {
       console.error('[SETTINGS] Save profile error:', err);
@@ -365,15 +390,16 @@ export default function SettingsView() {
         setAvatarError('Vui lòng chọn một file ảnh hợp lệ.'); 
         return; 
       }
-      // Giới hạn dung lượng tối đa 1.5MB (1.5 * 1024 * 1024 = 1572864 Bytes)
-      if (file.size > 1.5 * 1024 * 1024) {
-        setAvatarError('Dung lượng ảnh đại diện vượt quá 1.5MB. Vui lòng chọn ảnh khác!');
+      // Giới hạn dung lượng tối đa 2MB
+      if (file.size > 2 * 1024 * 1024) {
+        setAvatarError('Dung lượng ảnh đại diện vượt quá 2MB. Vui lòng chọn ảnh khác!');
         return;
       }
+      setAvatarFile(file);
+      setDeleteAvatar(false);
       const reader = new FileReader();
       reader.onloadend = () => { 
         const base64Data = reader.result; 
-        localStorage.setItem('user_avatar', base64Data); 
         setAvatar(base64Data); 
       };
       reader.readAsDataURL(file);
@@ -382,10 +408,10 @@ export default function SettingsView() {
 
   const handleRemoveAvatar = (e) => { 
     e.stopPropagation(); 
-    localStorage.removeItem('user_avatar'); 
     setAvatar(''); 
+    setAvatarFile(null);
+    setDeleteAvatar(true);
     setAvatarError('');
-    if (setAvatarImage) setAvatarImage('');
   };
 
   const handleSoftExpirePayment = async () => {
@@ -450,7 +476,7 @@ export default function SettingsView() {
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-5 bg-[#0f0f11] p-4 rounded-xl border border-[#222226]/40 w-full">
           <div onClick={handleAvatarClick} className="w-20 h-20 rounded-full bg-[#854d0e] text-white flex items-center justify-center font-bold text-xl cursor-pointer relative group overflow-hidden border border-[#222226] shrink-0">
-            {avatar ? <img src={avatar} alt="User Avatar" className="w-full h-full object-cover" /> : <span>TB</span>}
+            {avatar ? <img src={avatar.startsWith('data:') ? avatar : avatar} alt="User Avatar" className="w-full h-full object-cover" /> : <span>TB</span>}
             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-opacity duration-200">
               <Camera size={18} className="text-white" />
               <span className="text-[8px] font-black uppercase text-white tracking-widest mt-1">Đổi ảnh</span>
@@ -671,27 +697,33 @@ export default function SettingsView() {
                 </thead>
                 <tbody className="divide-y divide-[#222226]/40 text-white font-medium">
                 {transactions && transactions.length > 0 ? (
-                  transactions.map((tx) => (
-                    <tr key={tx.id} className="hover:bg-[#131316]/50 transition-colors">
-                      <td className="!p-2 p-3 font-mono text-zinc-500">{tx.id}</td>
-                      <td className="p-3 font-bold text-zinc-200">{tx.package_name || tx.package}</td>
-                      <td className="p-3">
-                        {tx.package?.includes('Free') || tx.package_name?.includes('Free') || tx.type === 'Gift' || tx.package === 'Gói Free' || tx.package_name === 'Gói Free' || tx.type === 'Hệ thống tặng' ? (
-                          <span className="text-gray-300">Hệ thống tặng</span>
-                        ) : tx.amount > 0 ? (
-                          <span className="text-gray-300">Nạp gói cước</span>
-                        ) : (
-                          <span className="text-gray-400">Trừ phí dịch vụ</span>
-                        )}
-                      </td>
-                      <td className="p-3">{tx.amount_formatted}</td>
-                      <td className="p-3">
-                        {tx.package?.includes('Free') || tx.package_name?.includes('Free') || tx.amount > 0 || tx.type === 'Gift' || tx.package === 'Gói Free' || tx.package_name === 'Gói Free' || tx.type === 'Hệ thống tặng' ? (
-                          <span className="text-green-500 font-bold">+{Math.abs(tx.credits_added)}</span>
-                        ) : (
-                          <span className="text-red-500 font-bold">-{Math.abs(tx.credits_added)}</span>
-                        )}
-                      </td>
+                  transactions.map((tx) => {
+                    const isServerRefund = tx.maGiaoDich?.startsWith('TRX-REFUND-') || tx.id?.startsWith('TRX-REFUND-') || tx.type === 'refund';
+                    return (
+                      <tr key={tx.id} className="hover:bg-[#131316]/50 transition-colors">
+                        <td className="!p-2 p-3 font-mono text-zinc-500">{tx.id}</td>
+                        <td className="p-3 font-bold text-zinc-200">{tx.package_name || tx.package}</td>
+                        <td className="p-3">
+                          {isServerRefund ? (
+                            <span className="text-gray-400">Hoàn tiền dịch vụ</span>
+                          ) : tx.package?.includes('Free') || tx.package_name?.includes('Free') || tx.type === 'Gift' || tx.package === 'Gói Free' || tx.package_name === 'Gói Free' || tx.type === 'Hệ thống tặng' ? (
+                            <span className="text-gray-300">Hệ thống tặng</span>
+                          ) : tx.amount > 0 ? (
+                            <span className="text-gray-300">Nạp gói cước</span>
+                          ) : (
+                            <span className="text-gray-400">Trừ phí dịch vụ</span>
+                          )}
+                        </td>
+                        <td className="p-3">{tx.amount_formatted}</td>
+                        <td className="p-3">
+                          {isServerRefund ? (
+                            <span className="text-green-500 font-bold">+{Math.abs(tx.credits_added)}</span>
+                          ) : tx.package?.includes('Free') || tx.package_name?.includes('Free') || tx.amount > 0 || tx.type === 'Gift' || tx.package === 'Gói Free' || tx.package_name === 'Gói Free' || tx.type === 'Hệ thống tặng' ? (
+                            <span className="text-green-500 font-bold">+{Math.abs(tx.credits_added)}</span>
+                          ) : (
+                            <span className="text-red-500 font-bold">-{Math.abs(tx.credits_added)}</span>
+                          )}
+                        </td>
                       <td className="p-3">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase inline-block ${
                                 tx.status === 'Thành công' || tx.status === 'success'
@@ -705,7 +737,8 @@ export default function SettingsView() {
                       </td>
                       <td className="p-3 text-zinc-500">{tx.date}</td>
                     </tr>
-                  ))
+                    );
+                  })
                 ) : (
                   <tr>
                     <td colSpan={7} className="p-8 text-center text-zinc-500 font-medium">

@@ -185,7 +185,7 @@ export default function ImageView() {
         {/* TIÊU ĐỀ TRANG */}
         <div className="!flex !flex-col !gap-1 !w-full">
           <div className="flex items-center gap-3 border-b border-[#222226] pb-4 w-full">
-            <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/10">
+            <div className="p-2 bg-amber-500/10 text-amber-400 rounded-xl border border-amber-500/10">
               <ImageIcon size={18} />
             </div>
             <div>
@@ -213,7 +213,7 @@ export default function ImageView() {
                   ref={textareaRef}
                   value={promptText}
                   onChange={(e) => setPromptText(e.target.value)}
-                  className="w-full !p-3 min-h-[120px] h-32 bg-[#0f0f11] text-white rounded-xl border border-[#222226] placeholder-zinc-500 transition-all focus:outline-none focus:border-emerald-500 resize-none font-medium text-sm shadow-inner"
+                  className="w-full !p-3 min-h-[120px] h-32 bg-[#0f0f11] text-white rounded-xl border border-[#222226] placeholder-zinc-500 transition-all focus:outline-none focus:border-amber-500 resize-none font-medium text-sm shadow-inner"
                   maxLength={1000}
                   placeholder="Ví dụ: Một phi hành gia cưỡi ngựa trên sa mạc sao Hỏa, phong cách cinematic hoàng hôn đỏ rực rỡ..."
                 />
@@ -234,7 +234,7 @@ export default function ImageView() {
                       onClick={() => setLocalRatio(ratioOpt.value)}
                       className={`py-3 px-2 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
                         localRatio === ratioOpt.value
-                          ? 'border-emerald-500 bg-emerald-500/5 text-emerald-400 shadow-md shadow-emerald-500/5'
+                          ? 'border-amber-500 bg-amber-500/5 text-amber-400 shadow-md shadow-amber-500/5'
                           : 'border-[#222226] bg-[#0f0f11] text-zinc-400 hover:text-white hover:border-zinc-700'
                       }`}
                     >
@@ -251,7 +251,7 @@ export default function ImageView() {
                 <button
                   type="submit"
                   disabled={isGeneratingLocal}
-                  className="!p-4 py-4 px-8 bg-emerald-500 text-black font-black text-xs rounded-xl flex items-center justify-center gap-2 uppercase tracking-widest cursor-pointer disabled:opacity-50 transition-all duration-300 border-none shadow-md hover:bg-emerald-400 hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] hover:scale-[1.01] active:scale-[0.98] w-full"
+                  className="!p-4 py-4 px-8 bg-amber-500 text-black font-black text-xs rounded-xl flex items-center justify-center gap-2 uppercase tracking-widest cursor-pointer disabled:opacity-50 transition-all duration-300 border-none shadow-md hover:bg-amber-400 hover:shadow-[0_0_25px_rgba(245,158,11,0.4)] hover:scale-[1.01] active:scale-[0.98] w-full"
                 >
                   <Sparkles size={16} fill="black" className="text-black animate-pulse" />
                   <span>Vẽ ảnh ngay — 2 Credits</span>
@@ -272,12 +272,12 @@ export default function ImageView() {
           <section className="flex-grow flex flex-col gap-6 text-left min-w-0">
             <div className="flex justify-between items-center border-b border-[#222226]/45 pb-2">
               <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
-                Thư viện ảnh đã tạo {isHistoryLoading && <span className="inline-block w-2.5 h-2.5 ml-2 border border-emerald-400 border-t-transparent rounded-full animate-spin"></span>}
+                Thư viện ảnh đã tạo {isHistoryLoading && <span className="inline-block w-2.5 h-2.5 ml-2 border border-amber-400 border-t-transparent rounded-full animate-spin"></span>}
               </h3>
               <button
                 type="button"
                 onClick={() => navigate('/dashboard/history?tab=analysis')}
-                className="text-xs font-bold text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer bg-transparent border-none"
+                className="text-xs font-bold text-amber-400 hover:text-amber-300 transition-colors cursor-pointer bg-transparent border-none"
               >
                 Xem lịch sử chung
               </button>
@@ -299,7 +299,7 @@ export default function ImageView() {
                     time: item.time,
                     output_url: item.output_url
                   })}
-                  className="bg-[#0f0f11] border border-[#222226]/45 rounded-xl p-3 flex flex-col gap-2.5 transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-500/40 hover:shadow-[0_0_12px_rgba(16,185,129,0.1)] relative group cursor-pointer"
+                  className="bg-[#0f0f11] border border-[#222226]/45 rounded-xl p-3 flex flex-col gap-2.5 transition-all duration-300 hover:-translate-y-0.5 hover:border-amber-500/40 hover:shadow-[0_0_12px_rgba(245,158,11,0.1)] relative group cursor-pointer"
                 >
                   {/* Container hình ảnh */}
                   <div className="w-full h-36 rounded-lg bg-[#18181c] border border-[#222226]/50 flex items-center justify-center relative overflow-hidden shrink-0">
@@ -316,15 +316,15 @@ export default function ImageView() {
                       </div>
                     ) : (
                       <div className="flex flex-col items-center justify-center">
-                        <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-                        <p className="text-emerald-400 text-[9px] font-bold tracking-widest uppercase">Đang vẽ... {item.progress}%</p>
+                        <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+                        <p className="text-amber-400 text-[9px] font-bold tracking-widest uppercase">Đang vẽ... {item.progress}%</p>
                       </div>
                     )}
 
                     <span className="absolute top-2.5 left-2.5 bg-black/75 text-[8px] px-1.5 py-0.5 rounded text-zinc-300 font-bold border border-[#222226]/50">
                       {item.ratio}
                     </span>
-                    <span className="absolute bottom-2.5 right-2.5 bg-emerald-500/10 text-emerald-400 text-[8px] font-bold px-1.5 py-0.5 rounded border border-emerald-500/20">
+                    <span className="absolute bottom-2.5 right-2.5 bg-amber-500/10 text-amber-400 text-[8px] font-bold px-1.5 py-0.5 rounded border border-amber-500/20">
                       Imagen 3
                     </span>
                   </div>
@@ -380,7 +380,7 @@ export default function ImageView() {
       <button
         type="button"
         onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-        className={`fixed bottom-6 right-6 bg-emerald-500 hover:bg-emerald-600 text-black font-black rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 ease-in-out cursor-pointer z-50 text-xs tracking-wider border border-black/10 ${
+        className={`fixed bottom-6 right-6 bg-amber-500 hover:bg-amber-600 text-black font-black rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 ease-in-out cursor-pointer z-50 text-xs tracking-wider border border-black/10 ${
           showScrollTop ? '!h-11 !w-11 opacity-100' : '!h-0 !w-0 opacity-0 pointer-events-none overflow-hidden'
         }`}
         title="Cuộn về đầu trang"

@@ -420,7 +420,9 @@ const deleteJob = async (req, res) => {
  * Update user's fullname and avatar
  */
 const updateProfile = async (req, res) => {
-  const { fullname, avatar: inputAvatar } = req.body;
+  const fs = require('fs');
+  const path = require('path');
+  const { fullname, avatar: inputAvatar, deleteAvatar } = req.body;
   try {
     // 1. Tìm user bằng Sequelize ORM
     const user = await User.findByPk(req.user.id);
@@ -428,14 +430,37 @@ const updateProfile = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy người dùng.' });
     }
 
+    // Cơ chế dọn rác ảnh cũ khỏi ổ đĩa server
+    const deleteOldAvatarFile = (avatarPath) => {
+      if (avatarPath && !avatarPath.startsWith('data:')) {
+        const fullPath = path.join(__dirname, '../..', 'public', avatarPath);
+        if (fs.existsSync(fullPath)) {
+          try {
+            fs.unlinkSync(fullPath);
+          } catch (err) {
+            console.error('[USER CONTROLLER] Failed to delete old avatar file:', err.message);
+          }
+        }
+      }
+    };
+
     // 2. Gán giá trị mới nếu có truyền lên, nếu không thì giữ nguyên cũ
     user.name = fullname !== undefined ? fullname : user.name;
-    user.avatar = inputAvatar !== undefined ? inputAvatar : user.avatar;
+
+    if (deleteAvatar === 'true') {
+      deleteOldAvatarFile(user.avatar);
+      user.avatar = null;
+    } else if (req.file) {
+      deleteOldAvatarFile(user.avatar);
+      user.avatar = `/uploads/avatars/${req.file.filename}`;
+    } else if (inputAvatar !== undefined) {
+      user.avatar = inputAvatar;
+    }
 
     // 3. Lưu trực tiếp xuống DB thông qua ORM (An toàn, tự động xử lý SQL)
     await user.save();
 
-    // 4. Trả về kết quả (Không cần user.reload() vì user.save() đã tự cập nhật instance)
+    // 4. Trả về kết quả
     return res.status(200).json({
       message: 'Cập nhật thông tin hồ sơ thành công!',
       user: {

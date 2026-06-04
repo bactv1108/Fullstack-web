@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/user.controller');
 const { authenticateJWT } = require('../middlewares/auth.middleware');
+const upload = require('../middlewares/upload.middleware');
 
 // Protected route to fetch packages
 router.get('/packages', authenticateJWT, userController.getPackages);
@@ -24,7 +25,7 @@ router.get('/transactions', userController.getTransactions);
 router.post('/jobs', userController.createJob);
 router.put('/settings', userController.updateSettings);
 router.delete('/jobs/:id', userController.deleteJob);
-router.put('/update-profile', userController.updateProfile);
+router.put('/update-profile', upload.single('avatar'), userController.updateProfile);
 router.put('/change-password', userController.changePassword);
 
 module.exports = router;

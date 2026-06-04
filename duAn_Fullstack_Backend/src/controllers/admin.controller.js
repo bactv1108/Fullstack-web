@@ -211,7 +211,12 @@ const getUsers = async (req, res) => {
 
   try {
     const result = await adminService.fetchPaginatedUsers(search, page, limit);
-    return res.status(200).json(result);
+    return res.status(200).json({
+      users: result.users,
+      totalUsers: result.total,
+      totalPages: result.pages,
+      currentPage: result.currentPage
+    });
   } catch (err) {
     console.error('[ADMIN CONTROLLER] getUsers error:', err.message);
     return res.status(500).json({ message: 'Lỗi hệ thống khi tải danh sách người dùng.' });

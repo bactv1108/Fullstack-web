@@ -309,11 +309,11 @@ export default function Header({ credits = 140, toggleSidebar, avatar, name, set
                 </button>
                 
                 <div className="flex items-center gap-2 select-none">
-                    <div className="w-8 h-8 rounded-lg bg-[#f59e0b] flex items-center justify-center font-black text-black text-sm shadow-md shadow-amber-500/10 shrink-0">
-                        AS
-                    </div>
+                    <span className="bg-[#3b82f6] !text-white !px-1.5 !py-0.5 !rounded-md !text-[12px] !sm:text-[11px] !font-black !tracking-wider !leading-none shrink-0">
+            AI
+          </span>
                     <span className="text-sm font-black uppercase tracking-wider text-white whitespace-nowrap">
-                        AI Studio
+                         Studio
                     </span>
                 </div>
             </div>
@@ -353,10 +353,10 @@ export default function Header({ credits = 140, toggleSidebar, avatar, name, set
                     </button>
 
                     {isNotifyOpen && (
-                        <div className="absolute right-0 mt-3 w-80 bg-[#18181c] border border-zinc-800/60 rounded-xl shadow-2xl shadow-black/80 z-50 text-left overflow-hidden select-none">
-                            <div className="flex items-center justify-between p-4 border-b border-zinc-800/80">
+                        <div className="!p-3 absolute right-0 mt-3 w-80 bg-[#18181c] border border-zinc-800/60 rounded-xl shadow-2xl shadow-black/80 z-50 text-left overflow-hidden select-none">
+                            <div className="!p-3 flex items-center justify-between p-4 border-b border-zinc-800/80">
                                 <span className="text-xs font-black tracking-widest text-zinc-400 uppercase">THÔNG BÁO HỆ THỐNG</span>
-                                <div className="flex items-center gap-2">
+                                <div className=" flex items-center gap-2">
                                     <button 
                                         onClick={handleClearAll}
                                         className="text-zinc-400 hover:text-red-500 transition-colors cursor-pointer p-1 hover:bg-zinc-800 rounded-lg bg-transparent border-none flex items-center justify-center"
@@ -398,7 +398,7 @@ export default function Header({ credits = 140, toggleSidebar, avatar, name, set
                                                 </div>
                                             )}
                                             
-                                            <div className="flex-1 flex flex-col gap-1">
+                                            <div className="!p-2  flex-1 flex flex-col gap-1">
                                                 <p className="text-[12px] text-zinc-200 font-medium leading-normal">{notif.message}</p>
                                                 <span className="text-[10px] text-zinc-500 font-normal leading-none mt-0.5">{formatTime(notif.createdAt)}</span>
                                             </div>
@@ -427,7 +427,7 @@ export default function Header({ credits = 140, toggleSidebar, avatar, name, set
                 >
                     {avatar ? (
                         <img 
-                            src={avatar.startsWith('http') ? avatar : `http://localhost:3000${avatar}`} 
+                            src={avatar.startsWith('data:') ? avatar : avatar} 
                             alt="Avatar" 
                             className="w-full h-full object-cover" 
                         />
