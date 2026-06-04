@@ -139,6 +139,27 @@ const processWorker = async () => {
               job.errorMessage = error.message;
               await job.save();
 
+              // Ghi trực tiếp vào Database bảng notifications khi thất bại
+              try {
+                const { Notification } = require('../models');
+                const notificationEmitter = require('../utils/notificationEmitter');
+
+                const failNotif = await Notification.create({
+                  userId: renderJob.userId,
+                  title: 'Lỗi xử lý tác vụ',
+                  message: `Gặp lỗi khi tạo giọng nói AI cho tác vụ #${renderJob.id}: ${error.message}`,
+                  type: 'error',
+                  is_read: false
+                });
+                console.log('[DB DEBUG] Đã insert thành công 1 dòng thất bại vào bảng notifications. ID:', failNotif.id);
+
+                // Bắn tín hiệu real-time sang luồng SSE qua Emitter
+                notificationEmitter.emit('send_notification', failNotif);
+                console.log('[SSE DEBUG] Đã emit sự kiện send_notification thất bại cho User:', renderJob.userId);
+              } catch (notifErr) {
+                console.error('[QUEUE] Explicit failure notification insert error:', notifErr.message);
+              }
+
               // Return cleanly to prevent outer block from overwriting statuses
               return;
             }

@@ -1,10 +1,6 @@
 import React from 'react';
+import { Outlet } from 'react-router-dom';
 import useDashboard from './dashboard/useDashboard';
-import VideoView from './dashboard/VideoView';
-import TtsView from './dashboard/TtsView';
-import ImageAnalyzerView from './dashboard/ImageAnalyzerView';
-import HistoryView from './dashboard/HistoryView';
-import SettingsView from './dashboard/SettingsView';
 import Toast from '../../components/ui/Toast';
 
 export default function Dashboard() {
@@ -24,26 +20,9 @@ export default function Dashboard() {
     cancelDeleteHistory
   } = dashboardState;
 
-  const renderView = () => {
-    switch (currentMenu) {
-      case 'video':
-        return <VideoView {...dashboardState} />;
-      case 'tts':
-        return <TtsView {...dashboardState} />;
-      case 'image-analyzer':
-        return <ImageAnalyzerView {...dashboardState} />;
-      case 'history':
-        return <HistoryView {...dashboardState} />;
-      case 'settings':
-        return <SettingsView {...dashboardState} />;
-      default:
-        return <VideoView {...dashboardState} />;
-    }
-  };
-
   return (
     <div className="relative min-h-full w-full">
-      {renderView()}
+      <Outlet context={dashboardState} />
 
       {/* Dynamic Video Media Preview Modal Safeguard */}
       {activeMediaType === 'video' && activeVideoUrl && (

@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { Eye, Sparkles, Upload, FileText, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import axiosClient from '../../../services/axiosClient';
 
-export default function ImageAnalyzerView({ toast }) {
+export default function ImageAnalyzerView() {
+  const dashboardState = useOutletContext();
+  const { toast } = dashboardState;
   const [selectedFile, setSelectedFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);

@@ -82,3 +82,42 @@ class VideoService {
 }
 
 module.exports = new VideoService();
+
+// Register VideoJob hook dynamically to send notifications when VideoJob status changes to Completed or Failed
+const { Notification } = require('../models');
+const notificationEmitter = require('../utils/notificationEmitter');
+
+VideoJob.afterUpdate('notifyVideoJobStatusChange', async (job, options) => {
+  if (job.changed('status')) {
+    if (job.status === 'Completed') {
+      try {
+        const successNotif = await Notification.create({
+          userId: job.userId,
+          title: 'Tác vụ hoàn tất',
+          message: `Tạo video AI thành công cho tác vụ #${job.id}`,
+          type: 'info',
+          is_read: false
+        });
+        notificationEmitter.emit('send_notification', successNotif);
+        console.log(`[VIDEO JOB HOOK] Sent success notification for VideoJob #${job.id}`);
+      } catch (err) {
+        console.error('[VIDEO JOB HOOK] Error sending success notification:', err.message);
+      }
+    } else if (job.status === 'Failed') {
+      try {
+        const failNotif = await Notification.create({
+          userId: job.userId,
+          title: 'Lỗi xử lý tác vụ',
+          message: `Gặp lỗi khi tạo video AI cho tác vụ #${job.id}`,
+          type: 'error',
+          is_read: false
+        });
+        notificationEmitter.emit('send_notification', failNotif);
+        console.log(`[VIDEO JOB HOOK] Sent fail notification for VideoJob #${job.id}`);
+      } catch (err) {
+        console.error('[VIDEO JOB HOOK] Error sending fail notification:', err.message);
+      }
+    }
+  }
+});
+

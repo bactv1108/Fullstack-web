@@ -27,6 +27,7 @@ db.sequelize = sequelize;
 // Import models
 db.User = require('./User')(sequelize);
 db.Job = require('./Job')(sequelize);
+db.ImageJob = require('./imageJob.model')(sequelize);
 db.VideoJob = require('./VideoJob')(sequelize);
 db.SystemConfig = require('./SystemConfig')(sequelize);
 db.ApiCost = require('./ApiCost')(sequelize);
@@ -43,6 +44,9 @@ db.Notification = require('./notification.model')(sequelize);
 // Job.belongsTo(User, { foreignKey: 'userId', as: 'owner' })
 db.User.hasMany(db.Job, { foreignKey: 'userId', as: 'renderJobs' });
 db.Job.belongsTo(db.User, { foreignKey: 'userId', as: 'owner' });
+
+db.User.hasMany(db.ImageJob, { foreignKey: 'userId', as: 'imageJobs' });
+db.ImageJob.belongsTo(db.User, { foreignKey: 'userId', as: 'owner' });
 
 db.User.hasMany(db.VideoJob, { foreignKey: 'userId', as: 'videoJobs' });
 db.VideoJob.belongsTo(db.User, { foreignKey: 'userId', as: 'owner' });

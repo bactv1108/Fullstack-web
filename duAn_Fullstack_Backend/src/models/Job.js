@@ -17,7 +17,7 @@ module.exports = (sequelize) => {
       allowNull: false,
     },
     type: {
-      type: DataTypes.ENUM('Video', 'Voice'),
+      type: DataTypes.ENUM('Video', 'Voice', 'Image'),
       defaultValue: 'Video',
       allowNull: false,
     },

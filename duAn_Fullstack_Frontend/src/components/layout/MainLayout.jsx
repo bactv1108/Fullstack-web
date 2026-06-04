@@ -3,11 +3,11 @@ import { Outlet, useLocation } from 'react-router-dom';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import Toast from '../ui/Toast';
-import { Play, Pause, Download, X, Rocket, Mic } from 'lucide-react';
+import { Play, Pause, Download, X, Rocket, Mic, Image as ImageIcon } from 'lucide-react';
 import { userService } from '../../services/user.service';
 
 const MainLayout = () => {
-  const [currentMenu, setCurrentMenu] = useState('video');
+  const [currentMenu, setCurrentMenu] = useState('image-generator');
   const [credits, setCredits] = useState(0);
   const [activeModal, setActiveModal] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -19,16 +19,20 @@ const MainLayout = () => {
     const searchParams = new URLSearchParams(location.search);
     const tabParam = searchParams.get('tab');
 
-    if (tabParam && ['all', 'video', 'audio', 'analysis'].includes(tabParam)) {
-      setCurrentMenu('history');
+    if (path.includes('/dashboard/image-generator')) {
+      setCurrentMenu('image-generator');
+    } else if (path.includes('/dashboard/tts')) {
+      setCurrentMenu('tts');
     } else if (path.includes('/dashboard/image-analyzer') || path.includes('/dashboard/mat-than')) {
       setCurrentMenu('image-analyzer');
+    } else if (path.includes('/dashboard/history')) {
+      setCurrentMenu('history');
     } else if (path.includes('/dashboard/settings')) {
       setCurrentMenu('settings');
-    } else if (path.includes('/dashboard')) {
-      if (currentMenu === 'image-analyzer' || currentMenu === 'settings') {
-        setCurrentMenu('video');
-      }
+    } else if (tabParam && ['all', 'video', 'audio', 'analysis'].includes(tabParam)) {
+      setCurrentMenu('history');
+    } else if (path === '/dashboard' || path === '/dashboard/') {
+      setCurrentMenu('image-generator');
     }
   }, [location.pathname, location.search]);
 
@@ -64,12 +68,13 @@ const MainLayout = () => {
           const mapped = data.map(job => {
             const isVideo = job.type === 'Video' || job.type === 'video' || job.type === 'render_task';
             const isAnalysis = job.type === 'analysis';
+            const isImage = job.type === 'Image' || job.type === 'image';
             return {
               id: job.id,
               title: isAnalysis ? job.image_name : job.name,
               sub: isAnalysis ? job.prompt_output : job.prompt,
               time: new Date(job.createdAt || job.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date(job.createdAt || job.created_at).toLocaleDateString('vi-VN'),
-              type: isVideo ? 'video' : isAnalysis ? 'analysis' : 'tts',
+              type: isVideo ? 'video' : isAnalysis ? 'analysis' : isImage ? 'image' : 'tts',
               status: job.status,
               progress: job.progress,
               output_url: job.output_url,
@@ -77,15 +82,17 @@ const MainLayout = () => {
               image_name: job.image_name,
               prompt_output: job.prompt_output,
               createdAt: job.createdAt || job.created_at,
-              ratio: job.meta_data?.aspectRatio === '916' ? '9:16 TikTok' : '16:9 Ngang',
+              ratio: job.meta_data?.aspectRatio === '916' || job.meta_data?.aspectRatio === '9:16' ? '9:16 Dọc' :
+                     job.meta_data?.aspectRatio === '169' || job.meta_data?.aspectRatio === '16:9' ? '16:9 Ngang' :
+                     job.meta_data?.aspectRatio === '1:1' ? '1:1 Vuông' : '16:9 Ngang',
               lang: job.meta_data?.lang === 'vi' ? 'Tiếng Việt' : job.meta_data?.lang === 'en' ? 'Tiếng Anh' : 'Tiếng Nhật',
               voice: job.meta_data?.voice === 'vi-VN-NamMinhNeural' || job.meta_data?.voice === 'vi-male-1' ? 'Adam (Nam)' :
                      job.meta_data?.voice === 'vi-VN-HoaiMyNeural' || job.meta_data?.voice === 'vi-female-1' ? 'Bella (Nữ)' :
                      job.meta_data?.voice || 'Mặc định',
               duration: '10 giây',
-              icon: isVideo ? Rocket : Mic,
-              iconColor: isVideo ? '#a855f7' : '#f59e0b',
-              gradient: isVideo ? 'from-purple-900/30 to-[#0f0f13]' : null
+              icon: isVideo ? Rocket : isImage ? ImageIcon : Mic,
+              iconColor: isVideo ? '#a855f7' : isImage ? '#10b981' : '#f59e0b',
+              gradient: isVideo ? 'from-purple-900/30 to-[#0f0f13]' : isImage ? 'from-emerald-950/30 to-[#0f0f13]' : null
             };
           });
           setHistoryList(mapped);
@@ -140,9 +147,12 @@ const MainLayout = () => {
     toast.info("🚀 Bắt đầu tải xuống! Vui lòng đợi trong giây lát...");
     try {
       const isVideo = job.type === 'Video' || job.type === 'video' || job.type === 'render_task';
+      const isImage = job.type === 'Image' || job.type === 'image';
       const fileUrl = isVideo
         ? `http://localhost:3000/uploads/videos/AI_Studio_Video_ID_${job.id}.mp4`
-        : `http://localhost:3000/uploads/voices/AI_Studio_Voice_ID_${job.id}.mp3`;
+        : isImage
+          ? `http://localhost:3000/uploads/images/AI_Studio_Image_ID_${job.id}.jpg`
+          : `http://localhost:3000/uploads/voices/AI_Studio_Voice_ID_${job.id}.mp3`;
 
       const response = await fetch(fileUrl);
       if (!response.ok) throw new Error(`Server returned status ${response.status}`);
@@ -152,7 +162,7 @@ const MainLayout = () => {
       const a = document.createElement('a');
       a.style.display = 'none';
       a.href = url;
-      a.download = isVideo ? `AI Studio_${job.id}.mp4` : `AI Studio_${job.id}.mp3`;
+      a.download = isVideo ? `AI Studio_${job.id}.mp4` : isImage ? `AI_Studio_Image_${job.id}.jpg` : `AI Studio_${job.id}.mp3`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -240,6 +250,7 @@ const MainLayout = () => {
         toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
         avatar={userProfile.avatar}
         name={userProfile.name}
+        setPreviewJob={setPreviewJob}
       />
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }} className="relative">
         {/* Backdrop for mobile/tablet when sidebar is open */}
@@ -300,7 +311,7 @@ const MainLayout = () => {
             {/* Header */}
             <div className="flex justify-between items-center pb-3 border-b border-zinc-900">
               <h3 className="text-sm font-black text-[#f59e0b] uppercase tracking-wider">
-                Xem trước {previewJob.type === 'video' ? 'video' : 'giọng nói'} #{previewJob.id}
+                Xem trước {previewJob.type === 'video' ? 'video' : previewJob.type === 'image' ? 'ảnh' : 'giọng nói'} #{previewJob.id}
               </h3>
               <button 
                 type="button"
@@ -325,6 +336,14 @@ const MainLayout = () => {
                   controls 
                   autoPlay 
                   className="w-full h-full object-contain"
+                />
+              </div>
+            ) : previewJob.type === 'image' ? (
+              <div className="w-full bg-black rounded-xl overflow-hidden border border-zinc-900 flex items-center justify-center" style={{ maxHeight: '350px' }}>
+                <img 
+                  src={`http://localhost:3000/uploads/images/AI_Studio_Image_ID_${previewJob.id}.jpg`}
+                  alt="AI Studio Preview"
+                  className="max-w-full max-h-full object-contain"
                 />
               </div>
             ) : (
@@ -387,7 +406,7 @@ const MainLayout = () => {
 
             {/* Controls */}
             <div className="flex flex-col gap-3.5 pt-2">
-              {previewJob.type !== 'video' && (
+              {previewJob.type !== 'video' && previewJob.type !== 'image' && (
                 <div className="flex items-center justify-between gap-4 bg-zinc-950 border border-zinc-900 rounded-xl p-3">
                   {/* Large Play/Pause Toggle button */}
                   <button

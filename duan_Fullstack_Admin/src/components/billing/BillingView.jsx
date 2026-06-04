@@ -28,9 +28,9 @@ const BillingView = () => {
     axiosAdminClient.get(`/transactions?page=${page}&limit=${limitPerPage}&search=${encodeURIComponent(searchVal)}`)
       .then(res => {
         // axiosAdminClient response interceptor returns data field directly
-        setTransactions(res.transactions || []);
+        setTransactions(res.data || []);
         setTotalPages(res.totalPages || 1);
-        setTotalCount(res.count || 0);
+        setTotalCount(res.totalItems || 0);
         setLoading(false);
       })
       .catch(err => {
@@ -214,12 +214,37 @@ const BillingView = () => {
                   <td className="px-6 py-4 font-semibold text-admin-text">{trx.id}</td>
                   <td className="px-6 py-4">{trx.user?.email || 'Khách vãng lai'}</td>
                   <td className="px-6 py-4">
-                    <span className="flex items-center gap-1 text-green-500 font-medium">
-                      <ArrowUpRight size={14} /> Mua
-                    </span>
+                    {trx.amount > 0 || trx.type === 'Hệ thống tặng' || trx.package_name === 'Gói Free' ? (
+                      <span className="flex items-center gap-1 text-red-500 font-medium">
+                        ↘ Bán
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-green-500 font-medium">
+                        ↖ Thu
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4 font-medium text-admin-text">{formatVND(trx.amount)}</td>
-                  <td className="px-6 py-4 font-semibold text-green-500">+{trx.credits_added}</td>
+                  <td className="px-6 py-4">
+                    {(() => {
+                      const isServiceUse = trx.type === 'Trừ phí dịch vụ' || trx.package_name === 'Tạo Giọng Nói' || trx.package_name === 'Tạo Ảnh AI' || trx.package_name === 'Tạo Video';
+                      const isOutflow = trx.amount > 0 || trx.type === 'Hệ thống tặng' || trx.package_name === 'Gói Free';
+                      
+                      if (isOutflow) {
+                        return (
+                          <span className="font-semibold text-red-500">
+                            -{Math.abs(trx.credits_added)}
+                          </span>
+                        );
+                      } else {
+                        return (
+                          <span className="font-semibold text-green-500">
+                            +{Math.abs(trx.credits_added)}
+                          </span>
+                        );
+                      }
+                    })()}
+                  </td>
                   <td className="px-6 py-4">{renderStatusBadge(trx.status)}</td>
                   <td className="px-6 py-4">
                     {trx.createdAt ? new Date(trx.createdAt).toLocaleString('vi-VN') : 'N/A'}

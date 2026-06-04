@@ -1,5 +1,13 @@
 const bcrypt = require('bcrypt');
-const { User, Job, Package, Transaction, ImageAnalysis, sequelize } = require('../models');
+const { User, Job, ImageJob, Package, Transaction, ImageAnalysis, sequelize } = require('../models');
+
+// Dynamically expand the Sequelize model enum definition for transaction status to allow 'Expired'
+if (Transaction && Transaction.rawAttributes && Transaction.rawAttributes.status) {
+  Transaction.rawAttributes.status.values = ['pending', 'success', 'failed', 'Expired'];
+  if (Transaction.rawAttributes.status.type) {
+    Transaction.rawAttributes.status.type.values = ['pending', 'success', 'failed', 'Expired'];
+  }
+}
 
 /**
  * GET /api/user/profile
@@ -40,19 +48,33 @@ const getHistory = async (req, res) => {
       order: [['id', 'DESC']]
     });
 
-    // 2. Quét dữ liệu phân tích ảnh Mắt Thần AI
+    // 2. Quét dữ liệu Tạo Ảnh AI từ bảng image_jobs mới
+    const imageJobs = await ImageJob.findAll({
+      where: { userId },
+      order: [['id', 'DESC']]
+    });
+
+    // 3. Quét dữ liệu phân tích ảnh Mắt Thần AI
     const analyses = await ImageAnalysis.findAll({
       where: { user_id: userId, status: 'success' },
       order: [['id', 'DESC']]
     });
 
-    // 3. Map thuộc tính định danh & gộp mảng
     const mappedJobs = jobs.map(job => {
       const jobPlain = job.get({ plain: true });
       const isVideo = jobPlain.type === 'Video' || jobPlain.type === 'video' || jobPlain.type === 'render_task';
+      const isImage = jobPlain.type === 'Image' || jobPlain.type === 'image';
       return {
         ...jobPlain,
-        type: isVideo ? 'video' : 'audio'
+        type: isImage ? 'image' : (isVideo ? 'video' : 'audio')
+      };
+    });
+
+    const mappedImageJobs = imageJobs.map(job => {
+      const jobPlain = job.get({ plain: true });
+      return {
+        ...jobPlain,
+        type: 'image'
       };
     });
 
@@ -64,8 +86,8 @@ const getHistory = async (req, res) => {
       };
     });
 
-    // Gộp cả 3 loại dữ liệu
-    const combinedHistory = [...mappedJobs, ...mappedAnalyses];
+    // Gộp cả 4 loại dữ liệu
+    const combinedHistory = [...mappedJobs, ...mappedImageJobs, ...mappedAnalyses];
 
     // Sắp xếp theo thời gian createdAt mới nhất đến cũ nhất
     combinedHistory.sort((a, b) => {
@@ -125,24 +147,6 @@ const createJob = async (req, res) => {
       return res.status(400).json({ message: 'Số dư tín dụng (credits) của bạn không đủ để thực hiện tác vụ này.' });
     }
 
-    // Atomically deduct credits
-    await user.decrement('credits', { by: cost });
-    await user.reload();
-
-    // Sinh mã giao dịch tự động dạng TRX- kết hợp chuỗi ngẫu nhiên
-    const transactionId = 'TRX-' + Date.now().toString().slice(-6) + Math.floor(100 + Math.random() * 900);
-
-    // Tạo bản ghi giao dịch trừ phí dịch vụ
-    await Transaction.create({
-      id: transactionId,
-      userId: user.id,
-      package_name: type === 'Video' ? 'Tạo Video' : 'Tạo Giọng Nói',
-      amount: 0,
-      credits_added: -cost,
-      status: 'success',
-      type: 'Trừ phí dịch vụ'
-    });
-
     if (type === 'Voice') {
       const voiceService = require('../services/voice.service');
       const fs = require('fs');
@@ -157,7 +161,32 @@ const createJob = async (req, res) => {
       const pitch = meta?.pitch !== undefined ? meta.pitch : 0;
 
       const tempId = Date.now() + '_' + Math.floor(Math.random() * 1000);
-      const relativeFilePath = await voiceService.textToSpeech(textToSynthesize, targetVoice, tempId, speed, pitch);
+      let relativeFilePath;
+      try {
+        relativeFilePath = await voiceService.textToSpeech(textToSynthesize, targetVoice, tempId, speed, pitch);
+      } catch (error) {
+        console.error(`[USER CONTROLLER] Voice job TTS failed:`, error.message);
+
+        // Ghi trực tiếp vào Database bảng notifications khi thất bại
+        try {
+          const { Notification } = require('../models');
+          const notificationEmitter = require('../utils/notificationEmitter');
+
+          const failNotif = await Notification.create({
+            userId: user.id,
+            title: 'Lỗi xử lý tác vụ',
+            message: `Lỗi kết xuất âm thanh: ${error.message}`,
+            type: 'error',
+            is_read: false
+          });
+          console.log('[DB DEBUG] Đã insert thành công 1 dòng thất bại vào bảng notifications. ID:', failNotif.id);
+          notificationEmitter.emit('send_notification', failNotif);
+        } catch (notifErr) {
+          console.error('[USER CONTROLLER] Explicit failure notification error:', notifErr.message);
+        }
+
+        return res.status(400).json({ success: false, message: error.message || "Lỗi kết xuất âm thanh" });
+      }
 
       const dirPath = path.join(__dirname, '../../public/uploads/voices');
       const filePath = path.join(dirPath, `voice_job_${tempId}.mp3`);
@@ -167,11 +196,66 @@ const createJob = async (req, res) => {
           if (stats.size === 0) {
               console.error(`❌ [TTS ERROR] Phát hiện file sinh ra bị rỗng (0 bytes): ${filePath}`);
               try { fs.unlinkSync(filePath); } catch (e) { console.error("Không thể xóa file rỗng:", e); } // Xóa file lỗi tránh rác ổ đĩa
+
+              // Ghi trực tiếp vào Database bảng notifications khi thất bại
+              try {
+                const { Notification } = require('../models');
+                const notificationEmitter = require('../utils/notificationEmitter');
+
+                const failNotif = await Notification.create({
+                  userId: user.id,
+                  title: 'Lỗi xử lý tác vụ',
+                  message: `Lỗi kết xuất âm thanh: Dịch vụ giọng đọc AI đang quá tải hoặc văn bản không hợp lệ.`,
+                  type: 'error',
+                  is_read: false
+                });
+                console.log('[DB DEBUG] Đã insert thành công 1 dòng thất bại vào bảng notifications. ID:', failNotif.id);
+                notificationEmitter.emit('send_notification', failNotif);
+              } catch (notifErr) {
+                console.error('[USER CONTROLLER] Explicit failure notification error:', notifErr.message);
+              }
+
               return res.status(400).json({ success: false, message: "Văn bản nhập vào không hợp lệ hoặc dịch vụ giọng đọc AI đang quá tải. Vui lòng kiểm tra lại kịch bản của bạn!" });
           }
       } else {
+          // Ghi trực tiếp vào Database bảng notifications khi thất bại
+          try {
+            const { Notification } = require('../models');
+            const notificationEmitter = require('../utils/notificationEmitter');
+
+            const failNotif = await Notification.create({
+              userId: user.id,
+              title: 'Lỗi xử lý tác vụ',
+              message: `Không tìm thấy file âm thanh vật lý sau khi khởi tạo!`,
+              type: 'error',
+              is_read: false
+            });
+            console.log('[DB DEBUG] Đã insert thành công 1 dòng thất bại vào bảng notifications. ID:', failNotif.id);
+            notificationEmitter.emit('send_notification', failNotif);
+          } catch (notifErr) {
+            console.error('[USER CONTROLLER] Explicit failure notification error:', notifErr.message);
+          }
+
           return res.status(500).json({ success: false, message: "Không tìm thấy file âm thanh vật lý sau khi khởi tạo!" });
       }
+
+      // ONLY DEDUCT AND WRITE TRANSACTION LEDGER ON SUCCESS
+      await user.decrement('credits', { by: cost });
+      await user.reload();
+
+      // Sinh mã giao dịch tự động dạng TRX- kết hợp chuỗi ngẫu nhiên
+      const transactionId = 'TRX-' + Date.now().toString().slice(-6) + Math.floor(100 + Math.random() * 900);
+
+      // Tạo bản ghi giao dịch trừ phí dịch vụ
+      await Transaction.create({
+        id: transactionId,
+        userId: user.id,
+        package_name: 'Tạo Giọng Nói',
+        amount: 0,
+        credits_added: -cost,
+        status: 'success',
+        type: 'Trừ phí dịch vụ'
+      });
 
       // Create render job in the DB (MySQL INSERT)
       const jobName = name || 'Tạo Giọng Nói';
@@ -207,6 +291,27 @@ const createJob = async (req, res) => {
       } catch (e) {}
       await job.save();
 
+      // Ghi trực tiếp vào Database bảng notifications khi thành công
+      try {
+        const { Notification } = require('../models');
+        const notificationEmitter = require('../utils/notificationEmitter');
+
+        const newNotif = await Notification.create({
+          userId: user.id, // ID của user sở hữu tác vụ âm thanh này
+          title: 'Tạo âm thanh thành công',
+          message: `Giọng nói bản nháp của bạn đã được khởi tạo thành công!`,
+          type: 'info',
+          is_read: false
+        });
+        console.log('[DB DEBUG] Đã insert thành công 1 dòng vào bảng notifications. ID:', newNotif.id);
+
+        // Bắn tín hiệu real-time sang luồng SSE qua Emitter
+        notificationEmitter.emit('send_notification', newNotif);
+        console.log('[SSE DEBUG] Đã emit sự kiện send_notification cho User:', user.id);
+      } catch (notifErr) {
+        console.error('[USER CONTROLLER] Explicit notification insert error:', notifErr.message);
+      }
+
       return res.status(201).json({
         message: 'Tạo tác vụ thành công, tiến trình đang được xử lý.',
         job,
@@ -214,7 +319,7 @@ const createJob = async (req, res) => {
       });
     }
 
-    // Create standard video render job in the DB
+    // Create standard video render job in the DB (instantly Pending)
     const jobName = name || 'Tạo Video';
     const job = await Job.create({
       userId: user.id,
@@ -227,6 +332,22 @@ const createJob = async (req, res) => {
       credits_used: cost
     });
 
+    // Deduct credits and log transaction for Video creation (which succeeds immediately)
+    await user.decrement('credits', { by: cost });
+    await user.reload();
+
+    const transactionId = 'TRX-' + Date.now().toString().slice(-6) + Math.floor(100 + Math.random() * 900);
+
+    await Transaction.create({
+      id: transactionId,
+      userId: user.id,
+      package_name: 'Tạo Video',
+      amount: 0,
+      credits_added: -cost,
+      status: 'success',
+      type: 'Trừ phí dịch vụ'
+    });
+
     return res.status(201).json({
       message: 'Tạo tác vụ thành công, tiến trình đang được xử lý.',
       job,
@@ -234,8 +355,8 @@ const createJob = async (req, res) => {
     });
   } catch (err) {
     console.error('[USER CONTROLLER] createJob error:', err.message);
-    if (err.message === "Văn bản nhập vào không hợp lệ hoặc dịch vụ giọng đọc AI đang quá tải. Vui lòng kiểm tra lại kịch bản của bạn!") {
-      return res.status(400).json({ success: false, message: err.message });
+    if (err.message === "Lỗi kết xuất âm thanh" || err.message === "Văn bản nhập vào không hợp lệ hoặc dịch vụ giọng đọc AI đang quá tải. Vui lòng kiểm tra lại kịch bản của bạn!") {
+      return res.status(400).json({ success: false, message: "Văn bản nhập vào không hợp lệ hoặc dịch vụ giọng đọc AI đang quá tải. Vui lòng kiểm tra lại kịch bản của bạn!" });
     }
     return res.status(500).json({ message: 'Lỗi hệ thống khi tạo tác vụ.' });
   }
@@ -492,16 +613,23 @@ const receiveWebhook = async (req, res) => {
   const transactionId = match[0].toUpperCase();
 
   try {
-    // 3. Data Integrity check
-    const transaction = await Transaction.findByPk(transactionId);
-    if (!transaction) {
-      console.error('[WEBHOOK ERROR] Transaction not found in database:', transactionId);
-      return res.status(404).json({ success: false, message: 'Giao dịch không tồn tại trên hệ thống.' });
-    }
+    const { Op } = require('sequelize');
+    // 3. Data Integrity check - Chấp nhận cả đơn 'pending' và 'Expired' (Soft-Expired & Resurrection Pattern)
+    const transaction = await Transaction.findOne({
+      where: {
+        id: transactionId,
+        status: { [Op.in]: ['pending', 'Expired'] }
+      }
+    });
 
-    // Checking duplication
-    if (transaction.status === 'success') {
-      return res.status(200).json({ success: true, message: 'Giao dịch này đã được xử lý từ trước' });
+    if (!transaction) {
+      // Kiểm tra xem đơn đã được xử lý thành công trước đó chưa
+      const existingTx = await Transaction.findByPk(transactionId);
+      if (existingTx && (existingTx.status === 'success' || existingTx.status === 'Completed')) {
+        return res.status(200).json({ success: true, message: 'Giao dịch này đã được xử lý từ trước' });
+      }
+      console.error('[WEBHOOK ERROR] Transaction not found in database or invalid status:', transactionId);
+      return res.status(404).json({ success: false, message: 'Giao dịch không tồn tại trên hệ thống hoặc đã hoàn tất/thất bại.' });
     }
 
     // Check paid amount
@@ -527,6 +655,26 @@ const receiveWebhook = async (req, res) => {
 
       await t.commit();
       console.log(`[WEBHOOK SUCCESS] Processed transaction ${transactionId} successfully. Added ${transaction.credits_added} credits to user ID ${transaction.userId}.`);
+
+      // Ghi nhận trực tiếp thông báo nạp tiền thành công
+      try {
+        const { Notification } = require('../models');
+        const notificationEmitter = require('../utils/notificationEmitter');
+
+        const newPaymentNotif = await Notification.create({
+          userId: transaction.userId, // ID của user nạp tiền
+          title: 'Nạp tiền thành công ✓',
+          message: `Tài khoản của bạn đã được cộng thêm +${transaction.credits_added} Credits vào số dư.`,
+          type: 'info',
+          is_read: false
+        });
+        // Bắn tín hiệu real-time về client của user qua SSE Gateway
+        notificationEmitter.emit('send_notification', newPaymentNotif);
+        console.log('[PAYMENT SUCCESS] Đã ghi DB và phát thông báo nạp tiền cho User:', transaction.userId);
+      } catch (notifErr) {
+        console.error('[WEBHOOK PAYMENT SUCCESS] Explicit notification insert error:', notifErr.message);
+      }
+
       return res.status(200).json({ success: true, message: 'Webhook processed successfully' });
     } catch (transactionError) {
       await t.rollback();
@@ -545,16 +693,108 @@ const receiveWebhook = async (req, res) => {
 const getTransactions = async (req, res) => {
   try {
     const userId = req.user.id;
-    const transactions = await Transaction.findAll({
+    const page = parseInt(req.query?.page, 10) || 1;
+    const limit = parseInt(req.query?.limit, 10) || 10;
+    const offset = (page - 1) * limit;
+
+    const { count, rows: transactions } = await Transaction.findAndCountAll({
       where: { userId },
+      limit,
+      offset,
       order: [['createdAt', 'DESC']]
     });
-    return res.status(200).json(transactions);
+
+    return res.status(200).json({
+      success: true,
+      data: transactions,
+      totalItems: count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: page
+    });
   } catch (err) {
     console.error('[USER CONTROLLER] getTransactions error:', err.message);
     return res.status(500).json({ message: 'Lỗi hệ thống khi tải lịch sử giao dịch.' });
   }
 };
+
+/**
+ * PUT /api/user/payment/cancel/:id
+ * Cancel/Delete a pending transaction order to prevent garbage data in DB
+ */
+const cancelPayment = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const transaction = await Transaction.findOne({
+      where: {
+        id,
+        userId: req.user.id,
+        status: 'pending'
+      }
+    });
+
+    if (!transaction) {
+      return res.status(400).json({ message: 'Giao dịch không thể hủy' });
+    }
+
+    // Destroy the pending transaction record to clean database garbage
+    await transaction.destroy();
+    console.log(`[PAYMENT CANCEL] Deleted pending transaction ${id} for user ID ${req.user.id}.`);
+    
+    return res.status(200).json({ success: true, message: 'Hủy giao dịch nạp tiền thành công.' });
+  } catch (err) {
+    console.error('[USER CONTROLLER] cancelPayment error:', err.message);
+    return res.status(500).json({ success: false, message: 'Lỗi hệ thống khi hủy đơn nạp tiền.' });
+  }
+};
+
+/**
+ * PATCH /api/user/payment/expire/:id
+ * Soft-expire a pending transaction order instead of hard-deleting it immediately
+ */
+const expirePayment = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const transaction = await Transaction.findOne({
+      where: {
+        id,
+        userId: req.user.id,
+        status: 'pending'
+      }
+    });
+
+    if (!transaction) {
+      return res.status(404).json({ message: 'Không tìm thấy giao dịch hoặc trạng thái giao dịch không phù hợp.' });
+    }
+
+    await transaction.update({ status: 'Expired' });
+    console.log(`[PAYMENT EXPIRE] Soft-expired transaction ${id} for user ID ${req.user.id}.`);
+
+    return res.status(200).json({ success: true, status: 'Expired', message: 'Hủy mềm giao dịch nạp tiền thành công.' });
+  } catch (err) {
+    console.error('[USER CONTROLLER] expirePayment error:', err.message);
+    return res.status(500).json({ success: false, message: 'Lỗi hệ thống khi hủy mềm đơn nạp tiền.' });
+  }
+};
+
+// Background Cleanup Task (Tự động quét rác muộn)
+// Chạy mỗi 15 phút một lần để xóa vĩnh viễn các đơn 'Expired' được tạo trước đó hơn 15 phút
+setInterval(async () => {
+  try {
+    const { Op } = require('sequelize');
+    const timeThreshold = new Date(Date.now() - 15 * 60 * 1000); 
+    const deletedCount = await Transaction.destroy({
+      where: {
+        status: 'Expired',
+        createdAt: { [Op.lt]: timeThreshold }
+      }
+    });
+    if (deletedCount > 0) {
+      console.log(`[CLEANUP TASK] Deleted vĩnh viễn ${deletedCount} đơn hàng 'Expired' đã tạo quá 15 phút.`);
+    }
+  } catch (err) {
+    console.error('[CLEANUP TASK ERROR] Lỗi khi dọn dẹp đơn hết hạn muộn:', err.message);
+  }
+}, 15 * 60 * 1000);
 
 module.exports = {
   getProfile,
@@ -568,5 +808,7 @@ module.exports = {
   createPayment,
   checkPaymentStatus,
   receiveWebhook,
-  getTransactions
+  getTransactions,
+  cancelPayment,
+  expirePayment
 };

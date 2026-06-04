@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useOutletContext } from 'react-router-dom';
 import { User, KeyRound, CreditCard, Save, Lock, X, Coins, History, Camera, Trash2, CheckCircle2, Sliders, Eye, EyeOff } from 'lucide-react';
 import axiosClient from '../../../services/axiosClient';
 import { useAuth } from '../../../hooks/useAuth';
@@ -48,7 +48,9 @@ const packageMeta = {
   }
 };
 
-export default function SettingsView({ setUserName, setAvatarImage, setCredits, credits }) {
+export default function SettingsView() {
+  const dashboardState = useOutletContext();
+  const { setUserName, setAvatarImage, setCredits, credits } = dashboardState;
   const navigate = useNavigate();
   const location = useLocation();
   const fileInputRef = useRef(null);
@@ -85,12 +87,48 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
   const [passwordMsg, setPasswordMsg] = useState('');
 
   const [transactions, setTransactions] = useState([]);
-
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const limitPerPage = 10;
   const [packages, setPackages] = useState([]);
-  
-  // Modal states for VietQR dynamically loaded payments
+  const [timeLeft, setTimeLeft] = useState(60);
+
+  // Custom dialog state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTransaction, setActiveTransaction] = useState(null);
+
+  const fetchTransactions = async (page = currentPage) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const transRes = await axiosClient.get(`/user/transactions?page=${page}&limit=${limitPerPage}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      if (transRes && transRes.data && Array.isArray(transRes.data)) {
+        const mapped = transRes.data.map(tx => ({
+          id: tx.id,
+          package: tx.package_name || 'Gói cước',
+          package_name: tx.package_name,
+          type: tx.type || (tx.amount > 0 ? 'Thanh toán' : 'Hệ thống tặng'),
+          amount: tx.amount,
+          amount_formatted: new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(tx.amount).replace('₫', 'đ'),
+          credits_added: tx.credits_added,
+          status: (tx.status === 'success' || tx.status === 'Completed') ? 'Thành công' : (tx.status === 'pending' ? 'Chờ xử lý' : (tx.status === 'Expired' ? 'Hết hạn' : 'Thất bại')),
+          date: new Date(tx.createdAt).toLocaleString('vi-VN')
+        }));
+        setTransactions(mapped);
+        setTotalPages(transRes.totalPages || 1);
+      } else {
+        setTransactions([]);
+        setTotalPages(1);
+      }
+    } catch (err) {
+      console.error('[SETTINGS] Error fetching transactions:', err);
+      setTransactions([]);
+      setTotalPages(1);
+    }
+  };
 
   // Load profile data, dynamic packages and transactions history on mount
   useEffect(() => {
@@ -110,27 +148,6 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
       }
 
       try {
-        const transRes = await axiosClient.get('/user/transactions');
-        if (transRes && Array.isArray(transRes)) {
-          const mapped = transRes.map(tx => ({
-            id: tx.id,
-            package: tx.package_name || 'Gói cước',
-            type: tx.type || (tx.amount > 0 ? 'Thanh toán' : 'Hệ thống tặng'),
-            amount: new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(tx.amount).replace('₫', 'đ'),
-            credits: `+${tx.credits_added}`,
-            status: tx.status === 'success' ? 'Thành công' : tx.status === 'pending' ? 'Chờ xử lý' : 'Thất bại',
-            date: new Date(tx.createdAt).toLocaleString('vi-VN')
-          }));
-          setTransactions(mapped);
-        } else {
-          setTransactions([]);
-        }
-      } catch (err) {
-        console.error('[SETTINGS] Error fetching transactions:', err);
-        setTransactions([]);
-      }
-
-      try {
         const pkgRes = await axiosClient.get('/user/packages');
         if (pkgRes && pkgRes.length > 0) {
           setPackages(pkgRes);
@@ -144,6 +161,10 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
 
     fetchUserData();
   }, []);
+
+  useEffect(() => {
+    fetchTransactions(currentPage);
+  }, [currentPage]);
 
   // Polling check for transaction status
   useEffect(() => {
@@ -171,19 +192,7 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
               }
 
               // Also refetch transaction list
-              const transRes = await axiosClient.get('/user/transactions');
-              if (transRes && Array.isArray(transRes)) {
-                const mapped = transRes.map(tx => ({
-                  id: tx.id,
-                  package: tx.package_name || 'Gói cước',
-                  type: tx.type || (tx.amount > 0 ? 'Thanh toán' : 'Hệ thống tặng'),
-                  amount: new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(tx.amount).replace('₫', 'đ'),
-                  credits: `+${tx.credits_added}`,
-                  status: tx.status === 'success' ? 'Thành công' : tx.status === 'pending' ? 'Chờ xử lý' : 'Thất bại',
-                  date: new Date(tx.createdAt).toLocaleString('vi-VN')
-                }));
-                setTransactions(mapped);
-              }
+              fetchTransactions(currentPage);
             } catch (err) {
               console.error('[SETTINGS] Profile refetch error:', err);
             }
@@ -204,7 +213,7 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [isModalOpen, activeTransaction, setCredits, setUserName, setAvatarImage]);
+  }, [isModalOpen, activeTransaction, setCredits, setUserName, setAvatarImage, currentPage]);
 
   // Hash route scroll management
   useEffect(() => {
@@ -216,6 +225,21 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
       }
     }
   }, [location.hash]);
+
+  // Đếm ngược 60 giây cho Modal VietQR
+  useEffect(() => {
+    let timer = null;
+    if (isModalOpen && activeTransaction?.id && timeLeft > 0) {
+      timer = setInterval(() => {
+        setTimeLeft(prev => prev - 1);
+      }, 1000);
+    } else if (timeLeft === 0 && isModalOpen && activeTransaction?.id) {
+      handleSoftExpirePayment();
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [isModalOpen, activeTransaction, timeLeft]);
 
   const handleSaveProfile = async (e) => {
     e.preventDefault();
@@ -364,10 +388,24 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
     if (setAvatarImage) setAvatarImage('');
   };
 
+  const handleSoftExpirePayment = async () => {
+    if (!activeTransaction?.id) return;
+    try {
+      await axiosClient.patch(`/user/payment/expire/${activeTransaction.id}`);
+      fetchTransactions(currentPage);
+    } catch (err) {
+      console.error('[SETTINGS] Error soft-expiring payment:', err);
+    } finally {
+      setIsModalOpen(false);
+      setActiveTransaction(null);
+    }
+  };
+
   const handlePurchasePackage = async (packageId) => {
     try {
       const response = await axiosClient.post('/user/payment/create', { packageId });
       if (response) {
+        setTimeLeft(60); // Reset bộ đếm ngược 60s
         setActiveTransaction({
           id: response.id,
           amount: response.amount,
@@ -636,10 +674,24 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
                   transactions.map((tx) => (
                     <tr key={tx.id} className="hover:bg-[#131316]/50 transition-colors">
                       <td className="!p-2 p-3 font-mono text-zinc-500">{tx.id}</td>
-                      <td className="p-3 font-bold text-zinc-200">{tx.package}</td>
-                      <td className="p-3 text-zinc-400">{tx.type}</td>
-                      <td className="p-3">{tx.amount}</td>
-                      <td className="p-3 text-[#f59e0b] font-black">{tx.credits}</td>
+                      <td className="p-3 font-bold text-zinc-200">{tx.package_name || tx.package}</td>
+                      <td className="p-3">
+                        {tx.package?.includes('Free') || tx.package_name?.includes('Free') || tx.type === 'Gift' || tx.package === 'Gói Free' || tx.package_name === 'Gói Free' || tx.type === 'Hệ thống tặng' ? (
+                          <span className="text-gray-300">Hệ thống tặng</span>
+                        ) : tx.amount > 0 ? (
+                          <span className="text-gray-300">Nạp gói cước</span>
+                        ) : (
+                          <span className="text-gray-400">Trừ phí dịch vụ</span>
+                        )}
+                      </td>
+                      <td className="p-3">{tx.amount_formatted}</td>
+                      <td className="p-3">
+                        {tx.package?.includes('Free') || tx.package_name?.includes('Free') || tx.amount > 0 || tx.type === 'Gift' || tx.package === 'Gói Free' || tx.package_name === 'Gói Free' || tx.type === 'Hệ thống tặng' ? (
+                          <span className="text-green-500 font-bold">+{Math.abs(tx.credits_added)}</span>
+                        ) : (
+                          <span className="text-red-500 font-bold">-{Math.abs(tx.credits_added)}</span>
+                        )}
+                      </td>
                       <td className="p-3">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase inline-block ${
                                 tx.status === 'Thành công' || tx.status === 'success'
@@ -665,6 +717,33 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
               </table>
             </div>
 
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between mt-4 bg-[#18181c] p-3 border-t border-[#222226]/30 text-xs">
+                <span className="text-zinc-400">
+                  Trang <strong className="text-zinc-200">{currentPage}</strong> trên <strong className="text-zinc-200">{totalPages}</strong> (Hiển thị {transactions.length} dòng)
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="px-3.5 py-2 rounded-lg bg-[#111114] border border-[#222226] hover:border-zinc-700 text-zinc-300 hover:text-white font-bold transition-all disabled:opacity-40 disabled:pointer-events-none cursor-pointer select-none"
+                  >
+                    Trước
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-3.5 py-2 rounded-lg bg-[#111114] border border-[#222226] hover:border-zinc-700 text-zinc-300 hover:text-white font-bold transition-all disabled:opacity-40 disabled:pointer-events-none cursor-pointer select-none"
+                  >
+                    Sau
+                  </button>
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
 
@@ -678,7 +757,7 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
           <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-[#18181c] border border-[#222226] text-[#e2e8f0] rounded-xl max-w-md w-full p-6 relative flex flex-col gap-4 text-center select-none shadow-2xl">
               <button
-                  onClick={() => { setIsModalOpen(false); setActiveTransaction(null); }}
+                  onClick={handleSoftExpirePayment}
                   className="absolute right-4 top-4 p-1.5 bg-[#18181c] hover:bg-[#222226] text-zinc-400 hover:text-white rounded-lg transition-all border border-[#222226] cursor-pointer hover:scale-[1.05] active:scale-[0.95]"
               >
                 <X size={16} />
@@ -740,7 +819,7 @@ export default function SettingsView({ setUserName, setAvatarImage, setCredits, 
 
               <div className="flex items-center justify-center gap-3 mt-1 py-1">
                 <div className="animate-spin rounded-full h-4 w-4 border-2 border-t-transparent border-[#f59e0b]"></div>
-                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Hệ thống đang chờ ngân hàng xác nhận chuyển khoản tự động...</span>
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Hệ thống đang chờ ngân hàng xác nhận tự động... ({timeLeft}s)</span>
               </div>
             </div>
           </div>

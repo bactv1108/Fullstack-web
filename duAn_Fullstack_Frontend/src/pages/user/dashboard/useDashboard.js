@@ -184,6 +184,12 @@ export default function useDashboard() {
       if (updateUserState) {
         updateUserState({ credits: res.credits });
       }
+      if (setCredits) {
+        setCredits(res.credits);
+      }
+      setTtsPrompt('');
+      setTtsProgress(100);
+      setTtsGenerating(false);
       loadHistory();
     } catch (err) {
       console.error('[TTS GEN] Failed:', err.message);

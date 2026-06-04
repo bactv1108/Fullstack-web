@@ -3,11 +3,11 @@ import { configService } from '../../services/config.service';
 import { Eye, EyeOff, Save } from 'lucide-react';
 
 const ApiKeysForm = () => {
-  const [openaiApiKey, setOpenaiApiKey] = useState('');
+  const [huggingfaceToken, setHuggingfaceToken] = useState('');
   const [elevenlabsApiKey, setElevenlabsApiKey] = useState('');
   const [geminiApiKey, setGeminiApiKey] = useState('');
 
-  const [show, setShow] = useState({ openai: false, elevenlabs: false, gemini: false });
+  const [show, setShow] = useState({ huggingface: false, elevenlabs: false, gemini: false });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -15,8 +15,11 @@ const ApiKeysForm = () => {
   useEffect(() => {
     configService.getSystemConfigs().then(res => {
       if (res) {
+        // Đảm bảo lấy đúng trường 'huggingface_token' từ API trả về để gán vào state
+        if (res.data && res.data.huggingface_token) {
+          setHuggingfaceToken(res.data.huggingface_token);
+        }
         const data = res.data || res;
-        setOpenaiApiKey(data.openai_api_key || '');
         setElevenlabsApiKey(data.elevenlabs_api_key || '');
         setGeminiApiKey(data.gemini_api_key || '');
       }
@@ -37,11 +40,12 @@ const ApiKeysForm = () => {
     setErrorMsg('');
 
     try {
-      await configService.updateSystemConfigs({
-        openai_api_key: openaiApiKey,
+      const payload = {
+        gemini_api_key: geminiApiKey,
         elevenlabs_api_key: elevenlabsApiKey,
-        gemini_api_key: geminiApiKey
-      });
+        huggingface_token: huggingfaceToken // BẮT BUỘC gửi đúng tên trường này lên Backend
+      };
+      await configService.updateSystemConfigs(payload);
       setMessage('🎉 Cập nhật khóa API hệ thống thành công!');
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
@@ -71,21 +75,22 @@ const ApiKeysForm = () => {
 
       <form onSubmit={handleSave} className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-admin-text-muted mb-2">OpenAI API Key</label>
+          <label className="block text-sm font-medium text-admin-text-muted mb-2">Hugging Face Token</label>
           <div className="relative">
             <input 
-              type={show.openai ? "text" : "password"} 
-              name="openai"
-              value={openaiApiKey}
-              onChange={(e) => setOpenaiApiKey(e.target.value)}
+              type={show.huggingface ? "text" : "password"} 
+              name="huggingface"
+              value={huggingfaceToken}
+              onChange={(e) => setHuggingfaceToken(e.target.value)}
+              placeholder="hf_..."
               className="admin-input pr-10" 
             />
             <button 
               type="button" 
-              onClick={() => toggleShow('openai')}
+              onClick={() => toggleShow('huggingface')}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-admin-text-muted hover:text-white"
             >
-              {show.openai ? <EyeOff size={18} /> : <Eye size={18} />}
+              {show.huggingface ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
         </div>

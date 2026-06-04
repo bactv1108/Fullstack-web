@@ -395,10 +395,10 @@ const getImageAnalyses = async (req, res) => {
  * Retrieve a paginated array matrix tracking actual transaction logs from the database
  */
 const getAllTransactions = async (req, res) => {
-  const page = parseInt(req.query.page, 10) || 1;
-  const limit = parseInt(req.query.limit, 10) || 10;
+  const page = parseInt(req.query?.page, 10) || 1;
+  const limit = parseInt(req.query?.limit, 10) || 10;
   const offset = (page - 1) * limit;
-  const search = req.query.search || '';
+  const search = req.query?.search || '';
 
   try {
     const { Transaction, User } = require('../models');
@@ -430,9 +430,11 @@ const getAllTransactions = async (req, res) => {
     });
 
     return res.status(200).json({
-      transactions,
-      count,
-      totalPages: Math.ceil(count / limit)
+      success: true,
+      data: transactions,
+      totalItems: count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: page
     });
   } catch (err) {
     console.error('[ADMIN CONTROLLER] getAllTransactions error:', err.message);
@@ -475,6 +477,26 @@ const approveTransactionManually = async (req, res) => {
 
       await t.commit();
       console.log(`[MANUAL APPROVAL SUCCESS] Transaction ${transactionId} approved manually by Admin. Added ${transaction.credits_added} credits to user ID ${transaction.userId}.`);
+
+      // Ghi nhận trực tiếp thông báo nạp tiền thành công
+      try {
+        const { Notification } = require('../models');
+        const notificationEmitter = require('../utils/notificationEmitter');
+
+        const newPaymentNotif = await Notification.create({
+          userId: transaction.userId, // ID của user nạp tiền
+          title: 'Nạp tiền thành công ✓',
+          message: `Tài khoản của bạn đã được cộng thêm +${transaction.credits_added} Credits vào số dư.`,
+          type: 'info',
+          is_read: false
+        });
+        // Bắn tín hiệu real-time về client của user qua SSE Gateway
+        notificationEmitter.emit('send_notification', newPaymentNotif);
+        console.log('[PAYMENT SUCCESS] Đã ghi DB và phát thông báo nạp tiền cho User:', transaction.userId);
+      } catch (notifErr) {
+        console.error('[MANUAL APPROVAL PAYMENT SUCCESS] Explicit notification insert error:', notifErr.message);
+      }
+
       return res.status(200).json({ success: true, message: 'Duyệt đơn hàng thành công!' });
     } catch (transactionError) {
       await t.rollback();

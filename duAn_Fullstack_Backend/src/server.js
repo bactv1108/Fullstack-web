@@ -12,6 +12,8 @@ const systemConfigRouter = require('./routes/systemConfig.route');
 const voiceRouter = require('./routes/voice.route');
 const imageAnalyzerRouter = require('./routes/imageAnalyzer.routes');
 const profileRoutes = require('./routes/profile.routes');
+const notificationRouter = require('./routes/notification.routes');
+const imageRouter = require('./routes/image.routes');
 
 const app = express();
 
@@ -88,6 +90,8 @@ app.use('/api/video', videoRoutes);
 app.use('/api/voices', voiceRouter);
 app.use('/api/image-analyzer', imageAnalyzerRouter);
 app.use('/api/profile', profileRoutes);
+app.use('/api', notificationRouter);
+app.use('/api/image', imageRouter);
 
 const PORT = process.env.PORT || 3000;
 
@@ -95,16 +99,35 @@ const db = require('./models');
 const { startScheduler } = require('./services/scheduler.service');
 
 // Database synchronization executing correctly on startup
-db.sequelize.sync({ force: false }).then(() => {
-  console.log('Database synced successfully.');
-  startScheduler();
-  app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-  });
-}).catch(err => {
-  console.error('Failed to sync database:', err.message);
-  // Start server even if DB connection fails temporarily
-  app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT} (Database sync failed)`);
-  });
-});
+(async () => {
+  try {
+    try {
+      await db.sequelize.query("DROP TABLE IF EXISTS video_jobs");
+      console.log('Obsolete table video_jobs dropped successfully.');
+    } catch (err) {
+      console.warn('Could not drop video_jobs table:', err.message);
+    }
+
+    await db.sequelize.sync({ force: false });
+    console.log('Database synced successfully.');
+
+    try {
+      await db.sequelize.query("ALTER TABLE jobs MODIFY COLUMN type ENUM('Video', 'Voice', 'Image') NOT NULL DEFAULT 'Video'");
+      console.log('ENUM column for jobs.type altered to include Image.');
+    } catch (err) {
+      console.warn('Could not alter jobs.type ENUM column, it may already be updated:', err.message);
+    }
+
+    startScheduler();
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+    });
+  } catch (err) {
+    console.error('Failed to sync database:', err.message);
+    // Start server even if DB connection fails temporarily
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT} (Database sync failed)`);
+    });
+  }
+})();
+

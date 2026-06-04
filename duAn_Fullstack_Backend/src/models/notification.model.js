@@ -8,25 +8,25 @@ module.exports = (sequelize) => {
       primaryKey: true,
       comment: 'Khóa chính tự động tăng'
     },
-    user_id: {
+    userId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       field: 'user_id',
-      comment: 'ID người dùng nhận thông báo'
+      comment: 'ID người dùng nhận thông báo (null là broadcast)'
     },
     title: {
       type: DataTypes.STRING(255),
       allowNull: false,
       comment: 'Tiêu đề thông báo'
     },
-    content: {
+    message: {
       type: DataTypes.TEXT,
       allowNull: false,
-      comment: 'Nội dung thông báo'
+      comment: 'Nội dung chi tiết'
     },
     type: {
-      type: DataTypes.STRING(50),
-      defaultValue: 'system',
+      type: DataTypes.ENUM('info', 'warning', 'error'),
+      defaultValue: 'info',
       allowNull: false,
       comment: 'Phân loại thông báo'
     },

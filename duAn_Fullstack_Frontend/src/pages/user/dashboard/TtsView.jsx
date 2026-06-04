@@ -1,51 +1,51 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { Mic, Volume2, VolumeX, RefreshCw, Play, Pause, Download, Trash2 } from 'lucide-react';
 import axiosClient from '../../../services/axiosClient';
 
-export default function TtsView({
-  ttsPrompt,
-  setTtsPrompt,
-  ttsLang,
-  setTtsLang,
-  ttsVoice,
-  setTtsVoice,
-  ttsSpeed,
-  setTtsSpeed,
-  ttsPitch,
-  setTtsPitch,
-  ttsVolume,
-  setTtsVolume,
-  ttsGenerating,
-  ttsProgress,
-  ttsPlaying,
-  setTtsPlaying,
-  ttsTab,
-  setTtsTab,
-  isTtsMuted,
-  setIsTtsMuted,
-  waveBars,
-  handleGenerateTts,
-  historyList = [],
-  setCurrentMenu,
-  handleDeleteHistory,
-  triggerDeleteHistory,
-  handleMouseMove,
-  handleDownloadAsset,
-  previewJob,
-  setPreviewJob,
-  toast,
-
-  // Centralized Audio States
-  activeAudioUrl,
-  setActiveAudioUrl,
-  activeJobId,
-  setActiveJobId,
-  audioCurrentTime,
-  setAudioCurrentTime,
-  audioDuration,
-  setAudioDuration
-}) {
+export default function TtsView() {
+  const dashboardState = useOutletContext();
+  const {
+    ttsPrompt,
+    setTtsPrompt,
+    ttsLang,
+    setTtsLang,
+    ttsVoice,
+    setTtsVoice,
+    ttsSpeed,
+    setTtsSpeed,
+    ttsPitch,
+    setTtsPitch,
+    ttsVolume,
+    setTtsVolume,
+    ttsGenerating,
+    ttsProgress,
+    ttsPlaying,
+    setTtsPlaying,
+    ttsTab,
+    setTtsTab,
+    isTtsMuted,
+    setIsTtsMuted,
+    waveBars,
+    handleGenerateTts,
+    historyList = [],
+    setCurrentMenu,
+    handleDeleteHistory,
+    triggerDeleteHistory,
+    handleMouseMove,
+    handleDownloadAsset,
+    previewJob,
+    setPreviewJob,
+    toast,
+    activeAudioUrl,
+    setActiveAudioUrl,
+    activeJobId,
+    setActiveJobId,
+    audioCurrentTime,
+    setAudioCurrentTime,
+    audioDuration,
+    setAudioDuration
+  } = dashboardState;
   const navigate = useNavigate();
   const ttsTextareaRef = useRef(null);
   const audioRef = useRef(null);
@@ -787,7 +787,7 @@ export default function TtsView({
                 type="button" 
                 onClick={() => {
                   if (setCurrentMenu) setCurrentMenu('history');
-                  navigate('/dashboard?tab=audio');
+                  navigate('/dashboard/history?tab=audio');
                 }}
                 className="text-xs font-bold text-[#f59e0b] hover:text-amber-400 transition-colors cursor-pointer bg-transparent border-none"
               >

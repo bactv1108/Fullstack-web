@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Video, Mic, Eye, Clock, Settings, X } from 'lucide-react';
+import { Image, Mic, Eye, Clock, Settings, X } from 'lucide-react';
 
 export default function Sidebar({ 
     currentMenu = 'video', 
@@ -12,10 +12,10 @@ export default function Sidebar({
     const navigate = useNavigate();
 
     const menus = [
-        { id: 'video', label: 'Tạo Video', icon: Video, path: '/dashboard' },
-        { id: 'tts', label: 'Tạo Giọng Nói', icon: Mic, path: '/dashboard' },
-        { id: 'image-analyzer', label: 'Mắt Thần AI', icon: Eye, path: '/dashboard/mat-than' },
-        { id: 'history', label: 'Lịch sử', icon: Clock, path: '/dashboard' },
+        { id: 'image-generator', label: 'Tạo Ảnh AI', icon: Image, path: '/dashboard/image-generator' },
+        { id: 'tts', label: 'Tạo Giọng Nói', icon: Mic, path: '/dashboard/tts' },
+        { id: 'image-analyzer', label: 'Mắt Thần AI', icon: Eye, path: '/dashboard/image-analyzer' },
+        { id: 'history', label: 'Lịch sử', icon: Clock, path: '/dashboard/history' },
         { id: 'settings', label: 'Cài đặt', icon: Settings, path: '/dashboard/settings' },
     ];
 

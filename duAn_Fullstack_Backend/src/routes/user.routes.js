@@ -12,6 +12,8 @@ router.post('/payment/webhook', userController.receiveWebhook);
 // Payment endpoints (Protected)
 router.post('/payment/create', authenticateJWT, userController.createPayment);
 router.get('/payment/status/:id', authenticateJWT, userController.checkPaymentStatus);
+router.put('/payment/cancel/:id', authenticateJWT, userController.cancelPayment);
+router.patch('/payment/expire/:id', authenticateJWT, userController.expirePayment);
 
 // Apply token authentication middleware for the remaining routes
 router.use(authenticateJWT);

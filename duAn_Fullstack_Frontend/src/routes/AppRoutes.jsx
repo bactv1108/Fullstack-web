@@ -12,6 +12,13 @@ const AdminDashboard = lazy(() => import('../pages/admin/AdminDashboard'));
 const ResetPassword = lazy(() => import('../pages/auth/ResetPassword'));
 const MatThanDetailView = lazy(() => import('../pages/user/dashboard/MatThanDetailView'));
 
+// Sub-views under User Dashboard
+const ImageView = lazy(() => import('../pages/user/dashboard/ImageView'));
+const TtsView = lazy(() => import('../pages/user/dashboard/TtsView'));
+const ImageAnalyzerView = lazy(() => import('../pages/user/dashboard/ImageAnalyzerView'));
+const HistoryView = lazy(() => import('../pages/user/dashboard/HistoryView'));
+const SettingsView = lazy(() => import('../pages/user/dashboard/SettingsView'));
+
 const LoadingFallback = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
     <div className="loader">Đang tải...</div>
@@ -47,12 +54,16 @@ const AppRoutes = () => {
         {/* Protected Routes cho User */}
         <Route element={<ProtectedRoute />}>
           <Route element={<MainLayout />}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/dashboard/image-analyzer" element={<Dashboard />} />
-            <Route path="/dashboard/mat-than" element={<Dashboard />} />
+            <Route path="/dashboard" element={<Dashboard />}>
+              <Route index element={<Navigate to="image-generator" replace />} />
+              <Route path="image-generator" element={<ImageView />} />
+              <Route path="tts" element={<TtsView />} />
+              <Route path="image-analyzer" element={<ImageAnalyzerView />} />
+              <Route path="mat-than" element={<Navigate to="/dashboard/image-analyzer" replace />} />
+              <Route path="history" element={<HistoryView />} />
+              <Route path="settings" element={<SettingsView />} />
+            </Route>
             <Route path="/dashboard/mat-than/detail/:id" element={<MatThanDetailView />} />
-            <Route path="/dashboard/settings" element={<Dashboard />} />
-            {/* Các sub-routes của dashboard có thể thêm ở đây */}
           </Route>
         </Route>
 

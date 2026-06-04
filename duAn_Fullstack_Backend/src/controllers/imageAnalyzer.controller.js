@@ -99,6 +99,25 @@ const analyzeProductImage = async (req, res) => {
       output_tokens: outputTokensCount
     });
 
+    // Explicit notification insertion on success
+    try {
+      const { Notification } = require('../models');
+      const notificationEmitter = require('../utils/notificationEmitter');
+
+      const mtSuccessNotif = await Notification.create({
+        userId: userId, // req.user.id
+        title: 'Mắt thần AI hoàn tất ✓',
+        message: 'Tác vụ phân tích hình ảnh bằng Mắt thần AI của bạn đã hoàn thành.',
+        type: 'info',
+        is_read: false
+      });
+      // Bắn tín hiệu real-time về client của user qua SSE Gateway
+      notificationEmitter.emit('send_notification', mtSuccessNotif);
+      console.log('[MAT THAN SUCCESS] Đã ghi DB và phát thông báo phân tích ảnh thành công.');
+    } catch (notifErr) {
+      console.error('[MAT THAN SUCCESS] Explicit notification insert error:', notifErr.message);
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Phân tích hình ảnh sản phẩm thành công! (Đã trừ 20 credits)',

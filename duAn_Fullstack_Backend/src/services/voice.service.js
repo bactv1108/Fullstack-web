@@ -138,7 +138,7 @@ class VoiceService {
 
       if (!success) {
         console.error(`❌ [TTS ERROR] All ${maxAttempts} attempts failed or produced 0-byte file for job #${jobId}`);
-        throw new Error("Văn bản nhập vào không hợp lệ hoặc dịch vụ giọng đọc AI đang quá tải. Vui lòng kiểm tra lại kịch bản của bạn!");
+        throw new Error("Lỗi kết xuất âm thanh");
       }
 
       // Write compatibility files
@@ -152,7 +152,9 @@ class VoiceService {
 
       // Database status finalization for standard jobs
       try {
-        const { Job } = require('../models');
+        const { Job, Notification } = require('../models');
+        const notificationEmitter = require('../utils/notificationEmitter');
+
         const job = await Job.findByPk(jobId);
         if (job) {
           job.status = 'Completed';
@@ -164,6 +166,24 @@ class VoiceService {
           } catch (e) {}
           await job.save();
           console.log(`[VOICE SERVICE] Job #${jobId} status finalized to Completed.`);
+
+          // Explicit notification insertion on success
+          try {
+            const newNotif = await Notification.create({
+              userId: job.userId,
+              title: 'Tạo âm thanh thành công',
+              message: `Giọng nói bản nháp của bạn đã được khởi tạo thành công!`,
+              type: 'info',
+              is_read: false
+            });
+            console.log('[DB DEBUG] Đã insert thành công 1 dòng vào bảng notifications. ID:', newNotif.id);
+
+            // Bắn tín hiệu real-time sang luồng SSE qua Emitter
+            notificationEmitter.emit('send_notification', newNotif);
+            console.log('[SSE DEBUG] Đã emit sự kiện send_notification cho User:', job.userId);
+          } catch (notifErr) {
+            console.error('[VOICE SERVICE] Explicit notification insert error:', notifErr.message);
+          }
         }
       } catch (dbErr) {
         console.warn('[VOICE SERVICE] Failed to update job model:', dbErr.message);
@@ -175,3 +195,4 @@ class VoiceService {
 }
 
 module.exports = new VoiceService();
+
