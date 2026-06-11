@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import io from 'socket.io-client';
 import axiosAdminClient from '../../services/axiosAdminClient';
 import { Search, Eye, AlertCircle, FileText, Calendar, Shield, Cpu, RefreshCw, X } from 'lucide-react';
 
@@ -7,6 +8,7 @@ const ImageAnalysesTable = () => {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAnalysis, setSelectedAnalysis] = useState(null);
+  const [socket, setSocket] = useState(null);
 
   const fetchAnalyses = async () => {
     setLoading(true);
@@ -23,6 +25,61 @@ const ImageAnalysesTable = () => {
   useEffect(() => {
     fetchAnalyses();
   }, []);
+
+  // Set up Socket.io connection for real-time updates
+  // Empty deps [] so socket is created ONCE — no reconnect on modal open/close
+  useEffect(() => {
+    // Connect to backend Socket.io server
+    const socketInstance = io('http://localhost:3000', {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: Infinity
+    });
+
+    // Listen for image analysis updates
+    socketInstance.on('image_analysis:updated', (updatedData) => {
+      console.log('[SOCKET.IO] Received image_analysis:updated:', updatedData);
+      
+      // Update the state: replace existing record OR prepend if new
+      setAnalyses(prevAnalyses => {
+        const exists = prevAnalyses.some(item => item.id === updatedData.id);
+        if (exists) {
+          return prevAnalyses.map(item => 
+            item.id === updatedData.id ? updatedData : item
+          );
+        } else {
+          // New record arrived before table refreshed — prepend it
+          return [updatedData, ...prevAnalyses];
+        }
+      });
+
+      // If the updated record is currently selected, update the modal
+      // Use functional setter to avoid stale closure on selectedAnalysis
+      setSelectedAnalysis(prev => {
+        if (prev && prev.id === updatedData.id) return updatedData;
+        return prev;
+      });
+
+      // Log the update for debugging
+      console.log(`[ADMIN] Analysis ID ${updatedData.id} status updated to: ${updatedData.status}`);
+    });
+
+    // Clean up connection on unmount
+    socketInstance.on('disconnect', () => {
+      console.log('[SOCKET.IO] Disconnected from server');
+    });
+
+    socketInstance.on('connect', () => {
+      console.log('[SOCKET.IO] Connected to server');
+    });
+
+    setSocket(socketInstance);
+
+    return () => {
+      socketInstance.disconnect();
+    };
+  }, []); // ← Empty deps: socket created ONCE, no reconnect on every modal open
 
   const filteredAnalyses = analyses.filter(item => 
     (item.image_name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 

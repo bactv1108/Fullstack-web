@@ -19,7 +19,7 @@ const formatTime = (dateString) => {
     return `${diffDay} ngày trước`;
 };
 
-export default function Header({ credits = 140, toggleSidebar, avatar, name, setPreviewJob }) {
+export default function Header({ credits = 140, toggleSidebar, avatar, name, setPreviewJob, loadHistory }) {
     const navigate = useNavigate();
     const [isNotifyOpen, setIsNotifyOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
@@ -75,6 +75,15 @@ export default function Header({ credits = 140, toggleSidebar, avatar, name, set
                                         return [newNotif, ...prev].slice(0, 10);
                                     });
                                     setUnreadCount(c => c + 1);
+                                    
+                                    // Refresh global history and user profile when a new SSE notification is received
+                                    if (typeof loadHistory === 'function') {
+                                        loadHistory();
+                                    }
+
+                                    // Dispatch custom event for components listening to real-time notifications (e.g. ImageView gallery)
+                                    const event = new CustomEvent('sse-notification', { detail: newNotif });
+                                    window.dispatchEvent(event);
                                 }
                             } catch (e) {
                                 console.error('Failed to parse SSE notification:', e);
@@ -110,6 +119,7 @@ export default function Header({ credits = 140, toggleSidebar, avatar, name, set
         });
 
         return () => {
+            console.log("[SSE CLEANUP] Đóng kết nối để tránh lag trình duyệt");
             isMounted = false;
             controller.abort();
             if (reconnectTimeout) {
@@ -145,12 +155,13 @@ export default function Header({ credits = 140, toggleSidebar, avatar, name, set
     const mapJobToPreview = (job) => {
         const isVideo = job.type === 'Video' || job.type === 'video' || job.type === 'render_task';
         const isAnalysis = job.type === 'analysis';
+        const isImage = job.type === 'Image' || job.type === 'image';
         return {
             id: job.id,
-            title: isAnalysis ? job.image_name : job.name,
+            title: isAnalysis ? job.image_name : (isImage ? 'Tạo Ảnh AI' : job.name),
             sub: isAnalysis ? job.prompt_output : job.prompt,
             time: new Date(job.createdAt || job.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date(job.createdAt || job.created_at).toLocaleDateString('vi-VN'),
-            type: isVideo ? 'video' : isAnalysis ? 'analysis' : 'tts',
+            type: isVideo ? 'video' : isAnalysis ? 'analysis' : isImage ? 'image' : 'tts',
             status: job.status,
             progress: job.progress,
             output_url: job.output_url,
@@ -158,7 +169,10 @@ export default function Header({ credits = 140, toggleSidebar, avatar, name, set
             image_name: job.image_name,
             prompt_output: job.prompt_output,
             createdAt: job.createdAt || job.created_at,
-            ratio: job.meta_data?.aspectRatio === '916' ? '9:16 TikTok' : '16:9 Ngang',
+            ratio: isImage
+                ? (job.aspectRatio === '9:16' || job.aspect_ratio === '9:16' ? '9:16 Dọc' :
+                   job.aspectRatio === '16:9' || job.aspect_ratio === '16:9' ? '16:9 Ngang' : '1:1 Vuông')
+                : (job.meta_data?.aspectRatio === '916' ? '9:16 TikTok' : '16:9 Ngang'),
             lang: job.meta_data?.lang === 'vi' ? 'Tiếng Việt' : job.meta_data?.lang === 'en' ? 'Tiếng Anh' : 'Tiếng Nhật',
             voice: job.meta_data?.voice === 'vi-VN-NamMinhNeural' || job.meta_data?.voice === 'vi-male-1' ? 'Adam (Nam)' :
                    job.meta_data?.voice === 'vi-VN-HoaiMyNeural' || job.meta_data?.voice === 'vi-female-1' ? 'Bella (Nữ)' :
@@ -277,6 +291,39 @@ export default function Header({ credits = 140, toggleSidebar, avatar, name, set
                 }
             } catch (err) {
                 console.error('Failed to fetch history for audio preview:', err);
+            } finally {
+                setIsNotifLoading(false);
+            }
+            return;
+        }
+
+        // Case 5: Tạo Ảnh AI
+        const isImage = titleLower.includes('ảnh') || messageLower.includes('ảnh') ||
+                        titleLower.includes('image') || messageLower.includes('image') ||
+                        titleLower.includes('vẽ') || messageLower.includes('vẽ');
+        if (isImage) {
+            setIsNotifLoading(true);
+            try {
+                const data = await axiosClient.get('/user/history');
+                if (Array.isArray(data)) {
+                    let job = null;
+                    if (entityId) {
+                        job = data.find(j => j.id === entityId);
+                    }
+                    if (!job) {
+                        // Fallback to latest image job
+                        const imageJobs = data.filter(j => j.type === 'Image' || j.type === 'image');
+                        if (imageJobs.length > 0) {
+                            imageJobs.sort((a, b) => new Date(b.createdAt || b.created_at) - new Date(a.createdAt || a.created_at));
+                            job = imageJobs[0];
+                        }
+                    }
+                    if (job && typeof setPreviewJob === 'function') {
+                        setPreviewJob(mapJobToPreview(job));
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to fetch history for image preview:', err);
             } finally {
                 setIsNotifLoading(false);
             }

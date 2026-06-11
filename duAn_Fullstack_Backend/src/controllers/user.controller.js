@@ -1,6 +1,13 @@
 const bcrypt = require('bcrypt');
 const { User, Job, ImageJob, Package, Transaction, ImageAnalysis, sequelize } = require('../models');
 
+const toBoolean = (value) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value === 'string') return ['1', 'true', 'yes'].includes(value.toLowerCase());
+  return false;
+};
+
 // Dynamically expand the Sequelize model enum definition for transaction status to allow 'Expired'
 if (Transaction && Transaction.rawAttributes && Transaction.rawAttributes.status) {
   Transaction.rawAttributes.status.values = ['pending', 'success', 'failed', 'Expired'];
@@ -23,10 +30,13 @@ const getProfile = async (req, res) => {
       id: user.id,
       name: user.name,
       email: user.email,
+      phone: user.phone,
       role: user.role,
       credits: user.credits,
       status: user.status,
-      avatar: user.avatar
+      avatar: user.avatar,
+      is_two_factor_enabled: toBoolean(user.is_two_factor_enabled),
+      theme_preference: user.theme_preference || 'dark'
     });
   } catch (err) {
     console.error('[USER CONTROLLER] getProfile error:', err.message);
@@ -376,7 +386,7 @@ const updateSettings = async (req, res) => {
 
     if (name) user.name = name;
     if (email) user.email = email;
-    if (avatar) user.avatar = avatar;
+    if (avatar !== undefined) user.avatar = avatar;
 
     await user.save();
     return res.status(200).json({
@@ -417,12 +427,12 @@ const deleteJob = async (req, res) => {
 
 /**
  * PUT /api/user/update-profile
- * Update user's fullname and avatar
+ * Update user's profile identity and avatar
  */
 const updateProfile = async (req, res) => {
   const fs = require('fs');
   const path = require('path');
-  const { fullname, avatar: inputAvatar, deleteAvatar } = req.body;
+  const { name, fullname, phone, avatar: inputAvatar, deleteAvatar, theme_preference } = req.body;
   try {
     // 1. Tìm user bằng Sequelize ORM
     const user = await User.findByPk(req.user.id);
@@ -445,9 +455,19 @@ const updateProfile = async (req, res) => {
     };
 
     // 2. Gán giá trị mới nếu có truyền lên, nếu không thì giữ nguyên cũ
-    user.name = fullname !== undefined ? fullname : user.name;
+    const nextName = name !== undefined ? name : fullname;
+    if (nextName !== undefined) {
+      user.name = nextName;
+    }
+    if (phone !== undefined) {
+      user.phone = phone === '' ? null : phone;
+    }
 
-    if (deleteAvatar === 'true') {
+    if (theme_preference !== undefined) {
+      user.theme_preference = theme_preference;
+    }
+
+    if (deleteAvatar === 'true' || inputAvatar === null || inputAvatar === '') {
       deleteOldAvatarFile(user.avatar);
       user.avatar = null;
     } else if (req.file) {
@@ -467,6 +487,7 @@ const updateProfile = async (req, res) => {
         id: user.id,
         name: user.name,
         email: user.email,
+        phone: user.phone,
         avatar: user.avatar,
         role: user.role,
         credits: user.credits
@@ -578,6 +599,28 @@ const createPayment = async (req, res) => {
       status: 'pending'
     });
 
+    // Emit real-time update via Socket.io
+    const io = req.io;
+    if (io) {
+      const transactionData = transaction.toJSON();
+      transactionData.user = {
+        id: req.user.id,
+        name: req.user.name,
+        email: req.user.email
+      };
+      io.emit('transaction:created', transactionData);
+      console.log(`[SOCKET.IO] Emitted 'transaction:created' for transaction ID: ${transactionId}`);
+    }
+
+    // Bắn thông báo real-time về Admin Dashboard
+    if (req.app && req.app.emitAdminNotification) {
+      req.app.emitAdminNotification({
+        title: 'Đơn nạp tiền mới',
+        content: `Người dùng "${req.user.name || req.user.email}" vừa tạo đơn nạp ${pkg.name} - ${price.toLocaleString()}đ (Mã: ${transactionId})`,
+        type: 'billing'
+      });
+    }
+
     const memo = `STUDIO NAP ${req.user.id} ${transaction.id}`;
 
     return res.status(201).json({
@@ -681,6 +724,21 @@ const receiveWebhook = async (req, res) => {
       await t.commit();
       console.log(`[WEBHOOK SUCCESS] Processed transaction ${transactionId} successfully. Added ${transaction.credits_added} credits to user ID ${transaction.userId}.`);
 
+      // Emit real-time credit update via Socket.io to notify user's frontend Header
+      const io = req.app ? req.app.io : (req.io || null);
+      if (io) {
+        // Fetch updated user credits after increment
+        const updatedUser = await User.findByPk(transaction.userId, { attributes: ['id', 'credits'] });
+        io.emit('user:credit_updated', {
+          userId: transaction.userId,
+          credits: updatedUser ? updatedUser.credits : null,
+          creditsAdded: transaction.credits_added,
+          transactionId: transactionId,
+          timestamp: new Date()
+        });
+        console.log(`[SOCKET.IO] Emitted 'user:credit_updated' for user ID: ${transaction.userId}, new balance: ${updatedUser?.credits}`);
+      }
+
       // Ghi nhận trực tiếp thông báo nạp tiền thành công
       try {
         const { Notification } = require('../models');
@@ -698,6 +756,20 @@ const receiveWebhook = async (req, res) => {
         console.log('[PAYMENT SUCCESS] Đã ghi DB và phát thông báo nạp tiền cho User:', transaction.userId);
       } catch (notifErr) {
         console.error('[WEBHOOK PAYMENT SUCCESS] Explicit notification insert error:', notifErr.message);
+      }
+
+      // Bắn thông báo real-time về Admin Dashboard khi nạp tiền thành công
+      try {
+        if (req.app && req.app.emitAdminNotification) {
+          const paidUser = await User.findByPk(transaction.userId, { attributes: ['id', 'name', 'email'] });
+          req.app.emitAdminNotification({
+            title: 'Nạp tiền thành công ✓',
+            content: `"${paidUser?.name || paidUser?.email || 'User #' + transaction.userId}" đã nạp thành công +${transaction.credits_added} Credits (${receivedAmount.toLocaleString()}đ). Mã GD: ${transactionId}`,
+            type: 'billing'
+          });
+        }
+      } catch (adminNotifErr) {
+        console.error('[WEBHOOK] Admin notification error:', adminNotifErr.message);
       }
 
       return res.status(200).json({ success: true, message: 'Webhook processed successfully' });
@@ -761,9 +833,24 @@ const cancelPayment = async (req, res) => {
       return res.status(400).json({ message: 'Giao dịch không thể hủy' });
     }
 
+    // Store transaction data before deleting for socket.io emit
+    const transactionData = transaction.toJSON();
+    transactionData.user = {
+      id: req.user.id,
+      name: req.user.name,
+      email: req.user.email
+    };
+
     // Destroy the pending transaction record to clean database garbage
     await transaction.destroy();
     console.log(`[PAYMENT CANCEL] Deleted pending transaction ${id} for user ID ${req.user.id}.`);
+    
+    // Emit real-time update via Socket.io
+    const io = req.io;
+    if (io) {
+      io.emit('transaction:deleted', { id: transactionData.id, ...transactionData });
+      console.log(`[SOCKET.IO] Emitted 'transaction:deleted' for transaction ID: ${id}`);
+    }
     
     return res.status(200).json({ success: true, message: 'Hủy giao dịch nạp tiền thành công.' });
   } catch (err) {
@@ -793,6 +880,19 @@ const expirePayment = async (req, res) => {
 
     await transaction.update({ status: 'Expired' });
     console.log(`[PAYMENT EXPIRE] Soft-expired transaction ${id} for user ID ${req.user.id}.`);
+
+    // Emit real-time update via Socket.io
+    const io = req.io;
+    if (io) {
+      const transactionData = transaction.toJSON();
+      transactionData.user = {
+        id: req.user.id,
+        name: req.user.name,
+        email: req.user.email
+      };
+      io.emit('transaction:updated', transactionData);
+      console.log(`[SOCKET.IO] Emitted 'transaction:updated' (EXPIRED) for transaction ID: ${id}`);
+    }
 
     return res.status(200).json({ success: true, status: 'Expired', message: 'Hủy mềm giao dịch nạp tiền thành công.' });
   } catch (err) {

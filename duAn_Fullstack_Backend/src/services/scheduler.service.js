@@ -10,15 +10,16 @@ const startScheduler = () => {
   console.log('[SCHEDULER] Scheduler service initialized.');
 
   // 1. Cron interval at */10 * * * * * (Every 10 seconds): Execute queueService.processWorker()
-  cron.schedule('*/10 * * * * *', async () => {
-    try {
-      // Auto-enqueue render task to keep the admin queue progress active
-      await queueService.enqueue('render_task', { timestamp: Date.now() });
-      await queueService.processWorker();
-    } catch (err) {
-      console.error('[SCHEDULER] Error executing 10s queue worker:', err.message);
-    }
-  });
+  // Commented out to isolate Affiliate/render_task background processing and release resources
+  // cron.schedule('*/10 * * * * *', async () => {
+  //   try {
+  //     // Auto-enqueue render task to keep the admin queue progress active
+  //     await queueService.enqueue('render_task', { timestamp: Date.now() });
+  //     await queueService.processWorker();
+  //   } catch (err) {
+  //     console.error('[SCHEDULER] Error executing 10s queue worker:', err.message);
+  //   }
+  // });
 
   // 2. Cron interval at 0 * * * * (Every hour): Delete completed or failed queue logs older than 24 hours
   cron.schedule('0 * * * *', async () => {

@@ -98,6 +98,12 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (credentials) => {
     const data = await authService.login(credentials);
+
+    // Check if 2FA is required
+    if (data.require2FA === true) {
+      return { require2FA: true, userId: data.userId };
+    }
+
     const tokenVal = data.access_token || data.accessToken || data.token;
     
     const res = {
@@ -122,6 +128,28 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(true);
 
     // Bước C: Điều hướng người dùng vào trang /dashboard bằng navigate
+    navigate('/dashboard');
+
+    return data;
+  };
+
+  const verify2FALogin = async (userId, otpToken) => {
+    const data = await authService.verifyLogin2FA(userId, otpToken);
+    const tokenVal = data.access_token || data.accessToken || data.token;
+
+    localStorage.setItem('access_token', tokenVal);
+    localStorage.setItem('Access_token', tokenVal);
+    localStorage.setItem('token', tokenVal);
+
+    axiosClient.defaults.headers.common['Authorization'] = `Bearer ${tokenVal}`;
+
+    if (data.refresh_token) {
+      localStorage.setItem('admin_refresh_token', data.refresh_token);
+      localStorage.setItem('refresh_token', data.refresh_token);
+    }
+    setUser(data.user);
+    setIsAuthenticated(true);
+
     navigate('/dashboard');
 
     return data;
@@ -177,7 +205,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, loading, login, loginWithGoogleToken, logout, updateUserState }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, loading, login, loginWithGoogleToken, logout, updateUserState, verify2FALogin }}>
       {!loading && children}
     </AuthContext.Provider>
   );

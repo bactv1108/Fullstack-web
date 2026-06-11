@@ -24,6 +24,7 @@ export default function ImageView() {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [imageHistory, setImageHistory] = useState([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [activePreviewImage, setActivePreviewImage] = useState(null);
 
   // Fetch Image Jobs history from backend
   const fetchImageHistory = async () => {
@@ -45,6 +46,17 @@ export default function ImageView() {
           createdAt: job.createdAt
         }));
         setImageHistory(mappedData);
+        
+        // Auto-initialize activePreviewImage to the latest completed image if not already set
+        if (mappedData.length > 0) {
+          setActivePreviewImage(prev => {
+            if (prev) {
+              const updated = mappedData.find(item => item.id === prev.id);
+              return updated || prev;
+            }
+            return mappedData[0];
+          });
+        }
       }
     } catch (err) {
       console.error('[FETCH IMAGE HISTORY ERROR]:', err);
@@ -62,6 +74,57 @@ export default function ImageView() {
   useEffect(() => {
     fetchImageHistory();
   }, [historyList]);
+
+  // Real-time synchronization from window sse-notification event to state (no F5 needed)
+  useEffect(() => {
+    const handleSSENotification = (event) => {
+      const newNotif = event.detail;
+      if (newNotif && newNotif.jobDetails) {
+        const { jobDetails } = newNotif;
+        
+        // Detect if this is an image generation job
+        const titleLower = (newNotif.title || '').toLowerCase();
+        const messageLower = (newNotif.message || '').toLowerCase();
+        const isImageJob = titleLower.includes('ảnh') || messageLower.includes('ảnh') || 
+                           titleLower.includes('image') || messageLower.includes('image') ||
+                           titleLower.includes('vẽ') || messageLower.includes('vẽ');
+
+        if (isImageJob) {
+          const newImageItem = {
+            id: jobDetails.id,
+            type: 'image',
+            title: 'Tạo Ảnh AI',
+            sub: jobDetails.prompt,
+            status: jobDetails.status,
+            progress: jobDetails.progress,
+            output_url: jobDetails.output_url,
+            ratio: jobDetails.aspectRatio === '9:16' ? '9:16 Dọc' :
+                   jobDetails.aspectRatio === '16:9' ? '16:9 Ngang' : '1:1 Vuông',
+            time: new Date(jobDetails.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date(jobDetails.createdAt).toLocaleDateString('vi-VN'),
+            createdAt: jobDetails.createdAt
+          };
+
+          setImageHistory(prev => {
+            const filtered = prev.filter(item => item.id !== jobDetails.id);
+            return [newImageItem, ...filtered];
+          });
+
+          // Dynamically update the preview board image if it matches the current active preview job ID
+          setActivePreviewImage(prev => {
+            if (prev && prev.id === jobDetails.id) {
+              return newImageItem;
+            }
+            return prev;
+          });
+        }
+      }
+    };
+
+    window.addEventListener('sse-notification', handleSSENotification);
+    return () => {
+      window.removeEventListener('sse-notification', handleSSENotification);
+    };
+  }, []);
 
   // Polling for active image jobs
   useEffect(() => {
@@ -85,6 +148,15 @@ export default function ImageView() {
       const response = await axiosClient.delete(`/image/${item.id}`);
       if (response.data && response.data.success) {
         dashboardState.toast?.success(`Xoá tác vụ #${item.id} thành công.`);
+        
+        // Clear active preview image if it's the deleted one
+        setActivePreviewImage(prev => {
+          if (prev && prev.id === item.id) {
+            return null;
+          }
+          return prev;
+        });
+
         fetchImageHistory();
         loadHistory(); // Sync globally
       }
@@ -137,8 +209,30 @@ export default function ImageView() {
         if (setCredits) {
           setCredits(prev => Math.max(0, prev - 2));
         }
+        
         // Force history reload
         loadHistory();
+
+        // Construct a temporary Pending job to display in the preview board immediately
+        const tempJob = {
+          id: res.data.jobId || Date.now(),
+          type: 'image',
+          title: 'Tạo Ảnh AI',
+          sub: promptText,
+          status: 'Pending',
+          progress: 0,
+          output_url: null,
+          ratio: localRatio === '9:16' ? '9:16 Dọc' :
+                 localRatio === '16:9' ? '16:9 Ngang' : '1:1 Vuông',
+          time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' Vừa xong',
+          createdAt: new Date()
+        };
+        
+        // Prepend to history local state
+        setImageHistory(prev => [tempJob, ...prev]);
+        // Focus the preview board on this new pending job
+        setActivePreviewImage(tempJob);
+        
         fetchImageHistory();
       }
     } catch (err) {
@@ -268,109 +362,181 @@ export default function ImageView() {
           {/* Ngăn cách dọc trên PC */}
           <div className="hidden lg:block w-[1px] bg-[#222226] self-stretch"></div>
 
-          {/* Lịch Sử và Thư Viện Ảnh (Phải) */}
+          {/* Tái cấu trúc Giao diện Preview & History (Phải) */}
           <section className="flex-grow flex flex-col gap-6 text-left min-w-0">
-            <div className="flex justify-between items-center border-b border-[#222226]/45 pb-2">
-              <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
-                Thư viện ảnh đã tạo {isHistoryLoading && <span className="inline-block w-2.5 h-2.5 ml-2 border border-amber-400 border-t-transparent rounded-full animate-spin"></span>}
-              </h3>
-              <button
-                type="button"
-                onClick={() => navigate('/dashboard/history?tab=analysis')}
-                className="text-xs font-bold text-amber-400 hover:text-amber-300 transition-colors cursor-pointer bg-transparent border-none"
-              >
-                Xem lịch sử chung
-              </button>
-            </div>
+            
+            {/* BẢNG XEM TRƯỚC TRUNG TÂM (Latest Preview Board) */}
+            <div className="flex flex-col gap-4">
+              <div className="flex justify-between items-center border-b border-[#222226]/45 pb-2 select-none">
+                <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                  Bảng xem trước ảnh mới tạo
+                </h3>
+                {activePreviewImage && (
+                  <span className="text-[10px] text-zinc-500 font-bold">
+                    Tác vụ #{activePreviewImage.id}
+                  </span>
+                )}
+              </div>
 
-            {/* Grid display of created images */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto max-h-[580px] pr-1 custom-scrollbar">
-              {imageHistory.map((item) => (
-                <div
-                  key={item.id}
-                  onMouseMove={handleMouseMove}
-                  onClick={() => setPreviewJob({
-                    id: item.id,
-                    type: 'image',
-                    title: item.title,
-                    sub: item.sub,
-                    status: item.status,
-                    ratio: item.ratio,
-                    time: item.time,
-                    output_url: item.output_url
-                  })}
-                  className="bg-[#0f0f11] border border-[#222226]/45 rounded-xl p-3 flex flex-col gap-2.5 transition-all duration-300 hover:-translate-y-0.5 hover:border-amber-500/40 hover:shadow-[0_0_12px_rgba(245,158,11,0.1)] relative group cursor-pointer"
-                >
-                  {/* Container hình ảnh */}
-                  <div className="w-full h-36 rounded-lg bg-[#18181c] border border-[#222226]/50 flex items-center justify-center relative overflow-hidden shrink-0">
-                    {item.status === 'Completed' ? (
+              <div className="bg-[#0f0f11] p-4 rounded-2xl border border-[#222226]/40 flex flex-col gap-4 w-full">
+                {/* Image Container */}
+                <div className="w-full h-80 rounded-xl bg-[#18181c] border border-[#222226]/50 flex items-center justify-center relative overflow-hidden shrink-0 select-none">
+                  {activePreviewImage ? (
+                    activePreviewImage.status === 'Completed' ? (
                       <img
-                        src={`http://localhost:3000${item.output_url}`}
-                        alt={item.title}
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        src={`http://localhost:3000${activePreviewImage.output_url}`}
+                        alt={activePreviewImage.title}
+                        className="max-w-full max-h-full object-contain transition-all duration-300"
                       />
-                    ) : item.status === 'Failed' ? (
-                      <div className="text-center p-4">
-                        <span className="text-red-500 text-[18px]">✗</span>
-                        <p className="text-[9px] text-zinc-500 font-bold mt-1">Vẽ ảnh thất bại</p>
+                    ) : activePreviewImage.status === 'Failed' ? (
+                      <div className="text-center p-8">
+                        <span className="text-red-500 text-4xl">✗</span>
+                        <p className="text-xs text-zinc-500 font-bold mt-2">Vẽ ảnh thất bại</p>
+                        <p className="text-[10px] text-zinc-600 mt-1">Vui lòng thử lại với prompt khác</p>
                       </div>
                     ) : (
-                      <div className="flex flex-col items-center justify-center">
-                        <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-                        <p className="text-amber-400 text-[9px] font-bold tracking-widest uppercase">Đang vẽ... {item.progress}%</p>
+                      <div className="flex flex-col items-center justify-center p-8">
+                        <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                        <p className="text-amber-400 text-xs font-bold tracking-widest uppercase animate-pulse">
+                          Đang vẽ... {activePreviewImage.progress}%
+                        </p>
                       </div>
-                    )}
-
-                    <span className="absolute top-2.5 left-2.5 bg-black/75 text-[8px] px-1.5 py-0.5 rounded text-zinc-300 font-bold border border-[#222226]/50">
-                      {item.ratio}
-                    </span>
-                    <span className="absolute bottom-2.5 right-2.5 bg-amber-500/10 text-amber-400 text-[8px] font-bold px-1.5 py-0.5 rounded border border-amber-500/20">
-                      Imagen 3
-                    </span>
-                  </div>
-
-                  {/* Chi tiết nội dung prompt */}
-                  <div className="flex flex-col gap-1 min-w-0 !p-1.5">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[11px] font-bold text-zinc-300">Tác vụ #{item.id}</span>
-                      <span className="text-[8px] text-zinc-500 font-mono font-bold shrink-0">{item.time}</span>
+                    )
+                  ) : (
+                    <div className="text-center p-8 flex flex-col items-center justify-center gap-2">
+                      <ImageIcon size={32} className="text-zinc-650" />
+                      <p className="text-xs text-zinc-500 font-bold">Chưa tạo hoặc chọn ảnh xem trước</p>
+                      <p className="text-[10px] text-zinc-650 max-w-[240px] text-center leading-normal">
+                        Nhập ý tưởng bên trái để vẽ ảnh, hoặc click vào một ảnh dưới lịch sử để hiển thị lớn tại đây!
+                      </p>
                     </div>
-                    <p className="text-[10px] text-zinc-400 line-clamp-2 h-7 overflow-hidden select-text leading-tight mt-1">
-                      "{item.sub}"
-                    </p>
-                  </div>
+                  )}
 
-                  {/* Thanh điều khiển tác vụ */}
-                  <div className="flex gap-2 mt-1 pt-2 border-t border-[#222226]/40 w-full">
-                    <button
-                      type="button"
-                      disabled={item.status !== 'Completed'}
-                      onClick={(e) => handleDownload(e, item)}
-                      className="flex-1 py-2 bg-[#18181c] hover:bg-zinc-800 text-white rounded-lg text-[10px] font-bold flex items-center justify-center gap-1.5 border border-[#222226]/40 transition-all cursor-pointer disabled:opacity-30 disabled:pointer-events-none"
-                    >
-                      <Download size={12} />
-                      <span>Tải xuống</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => handleDeleteImage(e, item)}
-                      className="py-2 px-3 border border-red-500/20 hover:border-red-500/40 bg-red-500/5 hover:bg-red-500/10 text-red-400 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
-                    >
-                      <Trash2 size={12} />
-                      <span>Xóa</span>
-                    </button>
-                  </div>
+                  {activePreviewImage && (
+                    <>
+                      <span className="absolute top-3 left-3 bg-black/75 text-[9px] px-2 py-0.5 rounded text-zinc-300 font-bold border border-[#222226]/50 shadow-md">
+                        Tỷ lệ: {activePreviewImage.ratio}
+                      </span>
+                      <span className="absolute bottom-3 right-3 bg-amber-500/10 text-amber-400 text-[9px] font-bold px-2 py-0.5 rounded border border-amber-500/20 shadow-md">
+                        Flux Schnell
+                      </span>
+                    </>
+                  )}
                 </div>
-              ))}
 
-              {imageHistory.length === 0 && (
-                <div className="text-center py-16 border border-dashed border-[#222226]/30 rounded-xl w-full col-span-full select-none bg-[#0f0f11]/10 flex flex-col items-center justify-center gap-2">
-                  <ImageIcon size={24} className="text-zinc-600" />
-                  <span className="text-xs text-zinc-500 font-bold">Chưa tạo hình ảnh nào</span>
-                  <p className="text-[10px] text-zinc-650 max-w-[200px] leading-relaxed">Hãy nhập ý tưởng và nhấn nút Vẽ ảnh để bắt đầu!</p>
-                </div>
-              )}
+                {/* Info and Actions */}
+                {activePreviewImage && (
+                  <div className="flex flex-col gap-3">
+                    <div className="bg-[#0c0c0e] border border-[#222226]/50 p-3 rounded-xl max-h-20 overflow-y-auto select-text">
+                      <p className="text-[9px] text-amber-500 font-bold uppercase tracking-wider mb-1">Mô tả ý tưởng (Prompt):</p>
+                      <p className="text-[11px] text-zinc-400 leading-relaxed font-semibold">
+                        "{activePreviewImage.sub}"
+                      </p>
+                    </div>
+
+                    <div className="flex gap-3 mt-1 w-full">
+                      <button
+                        type="button"
+                        disabled={activePreviewImage.status !== 'Completed'}
+                        onClick={(e) => handleDownload(e, activePreviewImage)}
+                        className="flex-1 py-3 bg-amber-500 hover:bg-amber-400 text-black font-black text-xs rounded-xl flex items-center justify-center gap-2 uppercase tracking-widest cursor-pointer disabled:opacity-30 disabled:pointer-events-none transition-all duration-300 shadow-md shadow-amber-500/5 hover:shadow-[0_0_20px_rgba(245,158,11,0.3)] border-none"
+                      >
+                        <Download size={14} className="text-black" />
+                        <span>Tải xuống ảnh gốc</span>
+                      </button>
+                      
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteImage(e, activePreviewImage)}
+                        className="py-3 px-4 border border-red-500/20 hover:border-red-500/40 bg-red-500/5 hover:bg-red-500/10 text-red-400 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                        title="Xóa tác vụ này"
+                      >
+                        <Trash2 size={14} />
+                        <span>Xóa</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
+
+            {/* KHU VỰC LỊCH SỬ CHUNG (History Gallery Grid) */}
+            <div className="flex flex-col gap-4 border-t border-[#222226]/60 pt-6 mt-2">
+              <div className="flex justify-between items-center border-b border-[#222226]/45 pb-2 select-none">
+                <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                  Thư viện ảnh đã tạo {isHistoryLoading && <span className="inline-block w-2.5 h-2.5 ml-2 border border-amber-400 border-t-transparent rounded-full animate-spin"></span>}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => navigate('/dashboard/history?tab=analysis')}
+                  className="text-xs font-bold text-amber-400 hover:text-amber-300 transition-colors cursor-pointer bg-transparent border-none"
+                >
+                  Xem lịch sử chung
+                </button>
+              </div>
+
+              {/* Lưới Grid thumbnails */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 overflow-y-auto max-h-[300px] pr-1 custom-scrollbar">
+                {imageHistory.map((item) => {
+                  const isActive = activePreviewImage && activePreviewImage.id === item.id;
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => setActivePreviewImage(item)}
+                      className={`bg-[#0f0f11] border rounded-xl p-2.5 flex flex-col gap-2 transition-all duration-300 cursor-pointer relative group ${
+                        isActive 
+                          ? 'border-amber-500 bg-amber-500/5 shadow-md shadow-amber-500/5' 
+                          : 'border-[#222226]/45 hover:border-zinc-700 hover:bg-[#18181c]/50'
+                      }`}
+                    >
+                      {/* Thumbnail Image */}
+                      <div className="w-full aspect-square rounded-lg bg-[#18181c] border border-[#222226]/50 flex items-center justify-center relative overflow-hidden shrink-0 select-none">
+                        {item.status === 'Completed' ? (
+                          <img
+                            src={`http://localhost:3000${item.output_url}`}
+                            alt={item.title}
+                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          />
+                        ) : item.status === 'Failed' ? (
+                          <div className="text-center p-2">
+                            <span className="text-red-500 text-lg">✗</span>
+                            <p className="text-[8px] text-zinc-500 font-bold mt-0.5">Thất bại</p>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center justify-center p-2">
+                            <div className="w-4 h-4 border border-amber-500 border-t-transparent rounded-full animate-spin mb-1"></div>
+                            <p className="text-amber-400 text-[8px] font-bold tracking-wider animate-pulse">{item.progress}%</p>
+                          </div>
+                        )}
+                        
+                        <span className="absolute top-1.5 left-1.5 bg-black/80 text-[7px] px-1 py-0.2 rounded text-zinc-300 font-bold">
+                          {item.ratio.split(' ')[0]}
+                        </span>
+                      </div>
+
+                      {/* Item Info */}
+                      <div className="flex flex-col gap-0.5 min-w-0 !p-0.5 text-left">
+                        <div className="flex justify-between items-center text-[9px] font-bold text-zinc-500">
+                          <span>#{item.id}</span>
+                          <span className="font-mono text-[7px] shrink-0">{item.time.split(' ')[0]}</span>
+                        </div>
+                        <p className="text-[9px] text-zinc-400 line-clamp-1 h-3.5 overflow-hidden leading-normal">
+                          "{item.sub}"
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {imageHistory.length === 0 && (
+                  <div className="text-center py-12 border border-dashed border-[#222226]/30 rounded-xl w-full col-span-full select-none bg-[#0f0f11]/10 flex flex-col items-center justify-center gap-1.5">
+                    <ImageIcon size={20} className="text-zinc-650" />
+                    <span className="text-xs text-zinc-500 font-bold">Chưa tạo hình ảnh nào</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
           </section>
 
         </div>

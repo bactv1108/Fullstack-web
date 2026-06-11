@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation, useOutletContext } from 'react-router-dom';
-import { User, KeyRound, CreditCard, Save, Lock, X, Coins, History, Camera, Trash2, CheckCircle2, Sliders, Eye, EyeOff } from 'lucide-react';
+import { User, KeyRound, CreditCard, Save, Lock, X, Coins, History, Camera, Trash2, CheckCircle2, Sliders, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import axiosClient from '../../../services/axiosClient';
 import { useAuth } from '../../../hooks/useAuth';
 
@@ -56,8 +56,98 @@ export default function SettingsView() {
   const fileInputRef = useRef(null);
   const { user, updateUserState, logout } = useAuth();
 
+  const saveAuthTokens = (data) => {
+    const accessToken = data?.access_token || data?.accessToken || data?.token;
+    const refreshToken = data?.refresh_token || data?.refreshToken;
+
+    if (accessToken) {
+      localStorage.setItem('access_token', accessToken);
+      localStorage.setItem('Access_token', accessToken);
+      localStorage.setItem('token', accessToken);
+      axiosClient.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+    }
+
+    if (refreshToken) {
+      localStorage.setItem('admin_refresh_token', refreshToken);
+      localStorage.setItem('refresh_token', refreshToken);
+    }
+  };
+
+  const toBoolean = (value) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value === 1;
+    if (typeof value === 'string') return ['1', 'true', 'yes'].includes(value.toLowerCase());
+    return false;
+  };
+
   const handleLogout = () => {
     logout();
+  };
+
+  // ── 2FA Handlers ──────────────────────────────────────────────
+  const handle2FAToggle = async () => {
+    if (is2FAEnabled) {
+      setIsDisabling(true);
+      setShow2FAModal(true);
+      setTwoFAToken('');
+      setTwoFAError('');
+      setTwoFASuccess('');
+    } else {
+      setIsDisabling(false);
+      setIs2FALoading(true);
+      setTwoFASuccess('');
+      try {
+        const res = await axiosClient.get('/auth/2fa/generate');
+        setQrCode(res.qrCode || res.data?.qrCode || '');
+        setTempSecret(res.secret || res.data?.secret || '');
+        setShow2FAModal(true);
+        setTwoFAToken('');
+        setTwoFAError('');
+      } catch (err) {
+        setTwoFAError(err.response?.data?.message || 'Không thể tạo mã QR. Vui lòng thử lại.');
+      } finally {
+        setIs2FALoading(false);
+      }
+    }
+  };
+
+  const handleConfirm2FA = async () => {
+    if (twoFAToken.length !== 6) return;
+    setIs2FALoading(true);
+    setTwoFAError('');
+    try {
+      let response;
+      if (isDisabling) {
+        response = await axiosClient.post('/auth/2fa/disable', { token: twoFAToken });
+        saveAuthTokens(response);
+        setIs2FAEnabled(false);
+        if (updateUserState) updateUserState({ is_two_factor_enabled: false });
+        setTwoFASuccess('Đã tắt bảo mật hai lớp (2FA).');
+      } else {
+        response = await axiosClient.post('/auth/2fa/enable', { secret: tempSecret, token: twoFAToken });
+        saveAuthTokens(response);
+        setIs2FAEnabled(true);
+        if (updateUserState) updateUserState({ is_two_factor_enabled: true });
+        setTwoFASuccess('Đã kích hoạt bảo mật hai lớp (2FA) thành công!');
+      }
+      setShow2FAModal(false);
+      setQrCode('');
+      setTempSecret('');
+      setTwoFAToken('');
+    } catch (err) {
+      setTwoFAError(err.response?.data?.message || 'Xác thực thất bại. Vui lòng thử lại.');
+    } finally {
+      setIs2FALoading(false);
+    }
+  };
+
+  const handleClose2FAModal = () => {
+    setShow2FAModal(false);
+    setQrCode('');
+    setTempSecret('');
+    setTwoFAToken('');
+    setTwoFAError('');
+    setIsDisabling(false);
   };
 
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -69,9 +159,8 @@ export default function SettingsView() {
 
   const [fullname, setFullname] = useState('Trần Văn Bắc');
   const [email, setEmail] = useState('tranvanbac2003@gmail.com');
-  const [avatar, setAvatar] = useState(localStorage.getItem('user_avatar') || '');
-  const [avatarFile, setAvatarFile] = useState(null);
-  const [deleteAvatar, setDeleteAvatar] = useState(false);
+  const [phone, setPhone] = useState('');
+  const [avatar, setAvatar] = useState(null);
   
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -89,15 +178,44 @@ export default function SettingsView() {
   const [passwordMsg, setPasswordMsg] = useState('');
 
   const [transactions, setTransactions] = useState([]);
+  const [transactionTab, setTransactionTab] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const limitPerPage = 10;
+  const limitPerPage = 14;
   const [packages, setPackages] = useState([]);
   const [timeLeft, setTimeLeft] = useState(60);
+
+  // 2FA state
+  const [is2FAEnabled, setIs2FAEnabled] = useState(false);
+  const [show2FAModal, setShow2FAModal] = useState(false);
+  const [is2FALoading, setIs2FALoading] = useState(false);
+  const [qrCode, setQrCode] = useState('');
+  const [tempSecret, setTempSecret] = useState('');
+  const [twoFAToken, setTwoFAToken] = useState('');
+  const [twoFAError, setTwoFAError] = useState('');
+  const [twoFASuccess, setTwoFASuccess] = useState('');
+  const [isDisabling, setIsDisabling] = useState(false);
 
   // Custom dialog state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTransaction, setActiveTransaction] = useState(null);
+
+  const isTransactionIncome = (tx) => {
+    const isServerRefund = tx.maGiaoDich?.startsWith('TRX-REFUND-') || tx.id?.startsWith('TRX-REFUND-') || tx.type === 'refund';
+    const isSystemGift = tx.package?.includes('Free') || tx.package_name?.includes('Free') || tx.type === 'Gift' || tx.package === 'Gói Free' || tx.package_name === 'Gói Free' || tx.type === 'Hệ thống tặng';
+    const isPackagePayment = tx.amount > 0;
+    return isServerRefund || isSystemGift || isPackagePayment;
+  };
+
+  const filteredTransactions = transactions.filter((tx) => {
+    if (transactionTab === 'income') {
+      return isTransactionIncome(tx);
+    }
+    if (transactionTab === 'expense') {
+      return !isTransactionIncome(tx);
+    }
+    return true;
+  });
 
   const fetchTransactions = async (page = currentPage) => {
     try {
@@ -137,13 +255,26 @@ export default function SettingsView() {
     const fetchUserData = async () => {
       try {
         const profileRes = await axiosClient.get('/user/profile');
-        if (profileRes) {
-          setFullname(profileRes.name || '');
-          setEmail(profileRes.email || '');
-          setAvatar(profileRes.avatar || '');
-          if (setUserName) setUserName(profileRes.name || '');
-          if (setAvatarImage) setAvatarImage(profileRes.avatar || '');
-          if (setCredits) setCredits(profileRes.credits || 0);
+        const profile = profileRes?.user || profileRes?.data || profileRes;
+        if (profile) {
+          setFullname(profile.name || '');
+          setEmail(profile.email || '');
+          setPhone(profile.phone || '');
+          setAvatar(profile.avatar || null);
+          if (setUserName) setUserName(profile.name || '');
+          if (setAvatarImage) setAvatarImage(profile.avatar || null);
+          if (setCredits) setCredits(profile.credits || 0);
+          const isTwoFactorEnabled = toBoolean(profile.is_two_factor_enabled);
+          setIs2FAEnabled(isTwoFactorEnabled);
+          if (updateUserState) {
+            updateUserState({
+              name: profile.name || '',
+              phone: profile.phone || '',
+              avatar: profile.avatar || null,
+              credits: profile.credits || 0,
+              is_two_factor_enabled: isTwoFactorEnabled
+            });
+          }
         }
       } catch (err) {
         console.error('[SETTINGS] Error fetching profile:', err);
@@ -187,9 +318,10 @@ export default function SettingsView() {
               if (profileRes) {
                 setFullname(profileRes.name || '');
                 setEmail(profileRes.email || '');
-                setAvatar(profileRes.avatar || '');
+                setPhone(profileRes.phone || '');
+                setAvatar(profileRes.avatar || null);
                 if (setUserName) setUserName(profileRes.name || '');
-                if (setAvatarImage) setAvatarImage(profileRes.avatar || '');
+                if (setAvatarImage) setAvatarImage(profileRes.avatar || null);
                 if (setCredits) setCredits(profileRes.credits || 0);
               }
 
@@ -252,24 +384,16 @@ export default function SettingsView() {
     try {
       setProfileMsg('Đang lưu thông tin...');
       
-      const formData = new FormData();
-      formData.append('fullname', fullname);
-      
-      if (deleteAvatar) {
-        formData.append('deleteAvatar', 'true');
-      } else if (avatarFile) {
-        formData.append('avatar', avatarFile);
-      } else {
-        formData.append('avatar', avatar);
-      }
-
-      const response = await axiosClient.put('/user/update-profile', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
+      const response = await axiosClient.put('/user/update-profile', {
+        name: fullname,
+        phone,
+        avatar: avatar || null
       });
       
-      const updatedAvatar = response?.user?.avatar || '';
+      const updatedUser = response?.user || {};
+      const updatedAvatar = updatedUser.avatar || null;
+      const updatedName = updatedUser.name || fullname;
+      const updatedPhone = updatedUser.phone || '';
       setProfileMsg(response?.message || 'Cập nhật thông tin hồ sơ thành công!');
       
       if (updatedAvatar) {
@@ -277,15 +401,17 @@ export default function SettingsView() {
       } else {
         localStorage.removeItem('user_avatar');
       }
+      localStorage.setItem('user_name', updatedName);
+      localStorage.setItem('user_phone', updatedPhone);
       
+      setFullname(updatedName);
+      setPhone(updatedPhone);
       setAvatar(updatedAvatar);
-      setAvatarFile(null);
-      setDeleteAvatar(false);
 
-      if (setUserName) setUserName(fullname);
+      if (setUserName) setUserName(updatedName);
       if (setAvatarImage) setAvatarImage(updatedAvatar);
       if (updateUserState) {
-        updateUserState({ name: fullname, avatar: updatedAvatar });
+        updateUserState({ name: updatedName, phone: updatedPhone, avatar: updatedAvatar });
       }
     } catch (err) {
       console.error('[SETTINGS] Save profile error:', err);
@@ -395,8 +521,6 @@ export default function SettingsView() {
         setAvatarError('Dung lượng ảnh đại diện vượt quá 2MB. Vui lòng chọn ảnh khác!');
         return;
       }
-      setAvatarFile(file);
-      setDeleteAvatar(false);
       const reader = new FileReader();
       reader.onloadend = () => { 
         const base64Data = reader.result; 
@@ -408,9 +532,7 @@ export default function SettingsView() {
 
   const handleRemoveAvatar = (e) => { 
     e.stopPropagation(); 
-    setAvatar(''); 
-    setAvatarFile(null);
-    setDeleteAvatar(true);
+    setAvatar(null); 
     setAvatarError('');
   };
 
@@ -506,6 +628,11 @@ export default function SettingsView() {
               <label className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Địa chỉ Email (Không thể thay đổi)</label>
               <input type="email" value={email} disabled
                      className="!p-2 w-full bg-[#1b1b22] border border-[#222226]/60 rounded-lg px-4 py-3 text-sm text-zinc-500 cursor-not-allowed" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Số điện thoại</label>
+              <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
+                     className="!p-2 w-full bg-[#131316] border border-[#222226] rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f59e0b] focus:ring-1 focus:ring-[#f59e0b] transition-all" />
             </div>
           </div>
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 border-t border-[#222226]/30 pt-4">
@@ -603,6 +730,98 @@ export default function SettingsView() {
         </form>
       </section>
 
+      {/* ─── 2FA SECTION ─── */}
+      <section className="!p-3 bg-[#18181c] border border-[#222226] rounded-xl p-5 md:p-6 flex flex-col gap-5 w-full text-left">
+        <div className="flex items-center gap-3 border-b border-[#222226]/50 pb-3">
+          <ShieldCheck className="text-[#f59e0b]" size={20} />
+          <h2 className="text-sm font-black text-white uppercase tracking-wider">Bảo vệ hai lớp cấp cao (2FA)</h2>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-4 sm:items-center justify-between bg-[#0f0f11] p-4 rounded-xl border border-[#222226]/40">
+          <div className="flex flex-col gap-1 text-left">
+            <h3 className="text-xs font-bold text-white uppercase tracking-wide">Kích hoạt mã bảo mật OTP (Google Authenticator)</h3>
+            <p className="text-[10px] text-zinc-400 leading-relaxed">Yêu cầu nhập mã xác minh gồm 6 chữ số từ thiết bị di động khi đăng nhập.</p>
+          </div>
+          <button
+            type="button"
+            disabled={is2FALoading}
+            onClick={handle2FAToggle}
+            className={`w-12 h-6 rounded-full p-1 transition-all duration-350 cursor-pointer ${is2FALoading ? 'opacity-50' : ''} ${is2FAEnabled ? 'bg-[#10b981]' : 'bg-zinc-800'}`}
+          >
+            <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-350 shadow-md ${is2FAEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
+          </button>
+        </div>
+        {twoFASuccess && <span className="text-[10px] font-bold text-green-400 text-left">{twoFASuccess}</span>}
+      </section>
+
+      {/* ── 2FA QR Modal ── */}
+      {show2FAModal && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#18181c] border border-[#222226] text-[#e2e8f0] rounded-xl max-w-md w-full p-6 relative flex flex-col gap-4 text-center select-none shadow-2xl">
+            <button
+              onClick={handleClose2FAModal}
+              className="absolute right-4 top-4 p-1.5 bg-[#18181c] hover:bg-[#222226] text-zinc-400 hover:text-white rounded-lg transition-all border border-[#222226] cursor-pointer hover:scale-[1.05] active:scale-[0.95]"
+            >
+              <X size={16} />
+            </button>
+
+            <h3 className="text-md font-black uppercase tracking-wider text-white mt-2">
+              {isDisabling ? 'Tắt bảo mật 2FA' : 'Kích hoạt bảo mật 2FA'}
+            </h3>
+            <p className="text-[10px] text-zinc-400 -mt-2">
+              {isDisabling
+                ? 'Nhập mã 6 số từ Google Authenticator để xác nhận tắt 2FA.'
+                : 'Quét mã QR dưới đây bằng Google Authenticator, sau đó nhập mã 6 số để xác nhận.'
+              }
+            </p>
+
+            {!isDisabling && qrCode && (
+              <div className="mx-auto bg-white p-3 rounded-lg w-52 h-52 flex items-center justify-center border border-[#222226] mt-1 shadow-inner">
+                <img src={qrCode} alt="QR Code 2FA" className="w-full h-full object-contain" />
+              </div>
+            )}
+
+            {!isDisabling && tempSecret && (
+              <div className="bg-[#0f0f11] p-3 rounded-xl border border-[#222226]/40 text-left text-xs">
+                <span className="text-zinc-400">Hoặc nhập mã thủ công:</span>
+                <div className="flex items-center gap-2 mt-1">
+                  <code className="font-mono font-bold text-[#f59e0b] text-xs break-all">{tempSecret}</code>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(tempSecret); alert('Đã sao chép mã secret!'); }}
+                    className="text-[#f59e0b] hover:underline cursor-pointer bg-transparent border-none text-[10px] font-bold shrink-0"
+                  >
+                    Sao chép
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="input-group">
+              <label className="text-xs font-bold text-zinc-400 uppercase tracking-wide text-left">Mã xác thực 6 số</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                value={twoFAToken}
+                onChange={(e) => { setTwoFAToken(e.target.value.replace(/\D/g, '').slice(0, 6)); setTwoFAError(''); }}
+                placeholder="000000"
+                className="!p-2 w-full bg-[#131316] border border-[#222226] rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f59e0b] focus:ring-1 focus:ring-[#f59e0b] transition-all text-center text-2xl tracking-[0.5em] font-mono"
+              />
+              {twoFAError && <span className="text-[10px] text-red-500 font-bold mt-1 text-left">{twoFAError}</span>}
+            </div>
+
+            <button
+              type="button"
+              disabled={is2FALoading || twoFAToken.length !== 6}
+              onClick={handleConfirm2FA}
+              className="!p-2 w-full py-3 px-6 bg-[#f59e0b] hover:bg-amber-600 disabled:bg-zinc-700 disabled:text-zinc-500 text-black font-black uppercase text-xs tracking-wider rounded-xl transition-all hover:scale-[1.01] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed border-none"
+            >
+              {is2FALoading ? 'Đang xác thực...' : (isDisabling ? 'TẮT 2FA' : 'KÍCH HOẠT 2FA')}
+            </button>
+          </div>
+        </div>
+      )}
+
       <section id="billing-section" className="!p-3 bg-[#18181c] border border-[#222226] rounded-xl p-5 md:p-6 flex flex-col gap-5 w-full text-left">
         <div className="flex items-center justify-between border-b border-[#222226]/50 pb-3">
           <div className="flex items-center gap-3">
@@ -675,10 +894,34 @@ export default function SettingsView() {
           <div className="w-full bg-[#18181c] border border-[#222226]/60 rounded-xl p-4 md:p-5 shadow-inner">
 
             {/* Tiêu đề hộp con */}
-            <div className="flex items-center gap-2 border-b border-[#222226]/30 pb-2 mb-4">
+          <div className="flex items-center gap-2 border-b border-[#222226]/30 pb-2 mb-4">
               <h3 className="text-xl font-black text-zinc-400 uppercase tracking-wider">
                 Lịch sử giao dịch nạp tiền
               </h3>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <button
+                type="button"
+                onClick={() => setTransactionTab('all')}
+                className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider border transition-all cursor-pointer ${transactionTab === 'all' ? 'bg-[#f59e0b] text-black border-[#f59e0b]' : 'bg-[#111114] text-zinc-300 border-[#222226] hover:border-zinc-700 hover:text-white'}`}
+              >
+                Tất cả
+              </button>
+              <button
+                type="button"
+                onClick={() => setTransactionTab('income')}
+                className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider border transition-all cursor-pointer ${transactionTab === 'income' ? 'bg-emerald-500 text-black border-emerald-500' : 'bg-[#111114] text-zinc-300 border-[#222226] hover:border-zinc-700 hover:text-white'}`}
+              >
+                Tiền vào
+              </button>
+              <button
+                type="button"
+                onClick={() => setTransactionTab('expense')}
+                className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider border transition-all cursor-pointer ${transactionTab === 'expense' ? 'bg-rose-500 text-black border-rose-500' : 'bg-[#111114] text-zinc-300 border-[#222226] hover:border-zinc-700 hover:text-white'}`}
+              >
+                Tiền ra
+              </button>
             </div>
 
             {/* Bảng dữ liệu chuẩn responsive chống vỡ khung hình trên mọi thiết bị */}
@@ -696,8 +939,8 @@ export default function SettingsView() {
                 </tr>
                 </thead>
                 <tbody className="divide-y divide-[#222226]/40 text-white font-medium">
-                {transactions && transactions.length > 0 ? (
-                  transactions.map((tx) => {
+                {filteredTransactions && filteredTransactions.length > 0 ? (
+                  filteredTransactions.map((tx) => {
                     const isServerRefund = tx.maGiaoDich?.startsWith('TRX-REFUND-') || tx.id?.startsWith('TRX-REFUND-') || tx.type === 'refund';
                     return (
                       <tr key={tx.id} className="hover:bg-[#131316]/50 transition-colors">
@@ -754,7 +997,7 @@ export default function SettingsView() {
             {totalPages > 1 && (
               <div className="flex items-center justify-between mt-4 bg-[#18181c] p-3 border-t border-[#222226]/30 text-xs">
                 <span className="text-zinc-400">
-                  Trang <strong className="text-zinc-200">{currentPage}</strong> trên <strong className="text-zinc-200">{totalPages}</strong> (Hiển thị {transactions.length} dòng)
+                  Trang <strong className="text-zinc-200">{currentPage}</strong> trên <strong className="text-zinc-200">{totalPages}</strong> (Hiển thị {filteredTransactions.length} dòng)
                 </span>
                 <div className="flex items-center gap-2">
                   <button

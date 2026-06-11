@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import io from 'socket.io-client';
 import { ArrowUpRight, X, Search } from 'lucide-react';
 import axiosAdminClient from '../../services/axiosAdminClient';
 
@@ -11,6 +12,8 @@ const BillingView = () => {
   const [approvingIds, setApprovingIds] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
+  const [activeTab, setActiveTab] = useState('all'); // 'all' | 'thu' | 'ban'
+  const [socket, setSocket] = useState(null);
   
   // Custom dialog state
   const [dialog, setDialog] = useState({ 
@@ -23,9 +26,9 @@ const BillingView = () => {
 
   const limitPerPage = 10;
 
-  const fetchData = (page = currentPage, searchVal = activeSearch) => {
+  const fetchData = (page = currentPage, searchVal = activeSearch, typeVal = activeTab) => {
     setLoading(true);
-    axiosAdminClient.get(`/transactions?page=${page}&limit=${limitPerPage}&search=${encodeURIComponent(searchVal)}`)
+    axiosAdminClient.get(`/transactions?page=${page}&limit=${limitPerPage}&search=${encodeURIComponent(searchVal)}&type=${typeVal}`)
       .then(res => {
         // axiosAdminClient response interceptor returns data field directly
         setTransactions(res.data || []);
@@ -39,9 +42,78 @@ const BillingView = () => {
       });
   };
 
+  // Re-fetch whenever page, search, OR active tab changes
   useEffect(() => {
-    fetchData(currentPage, activeSearch);
-  }, [currentPage, activeSearch]);
+    fetchData(currentPage, activeSearch, activeTab);
+  }, [currentPage, activeSearch, activeTab]);
+
+  // Set up Socket.io connection for real-time transaction updates
+  useEffect(() => {
+    // Connect to backend Socket.io server
+    const socketInstance = io('http://localhost:3000', {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: Infinity
+    });
+
+    // Listen for new transaction created
+    socketInstance.on('transaction:created', (newTransaction) => {
+      console.log('[SOCKET.IO] Received transaction:created:', newTransaction);
+      
+      // Add new transaction to the top of the list
+      setTransactions(prevTransactions => {
+        return [newTransaction, ...prevTransactions];
+      });
+      
+      // Update total count
+      setTotalCount(prevCount => prevCount + 1);
+      console.log(`[ADMIN] New transaction created: ${newTransaction.id}`);
+    });
+
+    // Listen for transaction deleted
+    socketInstance.on('transaction:deleted', (deletedTransaction) => {
+      console.log('[SOCKET.IO] Received transaction:deleted:', deletedTransaction);
+      
+      // Remove transaction from the list
+      setTransactions(prevTransactions => {
+        return prevTransactions.filter(item => item.id !== deletedTransaction.id);
+      });
+      
+      // Update total count
+      setTotalCount(prevCount => Math.max(0, prevCount - 1));
+      console.log(`[ADMIN] Transaction deleted: ${deletedTransaction.id}`);
+    });
+
+    // Listen for transaction updated
+    socketInstance.on('transaction:updated', (updatedTransaction) => {
+      console.log('[SOCKET.IO] Received transaction:updated:', updatedTransaction);
+      
+      // Update the transaction in the list
+      setTransactions(prevTransactions => {
+        return prevTransactions.map(item => 
+          item.id === updatedTransaction.id ? updatedTransaction : item
+        );
+      });
+      
+      console.log(`[ADMIN] Transaction updated: ${updatedTransaction.id} status: ${updatedTransaction.status}`);
+    });
+
+    // Clean up connection on unmount
+    socketInstance.on('disconnect', () => {
+      console.log('[SOCKET.IO] Disconnected from server');
+    });
+
+    socketInstance.on('connect', () => {
+      console.log('[SOCKET.IO] Connected to server');
+    });
+
+    setSocket(socketInstance);
+
+    return () => {
+      socketInstance.disconnect();
+    };
+  }, []);
 
   // Formatter for VNĐ currency
   const formatVND = (value) => {
@@ -147,6 +219,22 @@ const BillingView = () => {
     return pages;
   };
 
+  // ── Helper: determine if a transaction is outflow (Bán) ──────────────────
+  const isBan = (trx) =>
+    trx.amount > 0 || trx.type === 'Hệ thống tặng' || trx.package_name === 'Gói Free';
+
+  // ── Tab-filtered list (applied on top of the already search-filtered page) ──
+  const tabFilteredTransactions = transactions.filter((trx) => {
+    if (activeTab === 'thu') return !isBan(trx);  // Nạp tiền / Thu
+    if (activeTab === 'ban') return isBan(trx);   // Tiêu dùng / Bán
+    return true;                                   // 'all'
+  });
+
+  // Tab count badges (computed from current page data)
+  const countAll = transactions.length;
+  const countThu = transactions.filter((t) => !isBan(t)).length;
+  const countBan = transactions.filter((t) => isBan(t)).length;
+
   return (
     <div className="admin-card p-0 overflow-hidden relative">
       <div className="p-6 border-b border-admin-border flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
@@ -177,10 +265,78 @@ const BillingView = () => {
           )}
         </form>
       </div>
-      
-      <div className="overflow-x-auto">
+
+      {/* ── Tab Bar ─────────────────────────────────────────────────────── */}
+      <div className="px-6 pt-4 pb-0 flex items-center gap-2 border-b border-admin-border bg-[#111115]/60">
+        {/* Tab: Tất cả */}
+        <button
+          onClick={() => { setActiveTab('all'); setCurrentPage(1); }}
+          className={`relative flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-lg transition-all select-none border-b-2 ${
+            activeTab === 'all'
+              ? 'border-admin-primary text-white bg-admin-primary/10'
+              : 'border-transparent text-admin-text-muted hover:text-admin-text hover:bg-admin-card/40'
+          }`}
+        >
+          Tất cả
+          <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+            activeTab === 'all' ? 'bg-admin-primary/20 text-admin-primary' : 'bg-admin-card text-admin-text-muted'
+          }`}>
+            {countAll}
+          </span>
+        </button>
+
+        {/* Tab: Nạp tiền (Thu) */}
+        <button
+          onClick={() => { setActiveTab('thu'); setCurrentPage(1); }}
+          className={`relative flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-lg transition-all select-none border-b-2 ${
+            activeTab === 'thu'
+              ? 'border-green-500 text-green-400 bg-green-500/10'
+              : 'border-transparent text-admin-text-muted hover:text-green-400 hover:bg-green-500/5'
+          }`}
+        >
+          <span className="w-2 h-2 rounded-full bg-green-500 shrink-0"></span>
+          Nạp tiền (Thu)
+          <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+            activeTab === 'thu' ? 'bg-green-500/20 text-green-400' : 'bg-admin-card text-admin-text-muted'
+          }`}>
+            {countThu}
+          </span>
+        </button>
+
+        {/* Tab: Tiêu dùng (Bán) */}
+        <button
+          onClick={() => { setActiveTab('ban'); setCurrentPage(1); }}
+          className={`relative flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-lg transition-all select-none border-b-2 ${
+            activeTab === 'ban'
+              ? 'border-red-500 text-red-400 bg-red-500/10'
+              : 'border-transparent text-admin-text-muted hover:text-red-400 hover:bg-red-500/5'
+          }`}
+        >
+          <span className="w-2 h-2 rounded-full bg-red-500 shrink-0"></span>
+          Tiêu dùng (Bán)
+          <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+            activeTab === 'ban' ? 'bg-red-500/20 text-red-400' : 'bg-admin-card text-admin-text-muted'
+          }`}>
+            {countBan}
+          </span>
+        </button>
+      </div>
+
+      {/* Table wrapper: relative + min-height so layout never collapses during page transitions */}
+      <div className="overflow-x-auto relative" style={{ minHeight: '320px' }}>
+
+        {/* ── Overlay spinner: overlays the table WITHOUT collapsing its height ── */}
+        {loading && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[#0f0f13]/75 backdrop-blur-[2px] rounded-b-xl">
+            <div className="animate-spin rounded-full h-9 w-9 border-t-2 border-b-2 border-admin-primary mb-3"></div>
+            <span className="text-xs text-admin-text-muted font-medium tracking-wide">
+              Đang tải dữ liệu...
+            </span>
+          </div>
+        )}
+
         <table className="w-full text-left text-sm text-admin-text-muted">
-          <thead className="text-xs uppercase bg-admin-bg/50 border-b border-admin-border">
+          <thead className="text-xs uppercase bg-admin-bg/50 border-b border-admin-border sticky top-0">
             <tr>
               <th className="px-6 py-3">ID</th>
               <th className="px-6 py-3">User Email</th>
@@ -192,24 +348,25 @@ const BillingView = () => {
               <th className="px-6 py-3">Hành động</th>
             </tr>
           </thead>
-          <tbody>
-            {loading ? (
+          <tbody className={loading ? 'opacity-40 pointer-events-none select-none' : ''}>
+            {/* Only show empty state when NOT loading and data is truly empty */}
+            {!loading && tabFilteredTransactions.length === 0 ? (
               <tr>
-                <td colSpan="8" className="px-6 py-12 text-center">
+                <td colSpan="8" className="px-6 py-16 text-center">
                   <div className="flex flex-col items-center justify-center gap-3">
-                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-admin-primary"></div>
-                    <span className="text-admin-text-muted">Đang tải lịch sử giao dịch từ Database...</span>
+                    <span className="text-3xl">
+                      {activeTab === 'thu' ? '💸' : activeTab === 'ban' ? '🛒' : '📋'}
+                    </span>
+                    <p className="text-sm text-admin-text-muted font-semibold">
+                      {activeTab === 'thu' ? 'Không có giao dịch nạp tiền nào' :
+                       activeTab === 'ban' ? 'Không có giao dịch tiêu dùng nào' :
+                       'Chưa có lịch sử giao dịch nào.'}
+                    </p>
                   </div>
                 </td>
               </tr>
-            ) : transactions.length === 0 ? (
-              <tr>
-                <td colSpan="8" className="px-6 py-8 text-center text-admin-text-muted">
-                  Không tìm thấy giao dịch nào.
-                </td>
-              </tr>
             ) : (
-              transactions.map((trx) => (
+              tabFilteredTransactions.map((trx) => (
                 <tr key={trx.id} className="border-b border-admin-border hover:bg-admin-bg/30 transition-colors">
                   <td className="px-6 py-4 font-semibold text-admin-text">{trx.id}</td>
                   <td className="px-6 py-4">{trx.user?.email || 'Khách vãng lai'}</td>
@@ -227,22 +384,16 @@ const BillingView = () => {
                   <td className="px-6 py-4 font-medium text-admin-text">{formatVND(trx.amount)}</td>
                   <td className="px-6 py-4">
                     {(() => {
-                      const isServiceUse = trx.type === 'Trừ phí dịch vụ' || trx.package_name === 'Tạo Giọng Nói' || trx.package_name === 'Tạo Ảnh AI' || trx.package_name === 'Tạo Video';
                       const isOutflow = trx.amount > 0 || trx.type === 'Hệ thống tặng' || trx.package_name === 'Gói Free';
-                      
-                      if (isOutflow) {
-                        return (
-                          <span className="font-semibold text-red-500">
-                            -{Math.abs(trx.credits_added)}
-                          </span>
-                        );
-                      } else {
-                        return (
-                          <span className="font-semibold text-green-500">
-                            +{Math.abs(trx.credits_added)}
-                          </span>
-                        );
-                      }
+                      return isOutflow ? (
+                        <span className="font-semibold text-red-500">
+                          -{Math.abs(trx.credits_added)}
+                        </span>
+                      ) : (
+                        <span className="font-semibold text-green-500">
+                          +{Math.abs(trx.credits_added)}
+                        </span>
+                      );
                     })()}
                   </td>
                   <td className="px-6 py-4">{renderStatusBadge(trx.status)}</td>
@@ -262,7 +413,7 @@ const BillingView = () => {
                             Đang duyệt...
                           </>
                         ) : (
-                          "Duyệt đơn"
+                          'Duyệt đơn'
                         )}
                       </button>
                     ) : (
@@ -277,7 +428,7 @@ const BillingView = () => {
       </div>
 
       {/* Pagination Controls */}
-      {!loading && totalPages > 1 && (
+      {totalPages > 1 && (
         <div className="p-4 border-t border-admin-border flex items-center justify-between bg-admin-bg/10">
           <span className="text-xs text-admin-text-muted">
             Trang {currentPage} trên {totalPages} (Hiển thị {transactions.length} dòng)

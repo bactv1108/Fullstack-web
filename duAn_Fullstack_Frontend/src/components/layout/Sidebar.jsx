@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Image, Mic, Eye, Clock, Settings, X } from 'lucide-react';
+import { Image, Mic, Eye, Zap, Clock, Settings, X } from 'lucide-react';
 
 export default function Sidebar({ 
     currentMenu = 'video', 
@@ -15,6 +15,8 @@ export default function Sidebar({
         { id: 'image-generator', label: 'Tạo Ảnh AI', icon: Image, path: '/dashboard/image-generator' },
         { id: 'tts', label: 'Tạo Giọng Nói', icon: Mic, path: '/dashboard/tts' },
         { id: 'image-analyzer', label: 'Mắt Thần AI', icon: Eye, path: '/dashboard/image-analyzer' },
+        // Tạm ẩn Trợ lý viết bài Affiliate trên Sidebar
+        // { id: 'affiliate', label: 'Trợ Lý Affiliate', icon: Zap, path: '/dashboard/affiliate' },
         { id: 'history', label: 'Lịch sử', icon: Clock, path: '/dashboard/history' },
         { id: 'settings', label: 'Cài đặt', icon: Settings, path: '/dashboard/settings' },
     ];

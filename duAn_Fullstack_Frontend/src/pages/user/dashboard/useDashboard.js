@@ -202,11 +202,15 @@ export default function useDashboard() {
     if (ttsGenerating && ttsProgress < 100) {
       const timer = setTimeout(() => setTtsProgress(prev => prev + 10), 100);
       return () => clearTimeout(timer);
-    } else if (ttsProgress >= 100) {
-      setTtsGenerating(false);
-      loadHistory();
+    } else if (!ttsGenerating && ttsProgress >= 100) {
+      // Reset progress sau khi hoàn thành, KHÔNG gọi lại loadHistory (đã gọi ở handler)
+      setTtsProgress(0);
     }
   }, [ttsGenerating, ttsProgress]);
+
+  // Không cần gọi lại loadHistory khi đổi filter - dữ liệu đã có sẵn trong historyList,
+  // chỉ cần lọc lại qua filteredHistory ở dưới (client-side filtering)
+  // useEffect(() => { loadHistory(); }, [historyType]); // ĐÃ XÓA ĐỂ TRÁNH VÒNG LẶP
 
   // Xử lý xóa lịch sử trực tiếp (không qua modal xác nhận nếu được gọi trực tiếp)
   const handleDeleteHistory = async (id) => {
@@ -324,6 +328,8 @@ export default function useDashboard() {
       matchesType = true;
     } else if (historyType === 'video') {
       matchesType = item.type === 'video';
+    } else if (historyType === 'image') {
+      matchesType = item.type === 'image';
     } else if (historyType === 'audio' || historyType === 'tts') {
       matchesType = item.type === 'audio' || item.type === 'tts';
     } else if (historyType === 'analysis') {

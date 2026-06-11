@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { 
   User, Shield, ShieldCheck, KeyRound, Monitor, Smartphone, 
   Terminal, Palette, Check, Save, Lock, LogOut, ArrowLeft, Camera, Trash2, X, ArrowUp 
@@ -19,7 +20,15 @@ export default function AdminProfile() {
   const [confirmPassword, setConfirmPassword] = useState('');
 
   // 2FA state
-  const [is2FaActive, setIs2FaActive] = useState(true);
+  const [is2FaActive, setIs2FaActive] = useState(false);
+  const [show2FAModal, setShow2FAModal] = useState(false);
+  const [is2FALoading, setIs2FALoading] = useState(false);
+  const [qrCode, setQrCode] = useState('');
+  const [tempSecret, setTempSecret] = useState('');
+  const [twoFAToken, setTwoFAToken] = useState('');
+  const [twoFAError, setTwoFAError] = useState('');
+  const [twoFASuccess, setTwoFASuccess] = useState('');
+  const [isDisabling, setIsDisabling] = useState(false);
 
   // Webhook states
   const [webhookUrl, setWebhookUrl] = useState('https://api.telegram.org/bot724391:AAH-u58.../sendMessage');
@@ -46,6 +55,33 @@ export default function AdminProfile() {
   // Scroll-to-Top State & Effect
   const [showScrollTop, setShowScrollTop] = useState(false);
 
+  const rawApi = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+  const apiBase = rawApi.replace(/\/admin\/?$/, '');
+
+  const toBoolean = (value) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value === 1;
+    if (typeof value === 'string') return ['1', 'true', 'yes'].includes(value.toLowerCase());
+    return false;
+  };
+
+  const saveAuthTokens = (data) => {
+    const accessToken = data?.access_token || data?.accessToken || data?.token;
+    const refreshToken = data?.refresh_token || data?.refreshToken;
+
+    if (accessToken) {
+      localStorage.setItem('admin_access_token', accessToken);
+      localStorage.setItem('access_token', accessToken);
+      localStorage.setItem('Access_token', accessToken);
+      localStorage.setItem('token', accessToken);
+    }
+
+    if (refreshToken) {
+      localStorage.setItem('admin_refresh_token', refreshToken);
+      localStorage.setItem('refresh_token', refreshToken);
+    }
+  };
+
   useEffect(() => {
     const handleScroll = (e) => {
       const scrollPos = e.target.scrollTop || 0;
@@ -60,6 +96,30 @@ export default function AdminProfile() {
       window.removeEventListener('scroll', handleScroll, true);
     };
   }, []);
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const token = localStorage.getItem('admin_access_token');
+        if (!token) return;
+
+        const res = await axios.get(`${apiBase}/user/profile`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const profile = res.data?.user || res.data?.data || res.data;
+
+        if (profile) {
+          setFullname(profile.name || '');
+          setAvatar(profile.avatar || localStorage.getItem('admin_avatar') || '');
+          setIs2FaActive(toBoolean(profile.is_two_factor_enabled));
+        }
+      } catch (err) {
+        console.error('[ADMIN PROFILE] Load profile failed:', err.response?.data?.message || err.message);
+      }
+    };
+
+    fetchProfile();
+  }, [apiBase]);
 
   const scrollToTop = () => {
     const mainEl = document.querySelector('main');
@@ -134,6 +194,75 @@ export default function AdminProfile() {
     localStorage.removeItem('admin_avatar');
     setAvatar('');
     window.dispatchEvent(new Event('admin-avatar-changed'));
+  };
+
+  const handle2FAToggle = async () => {
+    if (is2FaActive) {
+      setIsDisabling(true);
+      setShow2FAModal(true);
+      setTwoFAToken('');
+      setTwoFAError('');
+    } else {
+      setIsDisabling(false);
+      setIs2FALoading(true);
+      try {
+        const token = localStorage.getItem('admin_access_token');
+        const res = await axios.get(`${apiBase}/auth/2fa/generate`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = res.data;
+        setQrCode(data.qrCode || '');
+        setTempSecret(data.secret || '');
+        setShow2FAModal(true);
+        setTwoFAToken('');
+        setTwoFAError('');
+      } catch (err) {
+        setTwoFAError(err.response?.data?.message || 'Không thể tạo mã QR.');
+      } finally {
+        setIs2FALoading(false);
+      }
+    }
+  };
+
+  const handleConfirm2FA = async () => {
+    if (twoFAToken.length !== 6) return;
+    setIs2FALoading(true);
+    setTwoFAError('');
+    try {
+      const token = localStorage.getItem('admin_access_token');
+      if (isDisabling) {
+        const res = await axios.post(`${apiBase}/auth/2fa/disable`, { token: twoFAToken }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        saveAuthTokens(res.data);
+        setIs2FaActive(false);
+        setTwoFASuccess('Đã tắt bảo mật hai lớp (2FA).');
+      } else {
+        const res = await axios.post(`${apiBase}/auth/2fa/enable`, { secret: tempSecret, token: twoFAToken }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        saveAuthTokens(res.data);
+        setIs2FaActive(true);
+        setTwoFASuccess('Đã kích hoạt bảo mật hai lớp (2FA) thành công!');
+      }
+      setShow2FAModal(false);
+      setQrCode('');
+      setTempSecret('');
+      setTwoFAToken('');
+    } catch (err) {
+      setTwoFAError(err.response?.data?.message || 'Xác thực thất bại.');
+    } finally {
+      setIs2FALoading(false);
+    }
+  };
+
+  const handleClose2FAModal = () => {
+    setShow2FAModal(false);
+    setQrCode('');
+    setTempSecret('');
+    setTwoFAToken('');
+    setTwoFAError('');
+    setIsDisabling(false);
   };
 
   return (
@@ -377,18 +506,88 @@ export default function AdminProfile() {
             <p className="text-[10px] text-admin-text-muted leading-relaxed">
               Yêu cầu nhập mã xác minh gồm 6 chữ số từ thiết bị di động cá nhân của bạn mỗi khi đăng nhập vào quản trị hệ thống.
             </p>
+            {twoFASuccess && <span className="text-[10px] font-bold text-green-400 mt-1">{twoFASuccess}</span>}
           </div>
 
           {/* Switch Toggle */}
           <button 
             type="button"
-            onClick={() => setIs2FaActive(!is2FaActive)}
-            className={`w-12 h-6 rounded-full p-1 transition-all duration-350 cursor-pointer ${is2FaActive ? 'bg-[#10b981]' : 'bg-zinc-800'}`}
+            disabled={is2FALoading}
+            onClick={handle2FAToggle}
+            className={`w-12 h-6 rounded-full p-1 transition-all duration-350 cursor-pointer ${is2FALoading ? 'opacity-50' : ''} ${is2FaActive ? 'bg-[#10b981]' : 'bg-zinc-800'}`}
           >
             <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-350 shadow-md ${is2FaActive ? 'translate-x-6' : 'translate-x-0'}`} />
           </button>
         </div>
       </section>
+
+      {/* ── 2FA QR Modal ── */}
+      {show2FAModal && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#18181c] border border-[#222226] text-[#e2e8f0] rounded-xl max-w-md w-full p-6 relative flex flex-col gap-4 text-center select-none shadow-2xl">
+            <button
+              onClick={handleClose2FAModal}
+              className="absolute right-4 top-4 p-1.5 bg-[#18181c] hover:bg-[#222226] text-zinc-400 hover:text-white rounded-lg transition-all border border-[#222226] cursor-pointer hover:scale-[1.05] active:scale-[0.95]"
+            >
+              <X size={16} />
+            </button>
+
+            <h3 className="text-md font-black uppercase tracking-wider text-white mt-2">
+              {isDisabling ? 'Tắt bảo mật 2FA' : 'Kích hoạt bảo mật 2FA'}
+            </h3>
+            <p className="text-[10px] text-zinc-400 -mt-2">
+              {isDisabling
+                ? 'Nhập mã 6 số từ Google Authenticator để xác nhận tắt 2FA.'
+                : 'Quét mã QR bằng Google Authenticator, sau đó nhập mã 6 số để xác nhận.'
+              }
+            </p>
+
+            {!isDisabling && qrCode && (
+              <div className="mx-auto bg-white p-3 rounded-lg w-52 h-52 flex items-center justify-center border border-[#222226] mt-1 shadow-inner">
+                <img src={qrCode} alt="QR Code 2FA" className="w-full h-full object-contain" />
+              </div>
+            )}
+
+            {!isDisabling && tempSecret && (
+              <div className="bg-[#0f0f11] p-3 rounded-xl border border-[#222226]/40 text-left text-xs">
+                <span className="text-zinc-400">Hoặc nhập mã thủ công:</span>
+                <div className="flex items-center gap-2 mt-1">
+                  <code className="font-mono font-bold text-[#f59e0b] text-xs break-all">{tempSecret}</code>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(tempSecret); alert('Đã sao chép mã secret!'); }}
+                    className="text-[#f59e0b] hover:underline cursor-pointer bg-transparent border-none text-[10px] font-bold shrink-0"
+                  >
+                    Sao chép
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2 text-left">
+              <label className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Mã xác thực 6 số</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                value={twoFAToken}
+                onChange={(e) => { setTwoFAToken(e.target.value.replace(/\D/g, '').slice(0, 6)); setTwoFAError(''); }}
+                placeholder="000000"
+                className="w-full bg-[#131316] border border-[#222226] rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f59e0b] focus:ring-1 focus:ring-[#f59e0b] transition-all text-center text-2xl tracking-[0.5em] font-mono"
+              />
+              {twoFAError && <span className="text-[10px] text-red-500 font-bold">{twoFAError}</span>}
+            </div>
+
+            <button
+              type="button"
+              disabled={is2FALoading || twoFAToken.length !== 6}
+              onClick={handleConfirm2FA}
+              className="w-full py-3 px-6 bg-[#f59e0b] hover:bg-amber-600 disabled:bg-zinc-700 disabled:text-zinc-500 text-black font-black uppercase text-xs tracking-wider rounded-xl transition-all hover:scale-[1.01] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed border-none"
+            >
+              {is2FALoading ? 'Đang xác thực...' : (isDisabling ? 'TẮT 2FA' : 'KÍCH HOẠT 2FA')}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ─── MODULE 4: ACTIVE SESSIONS MONITORING ─── */}
       <section className="bg-[#18181c] border border-[#222226] rounded-xl p-5 md:p-6 flex flex-col gap-5">

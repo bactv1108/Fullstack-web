@@ -38,6 +38,9 @@ db.ImageAnalysis = require('./ImageAnalysis')(sequelize);
 db.Package = require('./package.model')(sequelize);
 db.Transaction = require('./transaction.model')(sequelize);
 db.Notification = require('./notification.model')(sequelize);
+db.ProductCache = require('./productCache')(sequelize, Sequelize.DataTypes);
+db.UserSession = require('./UserSession')(sequelize);
+db.AdminNotification = require('./adminNotification.model')(sequelize);
 
 // Define associations exactly as specified:
 // User.hasMany(Job, { foreignKey: 'userId', as: 'renderJobs' })
@@ -61,5 +64,9 @@ db.Transaction.belongsTo(db.User, { foreignKey: 'userId', as: 'user' });
 // Notifications
 db.User.hasMany(db.Notification, { foreignKey: 'user_id', as: 'notifications' });
 db.Notification.belongsTo(db.User, { foreignKey: 'user_id', as: 'user' });
+
+// Associations for User & UserSession (Session Management feature)
+db.User.hasMany(db.UserSession, { foreignKey: 'user_id', as: 'sessions' });
+db.UserSession.belongsTo(db.User, { foreignKey: 'user_id', as: 'owner' });
 
 module.exports = db;

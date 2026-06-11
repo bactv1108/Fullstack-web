@@ -76,6 +76,23 @@ const authService = {
       };
     }
     return axiosClient.post('/auth/google', { token });
+  },
+
+  // ── 2FA Methods ────────────────────────────────────────────────
+  generate2FA: async () => {
+    return axiosClient.get('/auth/2fa/generate');
+  },
+
+  enable2FA: async (secret, token) => {
+    return axiosClient.post('/auth/2fa/enable', { secret, token });
+  },
+
+  disable2FA: async (token) => {
+    return axiosClient.post('/auth/2fa/disable', { token });
+  },
+
+  verifyLogin2FA: async (userId, token) => {
+    return axiosClient.post('/auth/2fa/verify-login', { userId, token });
   }
 };
 

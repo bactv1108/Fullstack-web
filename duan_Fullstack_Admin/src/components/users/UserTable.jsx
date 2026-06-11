@@ -9,6 +9,7 @@ const UserTable = () => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [statusTab, setStatusTab] = useState('all'); // 'all' | 'active' | 'banned'
 
   useEffect(() => {
     setCurrentPage(1);
@@ -38,7 +39,17 @@ const UserTable = () => {
     });
   };
 
-  const filteredUsers = users;
+  // Tab-filtered list — pure client-side filter on top of server-fetched page data
+  const filteredUsers = users.filter((u) => {
+    if (statusTab === 'active') return u.status === 'Active';
+    if (statusTab === 'banned') return u.status === 'Banned';
+    return true;
+  });
+
+  // Badge counts per tab (from current page)
+  const countAll    = users.length;
+  const countActive = users.filter((u) => u.status === 'Active').length;
+  const countBanned = users.filter((u) => u.status === 'Banned').length;
 
   return (
     <div className="admin-card p-0 overflow-hidden flex flex-col h-full">
@@ -63,7 +74,64 @@ const UserTable = () => {
           )}
         </div>
       </div>
-      
+
+      {/* ── Tab Bar ─────────────────────────────────────────────────────── */}
+      <div className="px-6 pt-4 pb-0 flex items-center gap-2 border-b border-admin-border bg-[#111115]/60">
+
+        {/* Tab: Tất cả */}
+        <button
+          onClick={() => setStatusTab('all')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-lg transition-all select-none border-b-2 ${
+            statusTab === 'all'
+              ? 'border-admin-primary text-white bg-admin-primary/10'
+              : 'border-transparent text-admin-text-muted hover:text-admin-text hover:bg-admin-card/40'
+          }`}
+        >
+          Tất cả
+          <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+            statusTab === 'all' ? 'bg-admin-primary/20 text-admin-primary' : 'bg-admin-card text-admin-text-muted'
+          }`}>
+            {countAll}
+          </span>
+        </button>
+
+        {/* Tab: Đang hoạt động (Active) */}
+        <button
+          onClick={() => setStatusTab('active')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-lg transition-all select-none border-b-2 ${
+            statusTab === 'active'
+              ? 'border-green-500 text-green-400 bg-green-500/10'
+              : 'border-transparent text-admin-text-muted hover:text-green-400 hover:bg-green-500/5'
+          }`}
+        >
+          <span className="w-2 h-2 rounded-full bg-green-500 shrink-0 animate-pulse"></span>
+          Đang hoạt động
+          <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+            statusTab === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-admin-card text-admin-text-muted'
+          }`}>
+            {countActive}
+          </span>
+        </button>
+
+        {/* Tab: Đã chặn (Banned) */}
+        <button
+          onClick={() => setStatusTab('banned')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-lg transition-all select-none border-b-2 ${
+            statusTab === 'banned'
+              ? 'border-red-500 text-red-400 bg-red-500/10'
+              : 'border-transparent text-admin-text-muted hover:text-red-400 hover:bg-red-500/5'
+          }`}
+        >
+          <span className="w-2 h-2 rounded-full bg-red-500 shrink-0"></span>
+          Đã chặn
+          <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+            statusTab === 'banned' ? 'bg-red-500/20 text-red-400' : 'bg-admin-card text-admin-text-muted'
+          }`}>
+            {countBanned}
+          </span>
+        </button>
+
+      </div>
       <div className="overflow-x-auto flex-1">
         <table className="w-full text-left text-sm text-admin-text-muted">
           <thead className="text-xs uppercase bg-admin-bg/50 border-b border-admin-border">
@@ -77,7 +145,22 @@ const UserTable = () => {
             </tr>
           </thead>
           <tbody>
-            {filteredUsers.map(user => (
+            {filteredUsers.length === 0 ? (
+              <tr>
+                <td colSpan="6" className="px-6 py-12 text-center">
+                  <div className="flex flex-col items-center justify-center gap-3">
+                    <span className="text-3xl">
+                      {statusTab === 'active' ? '🟢' : statusTab === 'banned' ? '🔴' : '👥'}
+                    </span>
+                    <p className="text-sm text-admin-text-muted font-semibold">
+                      {statusTab === 'active' ? 'Không có tài khoản đang hoạt động' :
+                       statusTab === 'banned' ? 'Không có tài khoản nào bị chặn' :
+                       'Chưa có người dùng nào.'}
+                    </p>
+                  </div>
+                </td>
+              </tr>
+            ) : filteredUsers.map(user => (
               <tr key={user.id} className="border-b border-admin-border hover:bg-admin-bg/30 transition-colors">
                 <td className="px-6 py-4">#{user.id}</td>
                 <td className="px-6 py-4 font-medium text-admin-text">{user.name}</td>

@@ -14,11 +14,17 @@ const AuthForm = () => {
   const [unverifiedEmail, setUnverifiedEmail] = useState('');
   const [resendLoading, setResendLoading] = useState(false);
 
+  // 2FA state
+  const [show2FAInput, setShow2FAInput] = useState(false);
+  const [userId2FA, setUserId2FA] = useState(null);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpError, setOtpError] = useState('');
+
   // Password visibility toggles
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const { login } = useAuth();
+  const { login, verify2FALogin } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -153,6 +159,14 @@ const AuthForm = () => {
     try {
       if (mode === 'login') {
         const data = await login({ email: formData.email, password: formData.password });
+        if (data && data.require2FA === true) {
+          setShow2FAInput(true);
+          setUserId2FA(data.userId);
+          setOtpCode('');
+          setOtpError('');
+          setLoading(false);
+          return;
+        }
         navigate('/dashboard');
 
       } else if (mode === 'register') {
@@ -204,6 +218,23 @@ const AuthForm = () => {
       setServerError(err.response?.data?.message || 'Không thể gửi lại email xác thực.');
     } finally {
       setResendLoading(false);
+    }
+  };
+
+  const handle2FASubmit = async (e) => {
+    e.preventDefault();
+    if (!otpCode || otpCode.length !== 6) {
+      setOtpError('Vui lòng nhập đủ 6 chữ số.');
+      return;
+    }
+    setLoading(true);
+    setOtpError('');
+    try {
+      await verify2FALogin(userId2FA, otpCode);
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message || 'Mã xác thực không chính xác.';
+      setOtpError(msg);
+      setLoading(false);
     }
   };
 
@@ -274,7 +305,7 @@ const AuthForm = () => {
           )}
 
           {/* ── Form ── */}
-          <form onSubmit={handleSubmit} className="auth-form animate-fade-in" noValidate>
+          <form onSubmit={show2FAInput ? handle2FASubmit : handleSubmit} className="auth-form animate-fade-in" noValidate>
 
             {/* Name (Register only) */}
             {mode === 'register' && (
@@ -322,8 +353,40 @@ const AuthForm = () => {
               </div>
             )}
 
-            {/* Password (Login + Register) */}
-            {(mode === 'login' || mode === 'register') && (
+            {/* ── 2FA OTP Input (shown after password verified) ── */}
+            {show2FAInput && mode === 'login' && (
+              <div className="input-group">
+                <label className="input-label">Mã xác thực 2FA</label>
+                <p style={{ fontSize: '11px', color: '#a1a1aa', marginTop: '-6px', marginBottom: '8px', textAlign: 'left' }}>
+                  Nhập mã 6 chữ số từ ứng dụng Google Authenticator
+                </p>
+                <div className={`input-wrapper ${otpError ? 'has-error' : ''}`}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    className="input-field with-icon"
+                    placeholder="000000"
+                    value={otpCode}
+                    onChange={(e) => { setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setOtpError(''); }}
+                    autoComplete="one-time-code"
+                    autoFocus
+                  />
+                </div>
+                {otpError && <span className="field-error">{otpError}</span>}
+                <button
+                  type="button"
+                  className="resend-btn"
+                  style={{ marginTop: '8px', fontSize: '11px' }}
+                  onClick={() => { setShow2FAInput(false); setOtpCode(''); setOtpError(''); }}
+                >
+                  ← Quay lại đăng nhập
+                </button>
+              </div>
+            )}
+
+            {/* Password (Login + Register) - hidden during 2FA challenge */}
+            {!show2FAInput && (mode === 'login' || mode === 'register') && (
               <div className="input-group">
                 <label className="input-label">
                   Mật khẩu
@@ -409,17 +472,15 @@ const AuthForm = () => {
             <button type="submit" className="btn btn-primary btn-full submit-btn" disabled={loading}>
               {loading ? 'Đang xử lý...' : (
                 <>
-                  {mode === 'login' && 'Đăng nhập'}
-                  {mode === 'register' && 'Đăng ký'}
-                  {mode === 'forgot' && 'Gửi link đặt lại'}
+                  {show2FAInput ? 'Xác thực 2FA' : mode === 'login' ? 'Đăng nhập' : mode === 'register' ? 'Đăng ký' : 'Gửi link đặt lại'}
                   <ArrowRight size={18} />
                 </>
               )}
             </button>
           </form>
 
-          {/* ── Google OAuth (Login only) ── */}
-          {mode === 'login' && (
+          {/* ── Google OAuth (Login only, hidden during 2FA) ── */}
+          {mode === 'login' && !show2FAInput && (
             <>
               <div className="auth-divider">
                 <span>Hoặc tiếp tục với</span>
@@ -436,7 +497,8 @@ const AuthForm = () => {
             </>
           )}
 
-          {/* ── Footer Links ── */}
+          {/* ── Footer Links (hidden during 2FA) ── */}
+          {!show2FAInput && (
           <div className="auth-footer">
             {mode === 'login' ? (
               <p>Chưa có tài khoản? <a href="#" onClick={(e) => { e.preventDefault(); switchMode('register'); }}>Đăng ký ngay</a></p>
@@ -446,6 +508,7 @@ const AuthForm = () => {
               <p><a href="#" onClick={(e) => { e.preventDefault(); switchMode('login'); }}>Quay lại đăng nhập</a></p>
             )}
           </div>
+          )}
         </div>
       </div>
     </div>

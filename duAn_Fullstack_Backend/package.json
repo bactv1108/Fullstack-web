@@ -28,7 +28,14 @@
     "mysql2": "^3.22.3",
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.7",
-    "sequelize": "^6.37.8"
+    "otplib": "^13.4.1",
+    "puppeteer": "^25.1.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "qrcode": "^1.5.4",
+    "sequelize": "^6.37.8",
+    "socket.io": "^4.8.3",
+    "ua-parser-js": "^2.0.10"
   },
   "devDependencies": {
     "sequelize-cli": "^6.6.5"

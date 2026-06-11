@@ -5,6 +5,7 @@ import MainLayout from '../components/layout/MainLayout';
 import { useAuth } from '../hooks/useAuth';
 
 // Áp dụng Code Splitting
+// const Login = lazy(() => import('../pages/auth/Login'));
 const Login = lazy(() => import('../pages/auth/Login'));
 const GoogleCallback = lazy(() => import('../pages/auth/GoogleCallback'));
 const Dashboard = lazy(() => import('../pages/user/Dashboard'));
@@ -18,6 +19,7 @@ const TtsView = lazy(() => import('../pages/user/dashboard/TtsView'));
 const ImageAnalyzerView = lazy(() => import('../pages/user/dashboard/ImageAnalyzerView'));
 const HistoryView = lazy(() => import('../pages/user/dashboard/HistoryView'));
 const SettingsView = lazy(() => import('../pages/user/dashboard/SettingsView'));
+// const AffiliateAssistant = lazy(() => import('../pages/user/dashboard/AffiliateAssistant'));
 
 const LoadingFallback = () => (
   <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -62,6 +64,8 @@ const AppRoutes = () => {
               <Route path="mat-than" element={<Navigate to="/dashboard/image-analyzer" replace />} />
               <Route path="history" element={<HistoryView />} />
               <Route path="settings" element={<SettingsView />} />
+              {/* Tạm thời đóng băng tuyến đường Affiliate Assistant */}
+              {/* <Route path="affiliate" element={<AffiliateAssistant />} /> */}
             </Route>
             <Route path="/dashboard/mat-than/detail/:id" element={<MatThanDetailView />} />
           </Route>

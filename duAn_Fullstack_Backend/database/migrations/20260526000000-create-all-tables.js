@@ -35,6 +35,10 @@ module.exports = {
         type: Sequelize.STRING(255),
         allowNull: true,
       },
+      phone: {
+        type: Sequelize.STRING(30),
+        allowNull: true,
+      },
       avatar: {
         type: Sequelize.STRING(255),
         allowNull: true,

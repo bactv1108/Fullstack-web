@@ -3,11 +3,64 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
+const axios = require('axios');
+const UAParser = require('ua-parser-js');
 const db = require('../config/db');
 const queueService = require('../services/queue.service');
 const authService = require('../services/auth.service');
-const { User, Transaction, sequelize } = require('../models');
+const { User, Transaction, UserSession, sequelize } = require('../models');
 require('dotenv').config();
+
+// ── Helper: Ghi nhận phiên đăng nhập vào bảng user_sessions ──────────────────
+const recordSession = async (userId, refreshToken, userAgent, rawIp) => {
+  try {
+    // 1. Parse User-Agent → device_string
+    const parser = new UAParser(userAgent || '');
+    const browser = parser.getBrowser();
+    const os = parser.getOS();
+    const device = parser.getDevice();
+
+    const browserName = browser.name ? `${browser.name} Browser` : 'Unknown Browser';
+    const osName = os.name
+      ? `${os.name}${os.version ? ' ' + os.version : ''} OS`
+      : 'Unknown OS';
+    const deviceModel = device.model ? ` (${device.vendor || ''} ${device.model})`.trim() : '';
+    const device_string = `${browserName} — ${osName}${deviceModel}`;
+
+    // 2. Lấy IP thực (bỏ qua IPv6 prefix)
+    let ip = (rawIp || '').replace('::ffff:', '').trim();
+    if (!ip) ip = '127.0.0.1';
+
+    // 3. Lấy vị trí qua ip-api.com
+    let location = 'Hà Nội, Việt Nam'; // fallback cho localhost
+    const isLocalhost = ['127.0.0.1', '::1', 'localhost', ''].includes(ip);
+    if (!isLocalhost) {
+      try {
+        const geoRes = await axios.get(`http://ip-api.com/json/${ip}?lang=vi`, { timeout: 3000 });
+        const geo = geoRes.data;
+        if (geo && geo.status === 'success') {
+          location = `${geo.city || ''}, ${geo.country || ''}`.replace(/^,\s*/, '').trim();
+        }
+      } catch (geoErr) {
+        console.warn('[SESSION] ip-api lookup failed:', geoErr.message);
+      }
+    }
+
+    // 4. INSERT bản ghi vào user_sessions
+    await UserSession.create({
+      user_id: userId,
+      refresh_token: refreshToken,
+      device_string,
+      ip_address: ip,
+      location,
+    });
+
+    console.log(`[SESSION] ✅ Ghi nhận phiên mới — userId: ${userId} | device: ${device_string} | ip: ${ip}`);
+  } catch (err) {
+    // Không để lỗi ghi session làm hỏng flow đăng nhập
+    console.error('[SESSION] recordSession error:', err.message);
+  }
+};
 
 // Helper to parse cookies manually from raw headers
 const parseCookies = (cookieHeader) => {
@@ -129,6 +182,12 @@ const googleCallback = async (req, res) => {
     // Sign system tokens
     const systemTokens = authService.generateTokens(user);
     await authService.storeRefreshToken(user.id, systemTokens.refresh_token);
+
+    // ── Ghi nhận phiên đăng nhập qua Google OAuth ────────────────────
+    const rawIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+    await recordSession(user.id, systemTokens.refresh_token, req.headers['user-agent'], rawIp);
+    // 📡 Bắn real-time — cập nhật danh sách phiên
+    if (typeof req.app.emitSessionChanged === 'function') req.app.emitSessionChanged(user.id);
 
     // Save refresh token in HttpOnly cookie
     res.cookie('refresh_token', systemTokens.refresh_token, authService.getCookieOptions());
@@ -312,6 +371,17 @@ const login = async (req, res) => {
       return res.status(403).json({ message: 'Tài khoản của bạn đã bị khoá.' });
     }
 
+    // ── 2FA Check: if enabled, pause here and ask for OTP ──────────
+    if (user.is_two_factor_enabled) {
+      console.log(`[AUTH] 2FA required for user ID: ${user.id}`);
+      return res.status(200).json({
+        success: true,
+        require2FA: true,
+        userId: user.id,
+        message: 'Vui lòng nhập mã 6 số từ ứng dụng Authenticator.'
+      });
+    }
+
     // Generate real tokens via authService
     const tokens = authService.generateTokens(user);
     await authService.storeRefreshToken(user.id, tokens.refresh_token);
@@ -321,12 +391,18 @@ const login = async (req, res) => {
       await db.execute('UPDATE users SET verification_token = NULL WHERE id = ?', [user.id]);
     }
 
+    // ── Ghi nhận phiên đăng nhập mới ────────────────────────────────
+    const rawIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+    await recordSession(user.id, tokens.refresh_token, req.headers['user-agent'], rawIp);
+    // 📡 Bắn real-time — cập nhật danh sách phiên
+    if (typeof req.app.emitSessionChanged === 'function') req.app.emitSessionChanged(user.id);
+
     // Save refresh token in HttpOnly cookie
     res.cookie('refresh_token', tokens.refresh_token, authService.getCookieOptions());
 
     return res.status(200).json({
       message: 'Đăng nhập thành công!',
-      user: { id: user.id, name: user.name, email: user.email, role: user.role, avatar: user.avatar },
+      user: { id: user.id, name: user.name, email: user.email, phone: user.phone, role: user.role, avatar: user.avatar },
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
     });
@@ -563,5 +639,5 @@ module.exports = {
   refreshToken,
   resendVerification,
   forgotPassword,
-  resetPassword, // Đã kích nổ export hàm mới
+  resetPassword,
 };

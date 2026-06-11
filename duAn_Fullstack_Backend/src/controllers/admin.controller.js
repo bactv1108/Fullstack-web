@@ -237,6 +237,19 @@ const updateUserCredits = async (req, res) => {
 
   try {
     const user = await adminService.adjustUserCredits(id, amount);
+
+    // Emit real-time credit update via Socket.io so user's frontend Header reflects new balance immediately
+    const io = req.io;
+    if (io) {
+      io.emit('user:credit_updated', {
+        userId: user.id,
+        credits: user.credits,
+        creditsAdded: Number(amount),
+        timestamp: new Date()
+      });
+      console.log(`[SOCKET.IO] Emitted 'user:credit_updated' (ADMIN ADJUST) for user ID: ${user.id}, new balance: ${user.credits}`);
+    }
+
     return res.status(200).json({
       message: 'Cập nhật credit thành công.',
       user: {
@@ -374,20 +387,61 @@ const getCreditStats = async (req, res) => {
 
 /**
  * GET /api/admin/image-analyses
- * Retrieve all product image analyses history logs
+ * Retrieve paginated & filtered product image analyses history logs
+ * Query params: page (default 1), limit (forced 10), status ('all'|'success'|'failed')
+ * Returns: { rows, totalPages, currentPage, totalItems, countAll, countSuccess, countFailed }
  */
 const getImageAnalyses = async (req, res) => {
   try {
     const { ImageAnalysis, User } = require('../models');
-    const analyses = await ImageAnalysis.findAll({
-      order: [['id', 'DESC']],
-      include: [{
-        model: User,
-        as: 'owner',
-        attributes: ['name', 'email']
-      }]
+
+    // ── Hard-lock pagination: 10 rows per page ──
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = 10;
+    const offset = (page - 1) * limit;
+
+    // ── Status filter from query string ──
+    const statusParam = (req.query.status || 'all').trim().toLowerCase();
+    const whereClause = {};
+    if (statusParam === 'success' || statusParam === 'failed') {
+      whereClause.status = statusParam;
+    }
+    // statusParam === 'all' → no where filter → return all statuses
+
+    // ── Parallel: paginated query + global counts for tab badges ──
+    const [{ count, rows }, countAll, countSuccess, countFailed] = await Promise.all([
+      ImageAnalysis.findAndCountAll({
+        where: whereClause,
+        limit,
+        offset,
+        order: [['id', 'DESC']],
+        include: [{
+          model: User,
+          as: 'owner',
+          attributes: ['name', 'email']
+        }]
+      }),
+      ImageAnalysis.count(),
+      ImageAnalysis.count({ where: { status: 'success' } }),
+      ImageAnalysis.count({ where: { status: 'failed' } }),
+    ]);
+
+    const totalPages = Math.ceil(count / limit) || 1;
+
+    return res.status(200).json({
+      rows,
+      totalPages,
+      currentPage: page,
+      totalItems: count,
+      countAll,
+      countSuccess,
+      countFailed,
+      counts: {
+        all: countAll,
+        success: countSuccess,
+        failed: countFailed
+      }
     });
-    return res.status(200).json(analyses);
   } catch (err) {
     console.error('[ADMIN CONTROLLER] getImageAnalyses error:', err.message);
     return res.status(500).json({ message: 'Lỗi hệ thống khi tải lịch sử Mắt Thần.' });
@@ -404,20 +458,46 @@ const getAllTransactions = async (req, res) => {
   const limit = parseInt(req.query?.limit, 10) || 10;
   const offset = (page - 1) * limit;
   const search = req.query?.search || '';
+  const type = req.query?.type || 'all'; // 'all' | 'thu' | 'ban'
 
   try {
     const { Transaction, User } = require('../models');
     const { Op } = require('sequelize');
 
-    let whereClause = {};
+    // Build conditions as array so search + type can safely coexist
+    const conditions = [];
+
+    // Search filter (by id or user email)
     if (search) {
-      whereClause = {
+      conditions.push({
         [Op.or]: [
           { id: { [Op.like]: `%${search}%` } },
           { '$user.email$': { [Op.like]: `%${search}%` } }
         ]
-      };
+      });
     }
+
+    // Type filter — mirrors the isBan() helper on the frontend
+    if (type === 'ban') {
+      // Outflow: amount > 0 OR type = 'Hệ thống tặng' OR package_name = 'Gói Free'
+      conditions.push({
+        [Op.or]: [
+          { amount: { [Op.gt]: 0 } },
+          { type: 'Hệ thống tặng' },
+          { package_name: 'Gói Free' }
+        ]
+      });
+    } else if (type === 'thu') {
+      // Inflow: NOT (amount > 0 OR type = 'Hệ thống tặng' OR package_name = 'Gói Free')
+      conditions.push({
+        amount: { [Op.lte]: 0 },
+        type: { [Op.ne]: 'Hệ thống tặng' },
+        package_name: { [Op.ne]: 'Gói Free' }
+      });
+    }
+    // type === 'all' -> no additional filter
+
+    const whereClause = conditions.length > 0 ? { [Op.and]: conditions } : {};
 
     const { count, rows: transactions } = await Transaction.findAndCountAll({
       limit,
@@ -482,6 +562,30 @@ const approveTransactionManually = async (req, res) => {
 
       await t.commit();
       console.log(`[MANUAL APPROVAL SUCCESS] Transaction ${transactionId} approved manually by Admin. Added ${transaction.credits_added} credits to user ID ${transaction.userId}.`);
+
+      // Emit real-time update via Socket.io
+      const io = req.io;
+      if (io) {
+        const updatedTransaction = transaction.toJSON();
+        const user = await User.findByPk(transaction.userId, {
+          attributes: ['id', 'name', 'email', 'credits']
+        });
+        updatedTransaction.user = user ? { id: user.id, name: user.name, email: user.email } : {};
+        io.emit('transaction:updated', updatedTransaction);
+        console.log(`[SOCKET.IO] Emitted 'transaction:updated' (APPROVED) for transaction ID: ${transactionId}`);
+
+        // Also emit user:credit_updated so the user's Header updates the balance live
+        if (user) {
+          io.emit('user:credit_updated', {
+            userId: transaction.userId,
+            credits: user.credits,
+            creditsAdded: transaction.credits_added,
+            transactionId: transactionId,
+            timestamp: new Date()
+          });
+          console.log(`[SOCKET.IO] Emitted 'user:credit_updated' (MANUAL APPROVAL) for user ID: ${transaction.userId}, new balance: ${user.credits}`);
+        }
+      }
 
       // Ghi nhận trực tiếp thông báo nạp tiền thành công
       try {

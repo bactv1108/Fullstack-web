@@ -29,6 +29,8 @@ const MainLayout = () => {
       setCurrentMenu('history');
     } else if (path.includes('/dashboard/settings')) {
       setCurrentMenu('settings');
+    } else if (path.includes('/dashboard/affiliate')) {
+      setCurrentMenu('affiliate');
     } else if (tabParam && ['all', 'video', 'audio', 'analysis'].includes(tabParam)) {
       setCurrentMenu('history');
     } else if (path === '/dashboard' || path === '/dashboard/') {
@@ -61,49 +63,7 @@ const MainLayout = () => {
     info: (msg) => showToast(msg, 'info')
   };
 
-  const loadHistory = () => {
-    userService.getHistory()
-      .then(data => {
-        if (data) {
-          const mapped = data.map(job => {
-            const isVideo = job.type === 'Video' || job.type === 'video' || job.type === 'render_task';
-            const isAnalysis = job.type === 'analysis';
-            const isImage = job.type === 'Image' || job.type === 'image';
-            return {
-              id: job.id,
-              title: isAnalysis ? job.image_name : job.name,
-              sub: isAnalysis ? job.prompt_output : job.prompt,
-              time: new Date(job.createdAt || job.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date(job.createdAt || job.created_at).toLocaleDateString('vi-VN'),
-              type: isVideo ? 'video' : isAnalysis ? 'analysis' : isImage ? 'image' : 'tts',
-              status: job.status,
-              progress: job.progress,
-              output_url: job.output_url,
-              image_path: job.image_path,
-              image_name: job.image_name,
-              prompt_output: job.prompt_output,
-              createdAt: job.createdAt || job.created_at,
-              ratio: job.meta_data?.aspectRatio === '916' || job.meta_data?.aspectRatio === '9:16' ? '9:16 Dọc' :
-                     job.meta_data?.aspectRatio === '169' || job.meta_data?.aspectRatio === '16:9' ? '16:9 Ngang' :
-                     job.meta_data?.aspectRatio === '1:1' ? '1:1 Vuông' : '16:9 Ngang',
-              lang: job.meta_data?.lang === 'vi' ? 'Tiếng Việt' : job.meta_data?.lang === 'en' ? 'Tiếng Anh' : 'Tiếng Nhật',
-              voice: job.meta_data?.voice === 'vi-VN-NamMinhNeural' || job.meta_data?.voice === 'vi-male-1' ? 'Adam (Nam)' :
-                     job.meta_data?.voice === 'vi-VN-HoaiMyNeural' || job.meta_data?.voice === 'vi-female-1' ? 'Bella (Nữ)' :
-                     job.meta_data?.voice || 'Mặc định',
-              duration: '10 giây',
-              icon: isVideo ? Rocket : isImage ? ImageIcon : Mic,
-              iconColor: isVideo ? '#a855f7' : isImage ? '#10b981' : '#f59e0b',
-              gradient: isVideo ? 'from-purple-900/30 to-[#0f0f13]' : isImage ? 'from-emerald-950/30 to-[#0f0f13]' : null
-            };
-          });
-          setHistoryList(mapped);
-        }
-      })
-      .catch(err => {
-        console.error('[GLOBAL HISTORY] Fetch failed:', err.message);
-      });
-  };
-
-  useEffect(() => {
+  const loadProfile = () => {
     userService.getProfile()
       .then(profile => {
         if (profile) {
@@ -114,12 +74,58 @@ const MainLayout = () => {
       .catch(err => {
         console.error('[PROFILE] Fetch failed:', err.message);
       });
-  }, []);
+  };
 
+  const loadHistory = () => {
+    userService.getHistory()
+      .then(data => {
+        if (data) {
+          const mapped = data.map(job => {
+            const isVideo = job.type === 'Video' || job.type === 'video' || job.type === 'render_task';
+            const isAnalysis = job.type === 'analysis';
+            const isImage = job.type === 'Image' || job.type === 'image';
+            return {
+              id: job.id,
+              title: isAnalysis ? job.image_name : (isImage ? 'Tạo Ảnh AI' : job.name),
+              sub: isAnalysis ? job.prompt_output : job.prompt,
+              time: new Date(job.createdAt || job.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date(job.createdAt || job.created_at).toLocaleDateString('vi-VN'),
+              type: isVideo ? 'video' : isAnalysis ? 'analysis' : isImage ? 'image' : 'tts',
+              status: job.status,
+              progress: job.progress,
+              output_url: job.output_url,
+              image_path: job.image_path,
+              image_name: job.image_name,
+              prompt_output: job.prompt_output,
+              createdAt: job.createdAt || job.created_at,
+              ratio: isImage
+                ? (job.aspectRatio === '9:16' || job.aspect_ratio === '9:16' ? '9:16 Dọc' :
+                   job.aspectRatio === '16:9' || job.aspect_ratio === '16:9' ? '16:9 Ngang' : '1:1 Vuông')
+                : (job.meta_data?.aspectRatio === '916' || job.meta_data?.aspectRatio === '9:16' ? '9:16 Dọc' :
+                   job.meta_data?.aspectRatio === '169' || job.meta_data?.aspectRatio === '16:9' ? '16:9 Ngang' :
+                   job.meta_data?.aspectRatio === '1:1' ? '1:1 Vuông' : '16:9 Ngang'),
+              lang: job.meta_data?.lang === 'vi' ? 'Tiếng Việt' : job.meta_data?.lang === 'en' ? 'Tiếng Anh' : 'Tiếng Nhật',
+              voice: job.meta_data?.voice === 'vi-VN-NamMinhNeural' || job.meta_data?.voice === 'vi-male-1' ? 'Adam (Nam)' :
+                     job.meta_data?.voice === 'vi-VN-HoaiMyNeural' || job.meta_data?.voice === 'vi-female-1' ? 'Bella (Nữ)' :
+                     job.meta_data?.voice || 'Mặc định',
+              duration: '10 giây',
+              icon: isVideo ? Rocket : isImage ? ImageIcon : Mic,
+              iconColor: isVideo ? '#a855f7' : isImage ? '#f59e0b' : '#f59e0b',
+              gradient: isVideo ? 'from-purple-900/30 to-[#0f0f13]' : isImage ? 'from-amber-950/30 to-[#0f0f13]' : null
+            };
+          });
+          setHistoryList(mapped);
+        }
+      })
+      .catch(err => {
+        console.error('[GLOBAL HISTORY] Fetch failed:', err.message);
+      });
+  };
+
+  // Gọi DUY NHẤT 1 LẦN khi mount: tải profile + history
   useEffect(() => {
+    loadProfile();
     loadHistory();
-    const interval = setInterval(loadHistory, 5000);
-    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Sync volume of audio element and handle reset play state when job changes
@@ -148,11 +154,18 @@ const MainLayout = () => {
     try {
       const isVideo = job.type === 'Video' || job.type === 'video' || job.type === 'render_task';
       const isImage = job.type === 'Image' || job.type === 'image';
-      const fileUrl = isVideo
-        ? `http://localhost:3000/uploads/videos/AI_Studio_Video_ID_${job.id}.mp4`
-        : isImage
-          ? `http://localhost:3000/uploads/images/AI_Studio_Image_ID_${job.id}.jpg`
-          : `http://localhost:3000/uploads/voices/AI_Studio_Voice_ID_${job.id}.mp3`;
+      
+      const baseUrl = 'http://localhost:3000';
+      let fileUrl = '';
+      if (job.output_url) {
+        fileUrl = job.output_url.startsWith('http') ? job.output_url : `${baseUrl}${job.output_url}`;
+      } else {
+        fileUrl = isVideo
+          ? `${baseUrl}/uploads/videos/AI_Studio_Video_ID_${job.id}.mp4`
+          : isImage
+            ? `${baseUrl}/uploads/images/AI_Studio_Image_ID_${job.id}.jpg`
+            : `${baseUrl}/uploads/voices/AI_Studio_Voice_ID_${job.id}.mp3`;
+      }
 
       const response = await fetch(fileUrl);
       if (!response.ok) throw new Error(`Server returned status ${response.status}`);
@@ -162,7 +175,16 @@ const MainLayout = () => {
       const a = document.createElement('a');
       a.style.display = 'none';
       a.href = url;
-      a.download = isVideo ? `AI Studio_${job.id}.mp4` : isImage ? `AI_Studio_Image_${job.id}.jpg` : `AI Studio_${job.id}.mp3`;
+      
+      let downloadFilename = '';
+      if (job.output_url) {
+        const parts = job.output_url.split('/');
+        downloadFilename = parts[parts.length - 1];
+      } else {
+        downloadFilename = isVideo ? `AI Studio_${job.id}.mp4` : isImage ? `AI_Studio_Image_${job.id}.jpg` : `AI Studio_${job.id}.mp3`;
+      }
+      
+      a.download = downloadFilename;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -251,6 +273,7 @@ const MainLayout = () => {
         avatar={userProfile.avatar}
         name={userProfile.name}
         setPreviewJob={setPreviewJob}
+        loadHistory={loadHistory}
       />
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }} className="relative">
         {/* Backdrop for mobile/tablet when sidebar is open */}
@@ -339,12 +362,24 @@ const MainLayout = () => {
                 />
               </div>
             ) : previewJob.type === 'image' ? (
-              <div className="w-full bg-black rounded-xl overflow-hidden border border-zinc-900 flex items-center justify-center" style={{ maxHeight: '350px' }}>
-                <img 
-                  src={`http://localhost:3000/uploads/images/AI_Studio_Image_ID_${previewJob.id}.jpg`}
-                  alt="AI Studio Preview"
-                  className="max-w-full max-h-full object-contain"
-                />
+              <div className="w-full bg-black rounded-xl overflow-hidden border border-zinc-900 flex items-center justify-center" style={{ minHeight: '200px', maxHeight: '350px' }}>
+                {previewJob.status === 'Failed' ? (
+                  <div className="text-center p-8">
+                    <span className="text-red-500 text-4xl">✗</span>
+                    <p className="text-xs text-zinc-500 font-bold mt-2">Vẽ ảnh thất bại</p>
+                  </div>
+                ) : (previewJob.status !== 'Completed' && previewJob.status !== 'success' && previewJob.status !== 'SUCCESS') ? (
+                  <div className="flex flex-col items-center justify-center p-8">
+                    <div className="w-8 h-8 border-2 border-[#f59e0b] border-t-transparent rounded-full animate-spin mb-3"></div>
+                    <p className="text-[#f59e0b] text-xs font-bold tracking-widest uppercase">Đang vẽ... {previewJob.progress || 0}%</p>
+                  </div>
+                ) : (
+                  <img 
+                    src={previewJob.output_url ? (previewJob.output_url.startsWith('http') ? previewJob.output_url : `http://localhost:3000${previewJob.output_url}`) : `http://localhost:3000/uploads/images/AI_Studio_Image_ID_${previewJob.id}.jpg`}
+                    alt="AI Studio Preview"
+                    className="max-w-full max-h-full object-contain"
+                  />
+                )}
               </div>
             ) : (
               <>
@@ -370,6 +405,7 @@ const MainLayout = () => {
 
             {/* Subtitle / Prompt text */}
             <div className="bg-[#0c0c0e] border border-zinc-900 p-3.5 rounded-xl max-h-24 overflow-y-auto select-text">
+              <p className="text-[9px] text-[#f59e0b] font-bold uppercase tracking-wider mb-1">Ý tưởng vẽ (Prompt):</p>
               <p className="text-[11px] text-zinc-400 leading-relaxed font-semibold">
                 "{previewJob.sub}"
               </p>
@@ -386,6 +422,15 @@ const MainLayout = () => {
                     Thời lượng: <span className="text-zinc-200 font-bold">{previewJob.duration || '5 giây'}</span>
                   </div>
                 </>
+              ) : previewJob.type === 'image' ? (
+                <>
+                  <div>
+                    Tỷ lệ: <span className="text-zinc-200 font-bold">{previewJob.ratio}</span>
+                  </div>
+                  <div>
+                    Công cụ: <span className="text-[#f59e0b] font-bold">Imagen 3</span>
+                  </div>
+                </>
               ) : (
                 <>
                   <div>
@@ -400,7 +445,7 @@ const MainLayout = () => {
                 Thời gian: <span className="text-zinc-200 font-bold">{previewJob.time}</span>
               </div>
               <div>
-                Trạng thái: <span className="text-green-500 font-bold uppercase">{previewJob.status}</span>
+                Trạng thái: <span className={`font-bold uppercase ${previewJob.status === 'Completed' || previewJob.status === 'success' || previewJob.status === 'SUCCESS' ? 'text-green-500' : previewJob.status === 'Failed' ? 'text-red-500' : 'text-[#f59e0b]'}`}>{previewJob.status}</span>
               </div>
             </div>
 

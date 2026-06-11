@@ -241,7 +241,7 @@ export default function TtsView() {
 
   const fetchVoiceAssets = async () => {
     try {
-      const url = ttsLang && ttsLang !== 'all' ? `/voices?lang=${ttsLang}` : '/voices';
+      const url = '/voices';
       const data = await axiosClient.get(url);
       const voiceList = Array.isArray(data) ? data : (data?.voices || data?.data || []);
       const mapped = voiceList.map(v => ({
@@ -259,15 +259,8 @@ export default function TtsView() {
 
   useEffect(() => {
     fetchVoiceAssets();
-    const intervalId = setInterval(fetchVoiceAssets, 15000);
-    return () => clearInterval(intervalId);
-  }, [ttsLang]);
-
-  useEffect(() => {
-    if (isVoiceOpen || isLangOpen) {
-      fetchVoiceAssets();
-    }
-  }, [isVoiceOpen, isLangOpen, ttsLang]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (voices.length > 0) {

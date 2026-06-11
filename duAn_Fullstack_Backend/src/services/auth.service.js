@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { User } = require('../models');
+const { User, UserSession } = require('../models');
 require('dotenv').config();
 
 const ACCESS_TOKEN_EXPIRY = '15m';
@@ -9,8 +9,17 @@ const REFRESH_TOKEN_EXPIRY = '7d';
  * Generate a new pair of Access & Refresh tokens
  */
 const generateTokens = (user) => {
+  const isTwoFactorEnabled = Boolean(Number(user.is_two_factor_enabled));
+
   const access_token = jwt.sign(
-    { id: user.id, email: user.email, role: user.role },
+    {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      is_two_factor_enabled: isTwoFactorEnabled,
+      two_factor_enabled: isTwoFactorEnabled,
+      twofa: isTwoFactorEnabled
+    },
     process.env.JWT_SECRET || 'secret',
     { expiresIn: ACCESS_TOKEN_EXPIRY }
   );
@@ -71,8 +80,29 @@ const rotateTokens = async (oldRefreshToken) => {
       throw new Error('Refresh token is invalid or user is banned.');
     }
 
+    // ── Kiểm tra session trong user_sessions ────────────────────────────────
+    // Nếu không tồn tại (phiên cũ trước khi có tính năng) → tự tạo mới thay vì chặn
+    const sessionRow = await UserSession.findOne({
+      where: { refresh_token: oldRefreshToken, user_id: user.id },
+    });
+
     const tokens = generateTokens(user);
     await storeRefreshToken(user.id, tokens.refresh_token);
+
+    if (sessionRow) {
+      // Phiên tồn tại → cập nhật token mới (token rotation)
+      await sessionRow.update({ refresh_token: tokens.refresh_token });
+    } else {
+      // Phiên cũ (trước khi có bảng user_sessions) → tạo mới để không bị khoá
+      console.warn('[AUTH SERVICE] Legacy session detected — creating new session row.');
+      await UserSession.create({
+        user_id: user.id,
+        refresh_token: tokens.refresh_token,
+        device_string: 'Legacy Session (trước khi cài đặt tính năng)',
+        ip_address: '',
+        location: '',
+      });
+    }
 
     // Save in grace period cache
     rotatedTokensCache.set(oldRefreshToken, {

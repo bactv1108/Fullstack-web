@@ -25,6 +25,10 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING(255),
       allowNull: true,
     },
+    phone: {
+      type: DataTypes.STRING(30),
+      allowNull: true,
+    },
     avatar: {
       type: DataTypes.TEXT('long'),
       allowNull: true,
@@ -68,7 +72,22 @@ module.exports = (sequelize) => {
       allowNull: true,
       unique: true,
       field: 'google_id',
-    }
+    },
+    two_factor_secret: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      defaultValue: null,
+    },
+    is_two_factor_enabled: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    theme_preference: {
+      type: DataTypes.STRING(10),
+      allowNull: true,
+      defaultValue: 'dark',
+    },
   }, {
     tableName: 'users',
     underscored: true,

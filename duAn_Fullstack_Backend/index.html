@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard - Real-time Control System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: #4f46e5 #1f2937;
+    }
+
+    body {
+      @apply bg-gray-950 text-gray-100;
+    }
+
+    .status-led {
+      @apply w-3 h-3 rounded-full animate-pulse;
+      box-shadow: 0 0 10px currentColor;
+    }
+
+    .status-led.connected {
+      @apply bg-green-500;
+    }
+
+    .status-led.disconnected {
+      @apply bg-red-500;
+    }
+
+    .credit-counter {
+      animation: countUp 0.6s ease-out;
+    }
+
+    @keyframes countUp {
+      0% {
+        transform: scale(1) rotateY(0deg);
+        opacity: 1;
+      }
+      50% {
+        transform: scale(1.1) rotateY(180deg);
+        opacity: 0.8;
+      }
+      100% {
+        transform: scale(1) rotateY(360deg);
+        opacity: 1;
+      }
+    }
+
+    .progress-bar-animated {
+      background: linear-gradient(
+        90deg,
+        #6366f1 0%,
+        #8b5cf6 50%,
+        #6366f1 100%
+      );
+      background-size: 200% 100%;
+      animation: slideGradient 1.5s linear infinite;
+    }
+
+    @keyframes slideGradient {
+      0% {
+        background-position: 200% 0;
+      }
+      100% {
+        background-position: -200% 0;
+      }
+    }
+
+    .log-item {
+      animation: slideInUp 0.3s ease-out;
+    }
+
+    @keyframes slideInUp {
+      from {
+        transform: translateY(10px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .glass-effect {
+      background: rgba(17, 24, 39, 0.7);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(79, 70, 229, 0.2);
+    }
+
+    input[type="text"],
+    textarea {
+      @apply bg-gray-800 border border-gray-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 rounded-lg;
+    }
+
+    button {
+      @apply transition-all duration-200;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+    }
+  </style>
+</head>
+<body class="dark">
+  <div class="min-h-screen flex flex-col bg-gradient-to-br from-gray-950 via-gray-900 to-indigo-950">
+    <!-- HEADER - Status & Credit Balance -->
+    <header class="glass-effect border-b border-indigo-500/20 sticky top-0 z-50">
+      <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div id="socketStatus" class="status-led disconnected"></div>
+          <div>
+            <h1 class="text-xl font-bold text-indigo-400">Admin Dashboard</h1>
+            <p id="statusText" class="text-xs text-gray-400">Đang kết nối...</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-6">
+          <!-- Credit Balance Display -->
+          <div class="glass-effect px-6 py-3 rounded-lg flex items-center gap-3">
+            <div class="text-2xl">💰</div>
+            <div>
+              <p class="text-xs text-gray-400">Số dư tài khoản</p>
+              <p id="creditBalance" class="credit-counter text-2xl font-bold text-green-400">0</p>
+            </div>
+          </div>
+
+          <!-- Connection Info -->
+          <div class="text-right text-xs">
+            <p class="text-gray-400">Khách kết nối:</p>
+            <p id="clientCount" class="text-indigo-400 font-semibold">0</p>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- MAIN CONTENT - 2 Column Layout -->
+    <main class="flex-1 max-w-7xl mx-auto w-full px-6 py-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <!-- LEFT COLUMN - Image Generation -->
+      <section class="glass-effect rounded-lg p-6 flex flex-col">
+        <div class="flex items-center gap-2 mb-6">
+          <span class="text-2xl">🎨</span>
+          <h2 class="text-xl font-bold text-indigo-400">Tạo Ảnh AI</h2>
+        </div>
+
+        <!-- Prompt Input -->
+        <div class="mb-4 flex-1 flex flex-col">
+          <label class="text-sm font-semibold text-gray-300 mb-2">Mô tả ảnh (Prompt)</label>
+          <textarea
+            id="imagePrompt"
+            placeholder="Nhập mô tả ảnh bạn muốn tạo..."
+            class="flex-1 p-3 rounded-lg text-sm resize-none focus:outline-none"
+          ></textarea>
+        </div>
+
+        <!-- Generate Button -->
+        <button
+          id="generateImageBtn"
+          class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold py-3 rounded-lg mb-6 flex items-center justify-center gap-2"
+        >
+          <span>🔥 Khai Hỏa</span>
+        </button>
+
+        <!-- Progress Bar -->
+        <div id="imageProgressContainer" class="hidden mb-6">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm text-gray-400">Tiến độ xử lý</span>
+            <span id="imageProgressPercent" class="text-sm font-bold text-indigo-400">0%</span>
+          </div>
+          <div class="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
+            <div
+              id="imageProgressBar"
+              class="h-full progress-bar-animated"
+              style="width: 0%"
+            ></div>
+          </div>
+          <p id="imageProgressStatus" class="text-xs text-gray-400 mt-2">Chờ khởi động...</p>
+        </div>
+
+        <!-- Result Image Display -->
+        <div id="imageResultContainer" class="hidden">
+          <p class="text-sm text-gray-400 mb-2">Kết quả</p>
+          <img
+            id="generatedImage"
+            src=""
+            alt="Generated"
+            class="w-full h-80 object-cover rounded-lg border border-indigo-500/30"
+          />
+          <p id="imageResultMessage" class="text-xs text-green-400 mt-2 text-center"></p>
+        </div>
+      </section>
+
+      <!-- RIGHT COLUMN - Voice Generation -->
+      <section class="glass-effect rounded-lg p-6 flex flex-col">
+        <div class="flex items-center gap-2 mb-6">
+          <span class="text-2xl">🎤</span>
+          <h2 class="text-xl font-bold text-indigo-400">Tạo Giọng Nói AI</h2>
+        </div>
+
+        <!-- Text Input -->
+        <div class="mb-4 flex-1 flex flex-col">
+          <label class="text-sm font-semibold text-gray-300 mb-2">Văn bản cần chuyển đổi</label>
+          <textarea
+            id="voiceText"
+            placeholder="Nhập văn bản để chuyển thành giọng nói..."
+            class="flex-1 p-3 rounded-lg text-sm resize-none focus:outline-none"
+          ></textarea>
+        </div>
+
+        <!-- Generate Voice Button -->
+        <button
+          id="generateVoiceBtn"
+          class="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold py-3 rounded-lg mb-6 flex items-center justify-center gap-2"
+        >
+          <span>🎵 Tạo Giọng Nói AI</span>
+        </button>
+
+        <!-- Voice Status -->
+        <div id="voiceStatusContainer" class="hidden mb-4">
+          <p id="voiceStatus" class="text-sm text-cyan-400 animate-pulse">Đang render giọng nói...</p>
+        </div>
+
+        <!-- Audio Player -->
+        <div id="audioPlayerContainer" class="hidden">
+          <p class="text-sm text-gray-400 mb-3">Trình phát âm thanh</p>
+          <audio
+            id="audioPlayer"
+            controls
+            class="w-full mb-3 focus:outline-none"
+            style="filter: brightness(1.2)"
+          ></audio>
+          <p id="voiceResultMessage" class="text-xs text-green-400 text-center"></p>
+        </div>
+      </section>
+    </main>
+
+    <!-- FOOTER - System Health Check & Logs -->
+    <footer class="glass-effect border-t border-indigo-500/20">
+      <div class="max-w-7xl mx-auto px-6 py-6">
+        <!-- Health Check Button -->
+        <div class="mb-6">
+          <button
+            id="healthCheckBtn"
+            class="inline-flex items-center gap-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-semibold px-6 py-2 rounded-lg"
+          >
+            <span>🏥 Kiểm tra sức khỏe Server</span>
+          </button>
+          <p id="healthStatus" class="text-xs text-gray-400 mt-2"></p>
+        </div>
+
+        <!-- System Logs -->
+        <div class="bg-gray-900 rounded-lg border border-gray-700 overflow-hidden">
+          <div class="bg-gradient-to-r from-gray-800 to-gray-900 px-4 py-3 border-b border-gray-700">
+            <h3 class="text-sm font-semibold text-gray-300 flex items-center gap-2">
+              <span>📋</span> System Log & Notifications
+            </h3>
+          </div>
+          <div id="systemLogs" class="h-48 overflow-y-auto p-4 space-y-2">
+            <div class="log-item text-xs text-gray-500">
+              <span class="text-gray-600">[</span><span class="text-blue-400">INFO</span><span class="text-gray-600">]</span>
+              Hệ thống đã khởi động. Chờ sự kiện...
+            </div>
+          </div>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- SOCKET.IO CLIENT SCRIPT -->
+  <script>
+    // ===== SOCKET.IO CONNECTION =====
+    const socket = io('http://localhost:3000', {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: Infinity
+    });
+
+    // DOM Elements
+    const socketStatus = document.getElementById('socketStatus');
+    const statusText = document.getElementById('statusText');
+    const creditBalance = document.getElementById('creditBalance');
+    const clientCount = document.getElementById('clientCount');
+    const generateImageBtn = document.getElementById('generateImageBtn');
+    const imagePrompt = document.getElementById('imagePrompt');
+    const imageProgressContainer = document.getElementById('imageProgressContainer');
+    const imageProgressBar = document.getElementById('imageProgressBar');
+    const imageProgressPercent = document.getElementById('imageProgressPercent');
+    const imageProgressStatus = document.getElementById('imageProgressStatus');
+    const imageResultContainer = document.getElementById('imageResultContainer');
+    const generatedImage = document.getElementById('generatedImage');
+    const imageResultMessage = document.getElementById('imageResultMessage');
+    const generateVoiceBtn = document.getElementById('generateVoiceBtn');
+    const voiceText = document.getElementById('voiceText');
+    const voiceStatusContainer = document.getElementById('voiceStatusContainer');
+    const audioPlayerContainer = document.getElementById('audioPlayerContainer');
+    const audioPlayer = document.getElementById('audioPlayer');
+    const voiceResultMessage = document.getElementById('voiceResultMessage');
+    const healthCheckBtn = document.getElementById('healthCheckBtn');
+    const healthStatus = document.getElementById('healthStatus');
+    const systemLogs = document.getElementById('systemLogs');
+
+    // ===== UTILITY FUNCTIONS =====
+    function updateStatus(connected) {
+      socketStatus.className = `status-led ${connected ? 'connected' : 'disconnected'}`;
+      statusText.textContent = connected ? '✅ Kết nối' : '❌ Mất kết nối';
+      statusText.className = connected ? 'text-xs text-green-400' : 'text-xs text-red-400';
+    }
+
+    function animateNumber(element, newValue) {
+      const oldValue = parseInt(element.textContent) || 0;
+      element.classList.add('credit-counter');
+      element.textContent = newValue;
+      setTimeout(() => element.classList.remove('credit-counter'), 600);
+    }
+
+    function addLog(type, message) {
+      const logDiv = document.createElement('div');
+      logDiv.className = 'log-item text-xs';
+      const timestamp = new Date().toLocaleTimeString('vi-VN');
+      const typeColor = {
+        'INFO': 'text-blue-400',
+        'SUCCESS': 'text-green-400',
+        'WARNING': 'text-yellow-400',
+        'ERROR': 'text-red-400'
+      }[type] || 'text-blue-400';
+
+      logDiv.innerHTML = `
+        <span class="text-gray-600">[${timestamp}]</span>
+        <span class="text-gray-600">[</span><span class="${typeColor}">${type}</span><span class="text-gray-600">]</span>
+        <span class="text-gray-300">${message}</span>
+      `;
+      
+      systemLogs.insertBefore(logDiv, systemLogs.firstChild);
+      systemLogs.scrollTop = 0;
+      
+      // Keep only last 20 logs
+      while (systemLogs.children.length > 20) {
+        systemLogs.removeChild(systemLogs.lastChild);
+      }
+    }
+
+    // ===== SOCKET.IO EVENTS =====
+
+    socket.on('connect', () => {
+      console.log('✅ Connected to server');
+      updateStatus(true);
+      addLog('SUCCESS', 'Kết nối WebSocket thành công');
+    });
+
+    socket.on('disconnect', () => {
+      console.log('❌ Disconnected from server');
+      updateStatus(false);
+      addLog('ERROR', 'Mất kết nối WebSocket');
+    });
+
+    socket.on('connection_established', (data) => {
+      console.log('📨 Connection established:', data);
+      addLog('INFO', `Client ID: ${data.clientId}`);
+    });
+
+    socket.on('system_status_update', (data) => {
+      clientCount.textContent = data.activeConnections || 0;
+    });
+
+    // ===== IMAGE GENERATION EVENTS =====
+
+    socket.on('image_generation_started', (data) => {
+      console.log('🎨 Image generation started:', data);
+      imageProgressContainer.classList.remove('hidden');
+      imageResultContainer.classList.add('hidden');
+      imageProgressBar.style.width = '0%';
+      imageProgressPercent.textContent = '0%';
+      addLog('INFO', `Tạo ảnh: "${data.prompt}"`);
+    });
+
+    socket.on('image_generation_progress', (data) => {
+      imageProgressBar.style.width = data.percent + '%';
+      imageProgressPercent.textContent = data.percent + '%';
+      imageProgressStatus.textContent = data.status;
+    });
+
+    socket.on('image_generation_completed', (data) => {
+      console.log('✅ Image generation completed:', data);
+      imageProgressContainer.classList.add('hidden');
+      imageResultContainer.classList.remove('hidden');
+      generatedImage.src = data.imageUrl;
+      imageResultMessage.textContent = data.message;
+      addLog('SUCCESS', 'Tạo ảnh hoàn tất');
+    });
+
+    // ===== VOICE GENERATION EVENTS =====
+
+    socket.on('voice_generation_started', (data) => {
+      console.log('🎤 Voice generation started:', data);
+      voiceStatusContainer.classList.remove('hidden');
+      audioPlayerContainer.classList.add('hidden');
+      addLog('INFO', `Render giọng nói: "${data.text.substring(0, 50)}..."`);
+    });
+
+    socket.on('voice_generation_completed', (data) => {
+      console.log('✅ Voice generation completed:', data);
+      voiceStatusContainer.classList.add('hidden');
+      audioPlayerContainer.classList.remove('hidden');
+      audioPlayer.src = data.audioUrl;
+      voiceResultMessage.textContent = data.message;
+      addLog('SUCCESS', 'Render giọng nói hoàn tất');
+    });
+
+    // ===== SYSTEM EVENTS =====
+
+    socket.on('system_notification', (data) => {
+      console.log('📊 System notification:', data);
+      healthStatus.textContent = data.message;
+      healthStatus.className = 'text-xs text-green-400 mt-2';
+      addLog('INFO', data.message);
+    });
+
+    socket.on('credit_balance_updated', (data) => {
+      console.log('💰 Credit updated:', data);
+      animateNumber(creditBalance, data.balance);
+    });
+
+    // ===== BUTTON EVENTS =====
+
+    generateImageBtn.addEventListener('click', async () => {
+      const prompt = imagePrompt.value.trim();
+      if (!prompt) {
+        alert('Vui lòng nhập mô tả ảnh');
+        return;
+      }
+
+      generateImageBtn.disabled = true;
+      generateImageBtn.textContent = '⏳ Đang xử lý...';
+
+      try {
+        const response = await fetch('http://localhost:3000/api/v1/generate-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt })
+        });
+
+        if (!response.ok) throw new Error('Request failed');
+        addLog('INFO', 'Gửi yêu cầu tạo ảnh đến server');
+      } catch (error) {
+        console.error('Error generating image:', error);
+        addLog('ERROR', 'Lỗi tạo ảnh: ' + error.message);
+      } finally {
+        generateImageBtn.disabled = false;
+        generateImageBtn.innerHTML = '<span>🔥 Khai Hỏa</span>';
+      }
+    });
+
+    generateVoiceBtn.addEventListener('click', async () => {
+      const text = voiceText.value.trim();
+      if (!text) {
+        alert('Vui lòng nhập văn bản');
+        return;
+      }
+
+      generateVoiceBtn.disabled = true;
+      generateVoiceBtn.textContent = '⏳ Đang xử lý...';
+
+      try {
+        const response = await fetch('http://localhost:3000/api/v1/generate-voice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text })
+        });
+
+        if (!response.ok) throw new Error('Request failed');
+        addLog('INFO', 'Gửi yêu cầu render giọng nói đến server');
+      } catch (error) {
+        console.error('Error generating voice:', error);
+        addLog('ERROR', 'Lỗi render giọng nói: ' + error.message);
+      } finally {
+        generateVoiceBtn.disabled = false;
+        generateVoiceBtn.innerHTML = '<span>🎵 Tạo Giọng Nói AI</span>';
+      }
+    });
+
+    healthCheckBtn.addEventListener('click', () => {
+      console.log('🏥 Checking server health...');
+      socket.emit('admin:request_status', { timestamp: new Date() });
+      addLog('INFO', 'Gửi yêu cầu kiểm tra sức khỏe server');
+    });
+
+    // ===== INITIAL STATE =====
+    addLog('INFO', 'Dashboard đã khởi động');
+  </script>
+</body>
+</html>

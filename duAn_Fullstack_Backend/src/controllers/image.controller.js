@@ -1,6 +1,6 @@
 // =====================================================================
 // src/controllers/image.controller.js
-// Provider: Google Gemini (gemini-2.5-flash-image)
+// Provider: Fal.ai (Flux Schnell) with Gemini Prompt Enhancer
 // Các fix production đã có:
 //   ✅ Atomic credit deduction chống Race Condition (Op.gte)
 //   ✅ Status 'Rendering' (đúng ENUM) trước khi gọi API
@@ -25,7 +25,29 @@ const {
   sequelize,                                // Instance Sequelize để dùng literal()
 } = require('../models');
 
+const { generateImageWithFlux } = require('../services/fal.service');
 const notificationEmitter = require('../utils/notificationEmitter');
+
+/**
+ * Helper to remove Vietnamese tones/diacritics and return a clean unaccented string.
+ */
+function removeVietnameseTones(str) {
+  if (!str) return '';
+  let result = str;
+  result = result.toLowerCase();
+  result = result.replace(/à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ/g, "a");
+  result = result.replace(/è|é|ẹ|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ/g, "e");
+  result = result.replace(/ì|í|ị|ỉ|ĩ/g, "i");
+  result = result.replace(/ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ/g, "o");
+  result = result.replace(/ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ/g, "u");
+  result = result.replace(/ỳ|ý|ỵ|ỷ|ỹ/g, "y");
+  result = result.replace(/đ/g, "d");
+  // Normalize NFD combined characters
+  result = result.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  result = result.replace(/đ/g, "d");
+  result = result.replace(/Đ/g, "D");
+  return result.replace(/[^a-zA-Z0-9\s]/g, "").trim();
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // HÀM CHÍNH: Tiếp nhận request, xác thực, trừ xu, tạo job, trả 200 OK
@@ -59,8 +81,6 @@ const generateImage = async (req, res) => {
 
   try {
     // ── BƯỚC 2: Trừ Credits Atomic — chống Race Condition ────────────
-    // UPDATE credits - 2 WHERE id = userId AND credits >= 2
-    // Nếu affectedRows = 0 → không đủ xu, DB đã chặn ngay tại đây
     const [affectedRows] = await User.update(
       { credits: sequelize.literal('credits - 2') },
       {
@@ -116,7 +136,8 @@ const generateImage = async (req, res) => {
     });
 
     // ── BƯỚC 6: Kích hoạt Worker ngầm ────────────────────────────────
-    _runGeminiWorker({ job, user, prompt, selectedRatio })
+    const appRef = req.app;
+    _runFalWorker({ job, user, prompt, selectedRatio, appRef })
       .catch((unexpectedErr) => {
         console.error(
           `[IMAGE WORKER] [JobID:${job.id}] [UserID:${user.id}] ` +
@@ -137,12 +158,12 @@ const generateImage = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────
-// WORKER: Gọi API Gemini (gemini-2.5-flash-image)
+// WORKER: Gọi API Fal.ai (Flux Schnell)
 // ─────────────────────────────────────────────────────────────────────
-async function _runGeminiWorker({ job, user, prompt, selectedRatio }) {
+async function _runFalWorker({ job, user, prompt, selectedRatio, appRef }) {
   console.log(
     `[IMAGE WORKER] [JobID:${job.id}] [UserID:${user.id}] ` +
-    `Bắt đầu | Provider: Gemini 2.5 Flash Image | AspectRatio: ${selectedRatio} | ` +
+    `Bắt đầu | Provider: Fal.ai Flux Schnell | AspectRatio: ${selectedRatio} | ` +
     `Prompt: "${prompt.substring(0, 60)}..."`
   );
 
@@ -153,65 +174,81 @@ async function _runGeminiWorker({ job, user, prompt, selectedRatio }) {
     await job.save();
     console.log(`[IMAGE WORKER] [JobID:${job.id}] Trạng thái → Rendering`);
 
-    // ── B: Lấy API Key từ Database ───────────────────────────
-    const dbRecord = await SystemConfig.findOne({ where: { key: 'gemini_api_key' } });
-    const apiKey = dbRecord?.value || process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-      throw new Error('Không tìm thấy Gemini API Key trong hệ thống. Vui lòng cấu hình ở trang Admin.');
-    }
-
-    // ── C: Gọi API Gemini ───────────────────────────
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`;
-    const requestBody = {
-      contents: [
-        {
-          parts: [
+    // ── B: Tích hợp Gemini Translator & Enhancer ngầm ─────────────────
+    let enhancedPrompt = prompt;
+    try {
+      const dbRecord = await SystemConfig.findOne({ where: { key: 'gemini_api_key' } });
+      const geminiApiKey = dbRecord?.value || process.env.GEMINI_API_KEY;
+      if (geminiApiKey) {
+        console.log(`[IMAGE WORKER] [JobID:${job.id}] Đang dịch và tối ưu prompt qua Gemini 2.0 Flash...`);
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`;
+        const systemInstruction = 
+          "You are a professional Prompt Engineer for Flux Image Generation. Your job is to translate the user's input into English (if it's in Vietnamese) and enhance it into a detailed, photorealistic studio product or cinematic photography prompt. \n" +
+          "CRITICAL: Output ONLY the final enhanced English text. Do NOT include any markdown, do NOT include quotation marks, do NOT include conversational filler like 'Here is your prompt:'. Your entire response will be fed directly into an image generator API.";
+        
+        const geminiResponse = await axios.post(geminiUrl, {
+          contents: [
             {
-              text: prompt
+              parts: [
+                { text: `${systemInstruction}\n\nUser Prompt: ${prompt}` }
+              ]
             }
           ]
+        }, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 20000
+        });
+
+        const candidates = geminiResponse.data?.candidates;
+        if (candidates && candidates.length > 0) {
+          const text = candidates[0]?.content?.parts?.[0]?.text;
+          if (text && text.trim()) {
+            enhancedPrompt = text.trim();
+          } else {
+            throw new Error('Gemini returned empty or invalid response text.');
+          }
+        } else {
+          throw new Error('No response candidates from Gemini.');
         }
-      ],
-      generationConfig: {
-        responseModalities: ["TEXT", "IMAGE"],
-        imageConfig: {
-          aspectRatio: selectedRatio
-        }
+        console.log(`[IMAGE WORKER] [JobID:${job.id}] Enhanced prompt: "${enhancedPrompt}"`);
+      } else {
+        throw new Error('Gemini API key is not configured.');
       }
-    };
-
-    console.log(`[IMAGE WORKER] [JobID:${job.id}] Đang gửi yêu cầu tới Gemini API...`);
-
-    const response = await axios.post(geminiUrl, requestBody, {
-      headers: { 'Content-Type': 'application/json' },
-      timeout: 60000 // 60s
-    });
-
-    const parts = response.data?.candidates?.[0]?.content?.parts;
-    const imagePart = parts?.find(p => p.inlineData?.mimeType?.startsWith('image/'));
-
-    if (!imagePart || !imagePart.inlineData?.data) {
-      const errorMsg = response.data?.error?.message || 'Không tìm thấy dữ liệu ảnh trả về từ Gemini API.';
-      throw new Error(errorMsg);
+    } catch (geminiErr) {
+      console.warn(
+        `[IMAGE WORKER] [JobID:${job.id}] Gemini prompt enhancer failed, ` +
+        `falling back to clean un-accented Vietnamese: ${geminiErr.message}`
+      );
+      // Fallback: Convert original prompt to clean un-accented Vietnamese to prevent drawing error / 404 pathing
+      enhancedPrompt = removeVietnameseTones(prompt);
+      console.log(`[IMAGE WORKER] [JobID:${job.id}] Fallback clean prompt: "${enhancedPrompt}"`);
     }
 
-    const base64Data = imagePart.inlineData.data;
-    const mimeType = imagePart.inlineData.mimeType;
-    const imageBuffer = Buffer.from(base64Data, 'base64');
+    // ── C: Gọi Fal.ai để tạo ảnh đồng bộ bằng Flux Schnell ──────────────────────
+    const falResult = await generateImageWithFlux(enhancedPrompt, selectedRatio);
 
-    console.log(
-      `[IMAGE WORKER] [JobID:${job.id}] ` +
-      `✅ Nhận được ảnh từ Gemini | type: ${mimeType} | size: ${imageBuffer.length} bytes`
-    );
+    job.progress = 60;
+    await job.save();
 
-    // ── D: Ghi file ảnh xuống disk (async, non-blocking) ─────────────
+    let imageBuffer;
+    if (falResult && falResult.isBuffer) {
+      console.log(`[IMAGE WORKER] [JobID:${job.id}] Nhận dữ liệu ảnh nhị phân trực tiếp từ mock service.`);
+      imageBuffer = Buffer.from(falResult.buffer);
+    } else {
+      // ── D: Tải ảnh từ Fal.ai CDN về máy chủ cục bộ ───────────────────────────
+      console.log(`[IMAGE WORKER] [JobID:${job.id}] Đang tải ảnh từ Fal.ai CDN: ${falResult.url}`);
+      const imageResponse = await axios.get(falResult.url, {
+        responseType: 'arraybuffer',
+        timeout: 15000
+      });
+      imageBuffer = Buffer.from(imageResponse.data);
+    }
+
+    // ── E: Ghi file ảnh xuống disk (async, non-blocking) ─────────────
     const dir = path.join(__dirname, '../../uploads/images');
     await fsPromises.mkdir(dir, { recursive: true });
 
-    // Lấy extension động từ content-type: "image/jpeg" → "jpeg", "image/png" → "png"
-    const ext      = mimeType.split('/')[1]?.split(';')[0] || 'jpg';
-    const filename = `AI_Image_Job${job.id}_${Date.now()}.${ext}`;
+    const filename = `AI_Image_Job${job.id}_${Date.now()}.png`;
     const filePath = path.join(dir, filename);
 
     await fsPromises.writeFile(filePath, imageBuffer);
@@ -221,7 +258,7 @@ async function _runGeminiWorker({ job, user, prompt, selectedRatio }) {
       `[IMAGE WORKER] [JobID:${job.id}] ✅ Đã ghi file: ${outputUrl} (${imageBuffer.length} bytes)`
     );
 
-    // ── E: Cập nhật ImageJob → Completed ─────────────────────────────
+    // ── F: Cập nhật ImageJob → Completed ─────────────────────────────
     job.status     = 'Completed';
     job.progress   = 100;
     job.output_url = outputUrl;
@@ -229,16 +266,30 @@ async function _runGeminiWorker({ job, user, prompt, selectedRatio }) {
 
     console.log(`[IMAGE WORKER] [JobID:${job.id}] ✅ Trạng thái → Completed`);
 
-    // ── F: Tạo Notification thành công & Emit SSE ─────────────────────
+    // ── G: Tạo Notification thành công & Emit SSE ─────────────────────
     const successNotif = await Notification.create({
       userId:  user.id,
       title:   'Tạo ảnh hoàn tất ✓',
-      message: `Hình ảnh "${prompt.substring(0, 40)}..." đã được vẽ thành công bằng Gemini!`,
+      message: `Hình ảnh "${prompt.substring(0, 40)}..." đã được vẽ thành công bằng Fal.ai Flux!`,
       type:    'info',
       is_read: false,
     });
 
-    notificationEmitter.emit('send_notification', successNotif);
+    const notifJSON = successNotif.toJSON();
+    const ssePayload = {
+      ...notifJSON,
+      jobDetails: {
+        id: job.id,
+        prompt: prompt,
+        aspectRatio: selectedRatio,
+        status: 'Completed',
+        progress: 100,
+        output_url: outputUrl,
+        createdAt: job.createdAt || new Date()
+      }
+    };
+
+    notificationEmitter.emit('send_notification', ssePayload);
 
     console.log(
       `[IMAGE WORKER] [JobID:${job.id}] [UserID:${user.id}] ` +
@@ -320,7 +371,30 @@ async function _runGeminiWorker({ job, user, prompt, selectedRatio }) {
         is_read: false,
       });
 
-      notificationEmitter.emit('send_notification', failNotif);
+      const failJSON = failNotif.toJSON();
+      const sseFailPayload = {
+        ...failJSON,
+        jobDetails: {
+          id: job.id,
+          prompt: prompt,
+          aspectRatio: selectedRatio,
+          status: 'Failed',
+          progress: 0,
+          output_url: null,
+          createdAt: job.createdAt || new Date()
+        }
+      };
+
+      notificationEmitter.emit('send_notification', sseFailPayload);
+
+      // Bắn thông báo lỗi real-time về Admin Dashboard
+      if (appRef && appRef.emitAdminNotification) {
+        appRef.emitAdminNotification({
+          title: 'Lỗi Tạo Ảnh AI ✗',
+          content: `Tạo ảnh AI cho "${user.name || 'User #' + user.id}" thất bại: ${apiErrorMsg}`,
+          type: 'error'
+        });
+      }
     } catch (notifErr) {
       console.error(
         `[IMAGE WORKER] [JobID:${job.id}] ⚠️ Không thể gửi Notification thất bại:`,

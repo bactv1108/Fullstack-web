@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
+import io from 'socket.io-client';
 import { useAdminAuth } from '../../hooks/useAdminAuth';
-import { LogOut, Bell, UserCircle, X, Trash2, Info, CheckCircle, AlertTriangle, AlertOctagon, Menu } from 'lucide-react';
+import { LogOut, Bell, UserCircle, X, Trash2, Info, CheckCircle, AlertTriangle, AlertOctagon, Menu, TrendingUp, Zap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import axiosAdminClient from '../../services/axiosAdminClient';
 
 const AdminHeader = ({ toggleSidebar }) => {
   const { admin, logout } = useAdminAuth();
@@ -10,6 +12,8 @@ const AdminHeader = ({ toggleSidebar }) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [recentCreditEvent, setRecentCreditEvent] = useState(null); // tracks latest user:credit_updated event
+  const [socket, setSocket] = useState(null);
   const dialogRef = useRef(null);
 
   const handleLogout = () => {
@@ -48,7 +52,107 @@ const AdminHeader = ({ toggleSidebar }) => {
     };
 
     return () => {
+      console.log("[SSE CLEANUP] Đóng kết nối để tránh lag trình duyệt");
       eventSource.close();
+    };
+  }, []);
+
+  // Set up Socket.io connection for real-time credit balance & notification updates
+  useEffect(() => {
+    const socketInstance = io('http://localhost:3000', {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: Infinity
+    });
+
+    // Listen for REAL credit update events (fired from backend after nap tien / admin adjust)
+    socketInstance.on('user:credit_updated', (data) => {
+      console.log('[SOCKET.IO] Received user:credit_updated:', data);
+      setRecentCreditEvent({
+        userId: data.userId,
+        credits: data.credits,
+        creditsAdded: data.creditsAdded,
+        timestamp: new Date(data.timestamp)
+      });
+      // Add a notification to the bell panel
+      const creditNotif = {
+        id: Date.now(),
+        type: 'success',
+        title: 'Cập nhật số dư',
+        message: `User #${data.userId} vừa được ${data.creditsAdded > 0 ? '+' : ''}${data.creditsAdded} Credits. Số dư mới: ${(data.credits || 0).toLocaleString()} credits.`,
+        time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+      };
+      setNotifications(prev => [creditNotif, ...prev]);
+      setUnreadCount(prev => prev + 1);
+    });
+
+    socketInstance.on('image_analysis:updated', (data) => {
+      console.log('[SOCKET.IO] Received image_analysis:updated:', data);
+      // Add notification about image analysis completion
+      if (data.status === 'success') {
+        const analysisNotif = {
+          id: Date.now(),
+          type: 'success',
+          title: 'Mắt Thần AI hoàn thành',
+          message: `Phân tích ảnh "${data.image_name}" của ${data.owner?.name || 'người dùng'} đã hoàn tất.`,
+          time: 'Vừa xong'
+        };
+        setNotifications(prev => [analysisNotif, ...prev]);
+        setUnreadCount(prev => prev + 1);
+      } else if (data.status === 'failed') {
+        const failNotif = {
+          id: Date.now(),
+          type: 'danger',
+          title: 'Mắt Thần AI thất bại',
+          message: `Phân tích ảnh "${data.image_name}" của ${data.owner?.name || 'người dùng'} đã thất bại.`,
+          time: 'Vừa xong'
+        };
+        setNotifications(prev => [failNotif, ...prev]);
+        setUnreadCount(prev => prev + 1);
+      }
+    });
+
+    socketInstance.on('transaction:created', (data) => {
+      console.log('[SOCKET.IO] Received transaction:created:', data);
+      const transactionNotif = {
+        id: Date.now(),
+        type: 'info',
+        title: 'Giao dịch nạp tiền mới',
+        message: `${data.user?.name || 'Người dùng'} vừa tạo đơn nạp tiền ${data.amount}đ.`,
+        time: 'Vừa xong'
+      };
+      setNotifications(prev => [transactionNotif, ...prev]);
+      setUnreadCount(prev => prev + 1);
+    });
+
+    socketInstance.on('transaction:updated', (data) => {
+      console.log('[SOCKET.IO] Received transaction:updated:', data);
+      if (data.status === 'success') {
+        const approveNotif = {
+          id: Date.now(),
+          type: 'success',
+          title: 'Giao dịch được duyệt',
+          message: `Giao dịch của ${data.user?.name || 'người dùng'} đã được duyệt thành công.`,
+          time: 'Vừa xong'
+        };
+        setNotifications(prev => [approveNotif, ...prev]);
+        setUnreadCount(prev => prev + 1);
+      }
+    });
+
+    socketInstance.on('disconnect', () => {
+      console.log('[SOCKET.IO] Disconnected from server');
+    });
+
+    socketInstance.on('connect', () => {
+      console.log('[SOCKET.IO] Connected to server');
+    });
+
+    setSocket(socketInstance);
+
+    return () => {
+      socketInstance.disconnect();
     };
   }, []);
 
@@ -123,6 +227,19 @@ const AdminHeader = ({ toggleSidebar }) => {
       </div>
 
       <div className="flex items-center gap-6 relative">
+        {/* Credit Event Real-time Display */}
+        {recentCreditEvent && (
+          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-admin-primary/10 border border-admin-primary/30 animate-pulse">
+            <Zap size={16} className="text-yellow-400" />
+            <div className="flex flex-col">
+              <span className="text-[10px] text-admin-text-muted font-semibold uppercase tracking-wider">User #{recentCreditEvent.userId}</span>
+              <span className="text-sm font-bold text-yellow-400">
+                {recentCreditEvent.creditsAdded > 0 ? '+' : ''}{recentCreditEvent.creditsAdded} → {(recentCreditEvent.credits || 0).toLocaleString()}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Notification Bell Button */}
         <button 
           onClick={handleOpenNotif}
@@ -198,7 +315,7 @@ const AdminHeader = ({ toggleSidebar }) => {
             <div className="p-2.5 border-t border-admin-border bg-[#13161c]/40 text-center">
               <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider flex items-center justify-center gap-1.5">
                 <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-ping"></span>
-                Đang trực tuyến (SSE Real-time Active)
+                Real-time Active (SSE + WebSocket)
               </span>
             </div>
           </div>
