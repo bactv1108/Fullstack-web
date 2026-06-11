@@ -117,10 +117,10 @@ const TwoFactorModal = ({ mode, onSuccess, onClose }) => {
   // ── Render ───────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-      <div className="relative bg-[#1a1a22] border border-[#2d2d38] rounded-2xl shadow-2xl w-full max-w-md text-admin-text animate-fade-in">
+      <div className="relative bg-white dark:bg-[#1a1a22] border border-slate-200 dark:border-[#2d2d38] rounded-2xl shadow-2xl w-full max-w-md text-slate-900 dark:text-admin-text animate-fade-in">
 
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[#2d2d38]">
+        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-[#2d2d38]">
           <div className="flex items-center gap-3">
             <div className={`p-2 rounded-xl ${mode === 'enable' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
               {mode === 'enable' ? <ShieldCheck size={20} /> : <ShieldOff size={20} />}
@@ -134,7 +134,7 @@ const TwoFactorModal = ({ mode, onSuccess, onClose }) => {
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="text-admin-text-muted hover:text-white p-1 rounded-lg transition-colors">
+          <button onClick={onClose} className="text-slate-500 dark:text-admin-text-muted hover:text-slate-700 dark:hover:text-white p-1 rounded-lg transition-colors">
             <X size={18} />
           </button>
         </div>
@@ -165,12 +165,12 @@ const TwoFactorModal = ({ mode, onSuccess, onClose }) => {
                     <img src={qrCode} alt="QR Code 2FA" className="w-48 h-48 block" />
                   </div>
                   <p className="text-xs text-admin-text-muted">Hoặc nhập thủ công mã secret:</p>
-                  <div className="w-full flex items-center gap-2 bg-[#0f0f13] border border-admin-border rounded-lg px-3 py-2">
+                  <div className="w-full flex items-center gap-2 bg-slate-50 dark:bg-[#0f0f13] border border-slate-200 dark:border-admin-border rounded-lg px-3 py-2">
                     <code className="flex-1 text-xs text-yellow-400 break-all font-mono select-all">{secret}</code>
                     <button
                       type="button"
                       onClick={handleCopySecret}
-                      className="shrink-0 text-admin-text-muted hover:text-white transition-colors"
+                      className="shrink-0 text-slate-500 dark:text-admin-text-muted hover:text-slate-700 dark:hover:text-white transition-colors"
                       title="Sao chép secret"
                     >
                       {copied ? <CheckCircle size={14} className="text-emerald-400" /> : <Copy size={14} />}
@@ -209,8 +209,8 @@ const TwoFactorModal = ({ mode, onSuccess, onClose }) => {
                     value={d}
                     onChange={e => handleDigitChange(i, e.target.value)}
                     onKeyDown={e => handleDigitKeyDown(i, e)}
-                    className={`w-11 h-13 text-center text-xl font-bold rounded-xl border-2 bg-[#0f0f13] text-white outline-none transition-all ${
-                      d ? 'border-admin-primary' : 'border-admin-border'
+                    className={`w-11 h-13 text-center text-xl font-bold rounded-xl border-2 bg-slate-50 dark:bg-[#0f0f13] text-slate-900 dark:text-white outline-none transition-all ${
+                      d ? 'border-admin-primary' : 'border-slate-300 dark:border-admin-border'
                     } focus:border-admin-primary focus:ring-2 focus:ring-admin-primary/30`}
                     style={{ height: '3.25rem' }}
                     autoFocus={i === 0}
@@ -229,7 +229,7 @@ const TwoFactorModal = ({ mode, onSuccess, onClose }) => {
                   <button
                     type="button"
                     onClick={() => setStep('scan')}
-                    className="flex-1 bg-[#0f0f13] border border-admin-border hover:bg-admin-card text-admin-text text-xs py-2.5 rounded-lg font-medium transition-colors"
+                    className="flex-1 bg-slate-50 dark:bg-[#0f0f13] border border-slate-200 dark:border-admin-border hover:bg-slate-100 dark:hover:bg-admin-card text-slate-700 dark:text-admin-text text-xs py-2.5 rounded-lg font-medium transition-colors"
                   >
                     ← Quay lại QR
                   </button>

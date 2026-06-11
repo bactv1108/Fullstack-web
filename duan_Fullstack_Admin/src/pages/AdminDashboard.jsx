@@ -19,7 +19,7 @@ const AdminDashboard = ({ tab }) => {
       case 'billing':
         return (
           <div className="space-y-6 animate-fade-in">
-            <h1 className="text-2xl font-bold text-admin-text mb-6">Quản Lý Gói Cước & Tín Dụng</h1>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-admin-text mb-6">Quản Lý Gói Cước & Tín Dụng</h1>
             <PlanConfig />
             <BillingView />
           </div>
@@ -27,7 +27,7 @@ const AdminDashboard = ({ tab }) => {
       case 'api':
         return (
           <div className="space-y-6 animate-fade-in">
-            <h1 className="text-2xl font-bold text-admin-text mb-6">Tài Nguyên Hệ Thống & API</h1>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-admin-text mb-6">Tài Nguyên Hệ Thống & API</h1>
             <ApiKeysForm />
             <AssetManager />
           </div>
@@ -35,7 +35,7 @@ const AdminDashboard = ({ tab }) => {
       case 'moderation':
         return (
           <div className="space-y-6 animate-fade-in">
-            <h1 className="text-2xl font-bold text-admin-text mb-6">Kiểm Duyệt Nội Dung</h1>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-admin-text mb-6">Kiểm Duyệt Nội Dung</h1>
             <BlacklistWord />
             <VideoModerator />
           </div>
@@ -43,14 +43,14 @@ const AdminDashboard = ({ tab }) => {
       case 'users':
         return (
           <div className="space-y-6 animate-fade-in h-[calc(100vh-8rem)] flex flex-col">
-            <h1 className="text-2xl font-bold text-admin-text mb-2 flex-shrink-0">Quản Lý Người Dùng</h1>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-admin-text mb-2 flex-shrink-0">Quản Lý Người Dùng</h1>
             <UserTable />
           </div>
         );
       case 'image-analyses':
         return (
           <div className="space-y-6 animate-fade-in h-[calc(100vh-8rem)] flex flex-col">
-            <h1 className="text-2xl font-bold text-admin-text mb-2 flex-shrink-0">Quản Lý Lịch Sử Mắt Thần</h1>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-admin-text mb-2 flex-shrink-0">Quản Lý Lịch Sử Mắt Thần</h1>
             <ImageAnalysesTable />
           </div>
         );
@@ -58,7 +58,7 @@ const AdminDashboard = ({ tab }) => {
         // Default Dashboard View
         return (
           <div className="animate-fade-in">
-            <h1 className="text-2xl font-bold text-admin-text mb-6">Tổng Quan Hệ Thống</h1>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-admin-text mb-6">Tổng Quan Hệ Thống</h1>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
               <div className="lg:col-span-2">
                 <CreditStats />

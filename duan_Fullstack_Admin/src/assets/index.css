@@ -1,30 +1,57 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
-  --color-admin-bg: #0f1115;
-  --color-admin-card: #181b21;
-  --color-admin-primary: #3b82f6; /* Blue */
-  --color-admin-primary-hover: #2563eb;
-  --color-admin-text: #e2e8f0;
-  --color-admin-text-muted: #94a3b8;
-  --color-admin-border: #334155;
+  --color-admin-bg: var(--bg-admin-bg);
+  --color-admin-card: var(--bg-admin-card);
+  --color-admin-primary: var(--accent-admin-primary);
+  --color-admin-primary-hover: var(--accent-admin-primary-hover);
+  --color-admin-text: var(--text-admin-primary);
+  --color-admin-text-muted: var(--text-admin-muted);
+  --color-admin-border: var(--border-admin);
   --color-admin-danger: #ef4444;
   --color-admin-success: #10b981;
 }
 
+:root {
+  --bg-admin-bg: #f1f5f9;
+  --bg-admin-card: #ffffff;
+  --accent-admin-primary: #3b82f6;
+  --accent-admin-primary-hover: #2563eb;
+  --text-admin-primary: #0f172a;
+  --text-admin-muted: #64748b;
+  --border-admin: #e2e8f0;
+}
+
+.dark {
+  --bg-admin-bg: #0f1115;
+  --bg-admin-card: #181b21;
+  --accent-admin-primary: #3b82f6;
+  --accent-admin-primary-hover: #2563eb;
+  --text-admin-primary: #e2e8f0;
+  --text-admin-muted: #94a3b8;
+  --border-admin: #334155;
+}
+
 body {
-  background-color: var(--color-admin-bg);
-  color: var(--color-admin-text);
+  background-color: #f1f5f9;
+  color: #0f172a;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
+.dark body {
+  background-color: #0f1115;
+  color: #e2e8f0;
+}
+
 .admin-card {
-  @apply bg-admin-card border border-admin-border rounded-xl shadow-lg;
+  @apply bg-slate-50 dark:bg-admin-card border border-slate-200 dark:border-admin-border rounded-xl shadow-lg;
 }
 
 .admin-input {
-  @apply w-full bg-admin-bg border border-admin-border rounded-lg px-4 py-2 text-admin-text focus:outline-none focus:border-admin-primary focus:ring-1 focus:ring-admin-primary transition-colors;
+  @apply w-full bg-white dark:bg-admin-bg border border-slate-300 dark:border-admin-border rounded-lg px-4 py-2 text-slate-900 dark:text-admin-text focus:outline-none focus:border-admin-primary focus:ring-1 focus:ring-admin-primary/50 transition-colors;
 }
 
 .admin-btn {

@@ -179,7 +179,7 @@ const AssetManager = () => {
   return (
     <div className="admin-card p-6">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-lg font-semibold text-white">Tài Nguyên Asset (Giọng đọc & Style)</h2>
+        <h2 className="text-lg font-semibold text-slate-800 dark:text-white">Tài Nguyên Asset (Giọng đọc & Style)</h2>
         <button 
           onClick={() => setIsModalOpen(true)}
           className="admin-btn admin-btn-primary text-sm px-3 py-1.5 flex items-center gap-1.5 cursor-pointer"
@@ -199,7 +199,7 @@ const AssetManager = () => {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-medium text-white truncate">{asset.name}</h3>
+                  <h3 className="font-medium text-slate-800 dark:text-white font-semibold truncate">{asset.name}</h3>
                   <span className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase shrink-0 ${
                     asset.status.toLowerCase() === 'active' 
                       ? 'bg-green-500/10 text-green-500 border border-green-500/20' 

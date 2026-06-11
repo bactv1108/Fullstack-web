@@ -123,7 +123,7 @@ const ApiKeysForm = () => {
               name="gemini"
               value={geminiApiKey}
               onChange={(e) => setGeminiApiKey(e.target.value)}
-              className="w-full p-3 bg-zinc-900/50 text-zinc-100 border border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm pr-10" 
+              className="admin-input pr-10" 
             />
             <button 
               type="button" 

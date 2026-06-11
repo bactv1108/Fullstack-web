@@ -59,7 +59,7 @@ const AdminLogin = () => {
   };
 
   return (
-    <div className="min-h-screen bg-admin-bg flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.1)_0%,transparent_50%)]"></div>
       
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
@@ -68,16 +68,16 @@ const AdminLogin = () => {
             <ShieldCheck size={48} className="text-admin-primary" />
           </div>
         </div>
-        <h2 className="text-center text-3xl font-extrabold text-admin-text">
+        <h2 className="text-center text-3xl font-extrabold text-slate-900 dark:text-admin-text">
           Admin Studio
         </h2>
-        <p className="mt-2 text-center text-sm text-admin-text-muted">
+        <p className="mt-2 text-center text-sm text-slate-500 dark:text-admin-text-muted">
           Hệ thống quản trị VideoAI
         </p>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md relative z-10">
-        <div className="bg-admin-card py-8 px-4 shadow-2xl sm:rounded-xl sm:px-10 border border-admin-border">
+        <div className="bg-white dark:bg-[#181b21] py-8 px-4 shadow-2xl sm:rounded-xl sm:px-10 border border-slate-200 dark:border-admin-border">
           
           {error && !show2FA && (
             <div className="bg-red-500/10 border border-red-500/20 text-red-500 text-sm p-3 rounded-lg mb-6 text-center">
@@ -95,7 +95,7 @@ const AdminLogin = () => {
             {!show2FA ? (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-admin-text-muted mb-2">
+                  <label className="block text-sm font-medium text-slate-600 dark:text-admin-text-muted mb-2">
                     Email quản trị
                   </label>
                   <div className="relative">
@@ -115,7 +115,7 @@ const AdminLogin = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-admin-text-muted mb-2">
+                  <label className="block text-sm font-medium text-slate-600 dark:text-admin-text-muted mb-2">
                     Mật khẩu
                   </label>
                   <div className="relative">
@@ -161,7 +161,7 @@ const AdminLogin = () => {
                 </div>
                 <button
                   type="button"
-                  className="text-xs text-admin-text-muted hover:text-admin-primary mt-2 cursor-pointer bg-transparent border-none"
+                  className="text-xs text-slate-500 dark:text-admin-text-muted hover:text-admin-primary mt-2 cursor-pointer bg-transparent border-none"
                   onClick={() => { setShow2FA(false); setOtpCode(''); setOtpError(''); }}
                 >
                   ← Quay lại đăng nhập

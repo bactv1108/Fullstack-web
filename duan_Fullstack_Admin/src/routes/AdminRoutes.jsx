@@ -9,7 +9,7 @@ const AdminDashboard = lazy(() => import('../pages/AdminDashboard'));
 const AdminProfile = lazy(() => import('../pages/admin/AdminProfile'));
 
 const LoadingFallback = () => (
-  <div className="min-h-screen flex items-center justify-center bg-admin-bg text-admin-text">
+  <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-admin-text">
     <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-admin-primary"></div>
   </div>
 );

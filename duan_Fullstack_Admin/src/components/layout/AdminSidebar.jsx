@@ -20,7 +20,7 @@ const AdminSidebar = ({ isOpen, setIsOpen }) => {
 
   return (
     <aside 
-      className={`fixed inset-y-0 left-0 w-64 bg-[#13161c] border-r border-admin-border flex flex-col h-full z-30 transition-transform duration-300 transform ${
+      className={`fixed inset-y-0 left-0 w-64 bg-white dark:bg-[#13161c] border-r border-slate-200 dark:border-admin-border flex flex-col h-full z-30 transition-transform duration-300 transform ${
         isOpen ? 'translate-x-0' : '-translate-x-full'
       }`}
     >
@@ -30,13 +30,13 @@ const AdminSidebar = ({ isOpen, setIsOpen }) => {
           className="flex items-center gap-2 cursor-pointer hover:opacity-90 transition-opacity"
         >
           <span className="bg-admin-primary text-white p-1.5 rounded-md text-xs font-black">AI</span>
-          <span className="text-base font-bold text-white tracking-wide">Studio Admin</span>
+          <span className="text-base font-bold text-slate-900 dark:text-white tracking-wide">Studio Admin</span>
         </div>
         
         {/* Close button inside sidebar */}
         <button 
           onClick={() => setIsOpen(false)}
-          className="text-admin-text-muted hover:text-white p-1 rounded-lg hover:bg-admin-card transition-colors cursor-pointer"
+          className="text-slate-500 dark:text-admin-text-muted hover:text-slate-700 dark:hover:text-white p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-admin-card transition-colors cursor-pointer"
         >
           <X size={18} />
         </button>
@@ -48,13 +48,13 @@ const AdminSidebar = ({ isOpen, setIsOpen }) => {
             key={tab.path}
             to={tab.path}
             onClick={() => setIsOpen(false)}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                isActive 
-                  ? 'bg-admin-primary text-white font-medium shadow-md shadow-blue-900/20' 
-                  : 'text-admin-text-muted hover:bg-admin-card hover:text-white'
-              }`
-            }
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                  isActive 
+                    ? 'bg-admin-primary text-white font-medium shadow-md shadow-blue-900/20' 
+                    : 'text-slate-500 dark:text-admin-text-muted hover:bg-slate-100 dark:hover:bg-admin-card hover:text-slate-700 dark:hover:text-white'
+                }`
+              }
           >
             {tab.icon}
             {tab.name}
@@ -62,7 +62,7 @@ const AdminSidebar = ({ isOpen, setIsOpen }) => {
         ))}
       </nav>
 
-      <div className="p-4 border-t border-admin-border text-xs text-admin-text-muted text-center">
+      <div className="p-4 border-t border-slate-200 dark:border-admin-border text-xs text-slate-500 dark:text-admin-text-muted text-center">
         v1.0.0-admin
       </div>
     </aside>

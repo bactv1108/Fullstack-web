@@ -267,7 +267,7 @@ const BillingView = () => {
       </div>
 
       {/* ── Tab Bar ─────────────────────────────────────────────────────── */}
-      <div className="px-6 pt-4 pb-0 flex items-center gap-2 border-b border-admin-border bg-[#111115]/60">
+      <div className="px-6 pt-4 pb-0 flex items-center gap-2 border-b border-admin-border bg-slate-50/60 dark:bg-[#111115]/60">
         {/* Tab: Tất cả */}
         <button
           onClick={() => { setActiveTab('all'); setCurrentPage(1); }}
@@ -478,7 +478,7 @@ const BillingView = () => {
       {/* Custom Dialog Overlay Popup */}
       {dialog.isOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#1e1e24] border border-[#2d2d34] text-admin-text rounded-xl shadow-2xl p-6 max-w-sm w-full animate-fade-in relative">
+          <div className="bg-white dark:bg-[#1e1e24] border border-slate-200 dark:border-[#2d2d34] text-slate-900 dark:text-admin-text rounded-xl shadow-2xl p-6 max-w-sm w-full animate-fade-in relative">
             <div className="flex flex-col items-center text-center">
               {dialog.type === 'success' && (
                 <div className="w-12 h-12 bg-green-500/10 text-green-500 rounded-full flex items-center justify-center mb-4 border border-green-500/20">

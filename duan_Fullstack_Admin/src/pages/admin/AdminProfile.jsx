@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { getSocket } from '../../services/socketService';
 import { 
   User, Shield, ShieldCheck, KeyRound, Monitor, Smartphone, 
   Terminal, Palette, Check, Save, Lock, LogOut, ArrowLeft, Camera, Trash2, X, ArrowUp 
@@ -34,18 +35,16 @@ export default function AdminProfile() {
   const [webhookUrl, setWebhookUrl] = useState('https://api.telegram.org/bot724391:AAH-u58.../sendMessage');
   const [isAlertCostActive, setIsAlertCostActive] = useState(true);
 
-  // Theme states
-  const [activeTheme, setActiveTheme] = useState('dark'); // 'dark' | 'light'
+  // Theme states - initialize from localStorage
+  const [activeTheme, setActiveTheme] = useState(() => localStorage.getItem('admin_theme') || 'dark'); // 'dark' | 'light'
 
   // Avatar State
   const [avatar, setAvatar] = useState(localStorage.getItem('admin_avatar') || '');
 
-  // Active Sessions
-  const [sessions, setSessions] = useState([
-    { id: 1, device: 'Chrome Browser — Windows 11 OS', ip: '14.232.122.18 (Hà Nội, Việt Nam)', active: true },
-    { id: 2, device: 'Safari Browser — macOS Sequoia OS', ip: '115.79.208.43 (TP. Hồ Chí Minh, Việt Nam)', active: false },
-    { id: 3, device: 'Chrome Mobile — iOS 18 (iPhone 15 Pro)', ip: '27.72.93.104 (Đà Nẵng, Việt Nam)', active: false }
-  ]);
+  // Active Sessions — real data from API
+  const [sessions, setSessions] = useState([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsError, setSessionsError] = useState('');
 
   // Messages / feedback states
   const [identityMsg, setIdentityMsg] = useState('');
@@ -55,8 +54,15 @@ export default function AdminProfile() {
   // Scroll-to-Top State & Effect
   const [showScrollTop, setShowScrollTop] = useState(false);
 
+  // ── URL cấu hình ──────────────────────────────────────────────
+  // VITE_API_URL = http://localhost:3000/api/admin
+  // BASE_API    = http://localhost:3000/api  (strip /admin suffix)
+  // SERVER_ROOT = http://localhost:3000
   const rawApi = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
-  const apiBase = rawApi.replace(/\/admin\/?$/, '');
+  const BASE_API = rawApi.replace(/\/admin\/?$/, '');        // http://localhost:3000/api
+  const SERVER_ROOT = BASE_API.replace(/\/api\/?$/, '');     // http://localhost:3000
+  // alias cho các API cũ giữ nguyên
+  const apiBase = BASE_API;
 
   const toBoolean = (value) => {
     if (typeof value === 'boolean') return value;
@@ -100,10 +106,12 @@ export default function AdminProfile() {
   useEffect(() => {
     const fetchProfile = async () => {
       try {
+        // Lấy token trực tiếp (getValidToken chưa được khai báo ở đây)
         const token = localStorage.getItem('admin_access_token');
         if (!token) return;
 
-        const res = await axios.get(`${apiBase}/user/profile`, {
+        // Profile endpoint: GET http://localhost:3000/api/user/profile
+        const res = await axios.get(`${BASE_API}/user/profile`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         const profile = res.data?.user || res.data?.data || res.data;
@@ -112,6 +120,9 @@ export default function AdminProfile() {
           setFullname(profile.name || '');
           setAvatar(profile.avatar || localStorage.getItem('admin_avatar') || '');
           setIs2FaActive(toBoolean(profile.is_two_factor_enabled));
+          if (!localStorage.getItem('admin_theme') && profile.theme_preference) {
+            setActiveTheme(profile.theme_preference);
+          }
         }
       } catch (err) {
         console.error('[ADMIN PROFILE] Load profile failed:', err.response?.data?.message || err.message);
@@ -119,7 +130,39 @@ export default function AdminProfile() {
     };
 
     fetchProfile();
-  }, [apiBase]);
+  }, []);
+
+  // ── Fetch sessions + lắng nghe SESSION_LIST_CHANGED real-time ──────────────────
+  useEffect(() => {
+    // Lần đầu: load danh sách phiên ngay
+    fetchSessions();
+
+    // Lấy socket singleton (đã được khởi tạo và xác thực bởi AdminLayout)
+    const socket = getSocket();
+
+    // Khi có thiết bị mới login hoặc 1 phiên bị revoke → tự động reload danh sách
+    const handleSessionListChanged = () => {
+      console.log('[SOCKET] SESSION_LIST_CHANGED — đang tải lại danh sách phiên...');
+      fetchSessions();
+    };
+
+    socket.on('SESSION_LIST_CHANGED', handleSessionListChanged);
+
+    // Cleanup: gỡ listener khi component unmount
+    return () => {
+      socket.off('SESSION_LIST_CHANGED', handleSessionListChanged);
+    };
+  }, []);
+
+  // Sync theme to DOM and localStorage whenever activeTheme changes
+  useEffect(() => {
+    if (activeTheme === 'light') {
+      document.documentElement.classList.remove('dark');
+    } else {
+      document.documentElement.classList.add('dark');
+    }
+    localStorage.setItem('admin_theme', activeTheme);
+  }, [activeTheme]);
 
   const scrollToTop = () => {
     const mainEl = document.querySelector('main');
@@ -128,10 +171,24 @@ export default function AdminProfile() {
     }
   };
 
-  const handleSaveIdentity = (e) => {
+  const handleSaveIdentity = async (e) => {
     e.preventDefault();
-    setIdentityMsg('Cập nhật thông tin danh tính thành công!');
-    setTimeout(() => setIdentityMsg(''), 3000);
+    try {
+      setIdentityMsg('Đang lưu thông tin...');
+      const token = localStorage.getItem('admin_access_token');
+      const res = await axios.put(`${apiBase}/user/update-profile`, {
+        name: fullname,
+        phone: tel,
+        theme_preference: activeTheme
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setIdentityMsg(res.data?.message || 'Cập nhật thông tin danh tính thành công!');
+    } catch (err) {
+      setIdentityMsg(err.response?.data?.message || 'Cập nhật thất bại.');
+    } finally {
+      setTimeout(() => setIdentityMsg(''), 3000);
+    }
   };
 
   const handleSavePassword = (e) => {
@@ -157,9 +214,97 @@ export default function AdminProfile() {
     setTimeout(() => setWebhookMsg(''), 3000);
   };
 
-  const handleTerminateSession = (id) => {
-    setSessions(prev => prev.filter(s => s.id !== id));
+  // ── Helper: lấy token (placeholder, trả về token hiện tại) ──────────────
+  const getValidToken = async () => {
+    return localStorage.getItem('admin_access_token') || null;
   };
+
+  // ── Helper: axios với auto-refresh khi nhận 401 ──────────────────────────
+  const axiosWithRefresh = async (config) => {
+    try {
+      return await axios(config);
+    } catch (err) {
+      if (err.response?.status !== 401) throw err;
+
+      // Access token hết hạn → thử refresh
+      const refreshToken =
+        localStorage.getItem('admin_refresh_token') ||
+        localStorage.getItem('refresh_token');
+      if (!refreshToken) throw err;
+
+      try {
+        const refreshRes = await axios.post(
+          `${SERVER_ROOT}/api/auth/refresh`,
+          { refresh_token: refreshToken }
+        );
+        const newAccessToken =
+          refreshRes.data?.access_token || refreshRes.data?.accessToken;
+        const newRefreshToken =
+          refreshRes.data?.refresh_token || refreshRes.data?.refreshToken;
+
+        if (newAccessToken) {
+          localStorage.setItem('admin_access_token', newAccessToken);
+          localStorage.setItem('access_token', newAccessToken);
+        }
+        if (newRefreshToken) {
+          localStorage.setItem('admin_refresh_token', newRefreshToken);
+          localStorage.setItem('refresh_token', newRefreshToken);
+        }
+
+        // Retry request gốc với token mới
+        const retryConfig = {
+          ...config,
+          headers: { ...config.headers, Authorization: `Bearer ${newAccessToken}` },
+        };
+        return await axios(retryConfig);
+      } catch (refreshErr) {
+        console.error('[TOKEN] Refresh thất bại, cần đăng nhập lại.');
+        throw refreshErr;
+      }
+    }
+  };
+
+  // ── Fetch sessions from API ──────────────────────────────────────────────
+  // URL chính xác: GET http://localhost:3000/api/v1/auth/sessions
+  const fetchSessions = async () => {
+    try {
+      setSessionsLoading(true);
+      setSessionsError('');
+      const token = localStorage.getItem('admin_access_token');
+      if (!token) return;
+
+      const res = await axiosWithRefresh({
+        method: 'get',
+        url: `${SERVER_ROOT}/api/v1/auth/sessions`,
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setSessions(res.data?.sessions || []);
+    } catch (err) {
+      console.error('[ADMIN PROFILE] fetchSessions failed:', err.response?.data?.message || err.message);
+      setSessionsError('Không thể tải danh sách phiên. Vui lòng thử lại.');
+    } finally {
+      setSessionsLoading(false);
+    }
+  };
+
+  const handleTerminateSession = async (sessionId) => {
+    try {
+      const token = localStorage.getItem('admin_access_token');
+      // URL chính xác: POST http://localhost:3000/api/v1/auth/sessions/revoke
+      await axiosWithRefresh({
+        method: 'post',
+        url: `${SERVER_ROOT}/api/v1/auth/sessions/revoke`,
+        data: { sessionId },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      await fetchSessions();
+    } catch (err) {
+      console.error('[ADMIN PROFILE] revokeSession failed:', err.response?.data?.message || err.message);
+      setSessionsError(err.response?.data?.message || 'Đăng xuất phiên thất bại.');
+      setTimeout(() => setSessionsError(''), 3000);
+    }
+  };
+
 
   // Avatar Handlers
   const handleAvatarClick = () => {
@@ -266,16 +411,16 @@ export default function AdminProfile() {
   };
 
   return (
-    <div className="min-h-screen bg-[#131316] text-[#e2e8f0] p-4 md:p-6 lg:p-8 flex flex-col gap-6 md:gap-8 select-none overflow-y-auto">
+    <div className="min-h-screen  bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4 md:p-6 lg:p-8 flex flex-col gap-6 md:gap-8 select-none overflow-y-auto">
       
       {/* Page Title & Breadcrumb & Exit button */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-[#222226] pb-4">
+      <div className=" flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
         <div className="flex flex-col gap-1 text-left">
-          <h1 className="text-xl md:text-2xl font-black text-white uppercase tracking-wider flex items-center gap-3">
-            <Shield className="text-[#f59e0b]" size={24} />
+          <h1 className="text-xl md:text-2xl font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider flex items-center gap-3">
+            <Shield className="text-amber-500" size={24} />
             Hồ Sơ & Trung Tâm Bảo Mật Admin
           </h1>
-          <p className="text-xs text-admin-text-muted">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             Quản lý thông tin tài khoản root, thay đổi chính sách bảo mật hệ thống và cấu hình webhook giám sát.
           </p>
         </div>
@@ -283,7 +428,7 @@ export default function AdminProfile() {
         {/* Exit Icon X */}
         <button 
           onClick={() => navigate('/dashboard')}
-          className="p-2 bg-[#18181c] hover:bg-[#222226] text-zinc-400 hover:text-white rounded-lg transition-all cursor-pointer border border-[#222226] shrink-0 hover:scale-[1.05] active:scale-[0.95]"
+          className="p-2 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg transition-all cursor-pointer border border-slate-200 dark:border-slate-800 shrink-0 hover:scale-[1.05] active:scale-[0.95]"
           title="Thoát hồ sơ"
         >
           <X size={18} />
@@ -291,19 +436,19 @@ export default function AdminProfile() {
       </div>
 
       {/* ─── MODULE 1: ADMIN IDENTITY INFO ─── */}
-      <section className="bg-[#18181c] border border-[#222226] rounded-xl p-5 md:p-6 flex flex-col gap-5">
-        <div className="flex items-center gap-3 border-b border-[#222226]/50 pb-3">
-          <User className="text-[#f59e0b]" size={20} />
-          <h2 className="text-sm font-black text-white uppercase tracking-wider">
+      <section className="bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl p-5 md:p-6 flex flex-col gap-5">
+        <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800/50 pb-3">
+          <User className="text-amber-500" size={20} />
+          <h2 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">
             Thông tin tài khoản quản trị
           </h2>
         </div>
 
         {/* Avatar Uploader Section */}
-        <div className="flex flex-col sm:flex-row items-center gap-5 bg-[#0f0f11] p-4 rounded-xl border border-[#222226]/40">
+        <div className="flex flex-col sm:flex-row items-center gap-5 bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border-slate-200 dark:border-slate-800/40">
           <div 
             onClick={handleAvatarClick}
-            className="w-20 h-20 rounded-full bg-[#854d0e] text-white flex items-center justify-center font-bold text-xl cursor-pointer relative group overflow-hidden border border-[#222226] shrink-0"
+            className="w-20 h-20 rounded-full bg-[#854d0e] text-white flex items-center justify-center font-bold text-xl cursor-pointer relative group overflow-hidden border border-slate-200 dark:border-slate-800 shrink-0"
           >
             {avatar ? (
               <img src={avatar} alt="Admin Avatar" className="w-full h-full object-cover" />
@@ -328,8 +473,8 @@ export default function AdminProfile() {
           </div>
 
           <div className="flex flex-col gap-1.5 text-center sm:text-left">
-            <h3 className="text-xs font-bold text-white uppercase tracking-wide">Ảnh đại diện Quản trị viên</h3>
-            <p className="text-[10px] text-admin-text-muted leading-relaxed max-w-md">
+            <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wide">Ảnh đại diện Quản trị viên</h3>
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed max-w-md">
               Nhấp trực tiếp vào biểu tượng vòng tròn để tải lên tệp ảnh cá nhân (.png, .jpg). Dung lượng đề xuất dưới 2MB.
             </p>
             {avatar && (
@@ -350,21 +495,21 @@ export default function AdminProfile() {
             
             {/* Họ và tên */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-bold text-admin-text-muted uppercase tracking-wide">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
                 Họ và tên Quản trị viên
               </label>
               <input 
                 type="text" 
                 value={fullname}
                 onChange={(e) => setFullname(e.target.value)}
-                className="w-full bg-[#131316] border border-[#222226] rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f59e0b] focus:ring-1 focus:ring-[#f59e0b] transition-all"
+                className="w-full bg-white dark:bg-slate-800 dark:border-slate-700 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 transition-all"
                 required
               />
             </div>
 
             {/* Cấp bậc hệ thống */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-bold text-admin-text-muted uppercase tracking-wide">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
                 Cấp bậc hệ thống
               </label>
               <div className="flex items-center h-[46px]">
@@ -376,27 +521,27 @@ export default function AdminProfile() {
 
             {/* Email Quản trị */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-bold text-admin-text-muted uppercase tracking-wide">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
                 Email Quản trị
               </label>
               <input 
                 type="email" 
                 value="admin.bac@aistudio.vn"
                 disabled
-                className="w-full bg-[#1b1b22] border border-[#222226]/60 rounded-lg px-4 py-3 text-sm text-zinc-500 cursor-not-allowed"
+                className="w-full bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700/60 rounded-lg px-4 py-3 text-sm text-slate-400 dark:text-slate-500 cursor-not-allowed"
               />
             </div>
 
             {/* Số điện thoại liên hệ */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-bold text-admin-text-muted uppercase tracking-wide">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
                 Số điện thoại liên hệ
               </label>
               <input 
                 type="text" 
                 value={tel}
                 onChange={(e) => setTel(e.target.value)}
-                className="w-full bg-[#131316] border border-[#222226] rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f59e0b] focus:ring-1 focus:ring-[#f59e0b] transition-all"
+                className="w-full bg-white dark:bg-slate-800 dark:border-slate-700 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 transition-all"
                 required
               />
             </div>
@@ -409,7 +554,7 @@ export default function AdminProfile() {
             </span>
             <button 
               type="submit"
-              className="w-full md:w-auto py-3 px-6 bg-[#f59e0b] hover:bg-amber-600 text-black font-black uppercase text-xs tracking-wider rounded-xl transition-all hover:scale-[1.01] hover:shadow-[0_0_20px_rgba(245,158,11,0.4)] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full md:w-auto py-3 px-6 bg-amber-500 hover:bg-amber-600 text-black font-black uppercase text-xs tracking-wider rounded-xl transition-all hover:scale-[1.01] hover:shadow-[0_0_20px_rgba(245,158,11,0.25)] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
             >
               <Save size={14} />
               LƯU THAY ĐỔI DANH TÍNH
@@ -419,10 +564,10 @@ export default function AdminProfile() {
       </section>
 
       {/* ─── MODULE 2: PASSWORD MUTATION CENTER ─── */}
-      <section className="bg-[#18181c] border border-[#222226] rounded-xl p-5 md:p-6 flex flex-col gap-5">
-        <div className="flex items-center gap-3 border-b border-[#222226]/50 pb-3">
-          <KeyRound className="text-[#f59e0b]" size={20} />
-          <h2 className="text-sm font-black text-white uppercase tracking-wider">
+      <section className="bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl p-5 md:p-6 flex flex-col gap-5">
+        <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800/50 pb-3">
+          <KeyRound className="text-amber-500" size={20} />
+          <h2 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">
             Thay đổi mật khẩu định kỳ
           </h2>
         </div>
@@ -432,7 +577,7 @@ export default function AdminProfile() {
             
             {/* Mật khẩu hiện tại */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-bold text-admin-text-muted uppercase tracking-wide">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
                 Mật khẩu hiện tại
               </label>
               <input 
@@ -440,13 +585,13 @@ export default function AdminProfile() {
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-[#131316] border border-[#222226] rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f59e0b] focus:ring-1 focus:ring-[#f59e0b] transition-all"
+                className="w-full bg-white dark:bg-slate-800 dark:border-slate-700 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 transition-all"
               />
             </div>
 
             {/* Mật khẩu mới */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-bold text-admin-text-muted uppercase tracking-wide">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
                 Mật khẩu mới
               </label>
               <input 
@@ -454,13 +599,13 @@ export default function AdminProfile() {
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-[#131316] border border-[#222226] rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f59e0b] focus:ring-1 focus:ring-[#f59e0b] transition-all"
+                className="w-full bg-white dark:bg-slate-800 dark:border-slate-700 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 transition-all"
               />
             </div>
 
             {/* Xác nhận mật khẩu mới */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-bold text-admin-text-muted uppercase tracking-wide">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
                 Xác nhận mật khẩu mới
               </label>
               <input 
@@ -468,7 +613,7 @@ export default function AdminProfile() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-[#131316] border border-[#222226] rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f59e0b] focus:ring-1 focus:ring-[#f59e0b] transition-all"
+                className="w-full bg-white dark:bg-slate-800 dark:border-slate-700 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 transition-all"
               />
             </div>
 
@@ -480,7 +625,7 @@ export default function AdminProfile() {
             </span>
             <button 
               type="submit"
-              className="w-full md:w-auto py-3 px-6 bg-[#f59e0b] hover:bg-amber-600 text-black font-black uppercase text-xs tracking-wider rounded-xl transition-all hover:scale-[1.01] hover:shadow-[0_0_20px_rgba(245,158,11,0.4)] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full md:w-auto py-3 px-6 bg-amber-500 hover:bg-amber-600 text-black font-black uppercase text-xs tracking-wider rounded-xl transition-all hover:scale-[1.01] hover:shadow-[0_0_20px_rgba(245,158,11,0.25)] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
             >
               <Lock size={14} />
               CẬP NHẬT MẬT KHẨU MỚI
@@ -490,20 +635,20 @@ export default function AdminProfile() {
       </section>
 
       {/* ─── MODULE 3: TWO-FACTOR AUTHENTICATION (2FA) ─── */}
-      <section className="bg-[#18181c] border border-[#222226] rounded-xl p-5 md:p-6 flex flex-col gap-5">
-        <div className="flex items-center gap-3 border-b border-[#222226]/50 pb-3">
-          <ShieldCheck className="text-[#f59e0b]" size={20} />
-          <h2 className="text-sm font-black text-white uppercase tracking-wider">
+      <section className="bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl p-5 md:p-6 flex flex-col gap-5">
+        <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800/50 pb-3">
+          <ShieldCheck className="text-amber-500" size={20} />
+          <h2 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">
             Bảo vệ hai lớp cấp cao (2FA)
           </h2>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-4 sm:items-center justify-between bg-[#0f0f11] p-4 rounded-xl border border-[#222226]/40">
+        <div className="flex flex-col sm:flex-row gap-4 sm:items-center justify-between bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border-slate-200 dark:border-slate-800/40">
           <div className="flex flex-col gap-1 text-left">
-            <h3 className="text-xs font-bold text-white uppercase tracking-wide">
+            <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wide">
               Kích hoạt mã bảo mật OTP (Google Authenticator)
             </h3>
-            <p className="text-[10px] text-admin-text-muted leading-relaxed">
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
               Yêu cầu nhập mã xác minh gồm 6 chữ số từ thiết bị di động cá nhân của bạn mỗi khi đăng nhập vào quản trị hệ thống.
             </p>
             {twoFASuccess && <span className="text-[10px] font-bold text-green-400 mt-1">{twoFASuccess}</span>}
@@ -524,10 +669,10 @@ export default function AdminProfile() {
       {/* ── 2FA QR Modal ── */}
       {show2FAModal && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#18181c] border border-[#222226] text-[#e2e8f0] rounded-xl max-w-md w-full p-6 relative flex flex-col gap-4 text-center select-none shadow-2xl">
+          <div className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 rounded-xl max-w-md w-full p-6 relative flex flex-col gap-4 text-center select-none shadow-2xl">
             <button
               onClick={handleClose2FAModal}
-              className="absolute right-4 top-4 p-1.5 bg-[#18181c] hover:bg-[#222226] text-zinc-400 hover:text-white rounded-lg transition-all border border-[#222226] cursor-pointer hover:scale-[1.05] active:scale-[0.95]"
+              className="absolute right-4 top-4 p-1.5 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg transition-all border border-slate-200 dark:border-slate-800 cursor-pointer hover:scale-[1.05] active:scale-[0.95]"
             >
               <X size={16} />
             </button>
@@ -535,7 +680,7 @@ export default function AdminProfile() {
             <h3 className="text-md font-black uppercase tracking-wider text-white mt-2">
               {isDisabling ? 'Tắt bảo mật 2FA' : 'Kích hoạt bảo mật 2FA'}
             </h3>
-            <p className="text-[10px] text-zinc-400 -mt-2">
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 -mt-2">
               {isDisabling
                 ? 'Nhập mã 6 số từ Google Authenticator để xác nhận tắt 2FA.'
                 : 'Quét mã QR bằng Google Authenticator, sau đó nhập mã 6 số để xác nhận.'
@@ -543,19 +688,19 @@ export default function AdminProfile() {
             </p>
 
             {!isDisabling && qrCode && (
-              <div className="mx-auto bg-white p-3 rounded-lg w-52 h-52 flex items-center justify-center border border-[#222226] mt-1 shadow-inner">
+              <div className="mx-auto bg-white p-3 rounded-lg w-52 h-52 flex items-center justify-center border border-slate-200 dark:border-slate-800 mt-1 shadow-inner">
                 <img src={qrCode} alt="QR Code 2FA" className="w-full h-full object-contain" />
               </div>
             )}
 
             {!isDisabling && tempSecret && (
-              <div className="bg-[#0f0f11] p-3 rounded-xl border border-[#222226]/40 text-left text-xs">
-                <span className="text-zinc-400">Hoặc nhập mã thủ công:</span>
+              <div className="bg-slate-50 dark:bg-slate-950 p-3 rounded-xl border-slate-200 dark:border-slate-800/40 text-left text-xs">
+                <span className="text-slate-500 dark:text-slate-400">Hoặc nhập mã thủ công:</span>
                 <div className="flex items-center gap-2 mt-1">
-                  <code className="font-mono font-bold text-[#f59e0b] text-xs break-all">{tempSecret}</code>
+                  <code className="font-mono font-bold text-amber-500 text-xs break-all">{tempSecret}</code>
                   <button
                     onClick={() => { navigator.clipboard.writeText(tempSecret); alert('Đã sao chép mã secret!'); }}
-                    className="text-[#f59e0b] hover:underline cursor-pointer bg-transparent border-none text-[10px] font-bold shrink-0"
+                    className="text-amber-500 hover:underline cursor-pointer bg-transparent border-none text-[10px] font-bold shrink-0"
                   >
                     Sao chép
                   </button>
@@ -564,7 +709,7 @@ export default function AdminProfile() {
             )}
 
             <div className="flex flex-col gap-2 text-left">
-              <label className="text-xs font-bold text-zinc-400 uppercase tracking-wide">Mã xác thực 6 số</label>
+              <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Mã xác thực 6 số</label>
               <input
                 type="text"
                 inputMode="numeric"
@@ -572,7 +717,7 @@ export default function AdminProfile() {
                 value={twoFAToken}
                 onChange={(e) => { setTwoFAToken(e.target.value.replace(/\D/g, '').slice(0, 6)); setTwoFAError(''); }}
                 placeholder="000000"
-                className="w-full bg-[#131316] border border-[#222226] rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f59e0b] focus:ring-1 focus:ring-[#f59e0b] transition-all text-center text-2xl tracking-[0.5em] font-mono"
+                className="w-full bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 transition-all text-center text-2xl tracking-[0.5em] font-mono"
               />
               {twoFAError && <span className="text-[10px] text-red-500 font-bold">{twoFAError}</span>}
             </div>
@@ -581,7 +726,7 @@ export default function AdminProfile() {
               type="button"
               disabled={is2FALoading || twoFAToken.length !== 6}
               onClick={handleConfirm2FA}
-              className="w-full py-3 px-6 bg-[#f59e0b] hover:bg-amber-600 disabled:bg-zinc-700 disabled:text-zinc-500 text-black font-black uppercase text-xs tracking-wider rounded-xl transition-all hover:scale-[1.01] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed border-none"
+              className="w-full py-3 px-6 bg-amber-500 hover:bg-amber-600 disabled:bg-zinc-700 disabled:text-zinc-500 text-black font-black uppercase text-xs tracking-wider rounded-xl transition-all hover:scale-[1.01] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed border-none"
             >
               {is2FALoading ? 'Đang xác thực...' : (isDisabling ? 'TẮT 2FA' : 'KÍCH HOẠT 2FA')}
             </button>
@@ -590,111 +735,154 @@ export default function AdminProfile() {
       )}
 
       {/* ─── MODULE 4: ACTIVE SESSIONS MONITORING ─── */}
-      <section className="bg-[#18181c] border border-[#222226] rounded-xl p-5 md:p-6 flex flex-col gap-5">
-        <div className="flex items-center gap-3 border-b border-[#222226]/50 pb-3">
-          <Monitor className="text-[#f59e0b]" size={20} />
-          <h2 className="text-sm font-black text-white uppercase tracking-wider">
+      <section className="bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl p-5 md:p-6 flex flex-col gap-5">
+        <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800/50 pb-3">
+          <Monitor className="text-amber-500" size={20} />
+          <h2 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">
             Quản lý các phiên đăng nhập đang hoạt động
           </h2>
         </div>
 
         <div className="flex flex-col gap-3">
-          {sessions.map((session) => (
-            <div 
-              key={session.id}
-              className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center p-4 bg-[#0f0f11] rounded-xl border border-[#222226]/40"
-            >
-              <div className="flex items-center gap-3.5 text-left">
-                <div className="bg-[#f59e0b]/10 text-[#f59e0b] p-2.5 rounded-lg border border-[#f59e0b]/15">
-                  {session.device.includes('Mobile') ? <Smartphone size={18} /> : <Monitor size={18} />}
-                </div>
-                <div className="flex flex-col gap-0.5 min-w-0">
-                  <h4 className="text-xs font-bold text-white tracking-wide truncate">{session.device}</h4>
-                  <p className="text-[10px] text-admin-text-muted">IP Address: {session.ip}</p>
-                </div>
-              </div>
-
-              {session.active ? (
-                <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 text-[9px] font-black rounded-full uppercase tracking-wider self-start sm:self-center shrink-0">
-                  Phiên hiện tại
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => handleTerminateSession(session.id)}
-                  className="w-full sm:w-auto px-3.5 py-2 bg-red-950/40 hover:bg-red-900 border border-red-900/40 text-red-400 font-bold text-[10px] rounded-lg tracking-wider flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all"
-                >
-                  <LogOut size={12} />
-                  Đăng xuất
-                </button>
-              )}
+          {/* Loading state */}
+          {sessionsLoading && (
+            <div className="flex items-center justify-center py-6">
+              <span className="text-xs text-slate-400 animate-pulse">Đang tải danh sách phiên...</span>
             </div>
-          ))}
+          )}
+
+          {/* Error state */}
+          {sessionsError && !sessionsLoading && (
+            <div className="text-xs font-bold text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
+              {sessionsError}
+            </div>
+          )}
+
+          {/* Empty state */}
+          {!sessionsLoading && !sessionsError && sessions.length === 0 && (
+            <div className="text-center py-6">
+              <span className="text-xs text-slate-500 dark:text-slate-400">Không có phiên nào đang hoạt động.</span>
+            </div>
+          )}
+
+          {/* Sessions list */}
+          {!sessionsLoading && sessions.map((session) => {
+            // So sánh refresh_token của phiên với token đang dùng trong trình duyệt hiện tại
+            const currentRefreshToken = localStorage.getItem('admin_refresh_token') || localStorage.getItem('refresh_token') || '';
+            const isCurrentSession = session.refresh_token === currentRefreshToken;
+            const ipDisplay = session.ip_address && session.location
+              ? `${session.ip_address} (${session.location})`
+              : session.ip_address || session.location || 'Không rõ';
+
+            return (
+              <div
+                key={session.id}
+                className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center p-4 bg-slate-50 dark:bg-slate-950 rounded-xl border-slate-200 dark:border-slate-800/40"
+              >
+                <div className="flex items-center gap-3.5 text-left">
+                  <div className="bg-amber-500/10 text-amber-500 p-2.5 rounded-lg border border-amber-500/15">
+                    {(session.device_string || '').toLowerCase().includes('mobile') || (session.device_string || '').toLowerCase().includes('iphone') || (session.device_string || '').toLowerCase().includes('android')
+                      ? <Smartphone size={18} />
+                      : <Monitor size={18} />}
+                  </div>
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 tracking-wide truncate">
+                      {session.device_string || 'Unknown Device'}
+                    </h4>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">IP Address: {ipDisplay}</p>
+                  </div>
+                </div>
+
+                {isCurrentSession ? (
+                  <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 text-[9px] font-black rounded-full uppercase tracking-wider self-start sm:self-center shrink-0">
+                    [ PHIÊN HIỆN TẠI ]
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleTerminateSession(session.id)}
+                    className="w-full sm:w-auto px-3.5 py-2 bg-red-950/40 hover:bg-red-900 border border-red-900/40 text-red-400 font-bold text-[10px] rounded-lg tracking-wider flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all"
+                  >
+                    <LogOut size={12} />
+                    [ ĐĂNG XUẤT ]
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       </section>
 
       {/* ─── MODULE 5: WEBHOOK ADMIN ALERT BOT ─── */}
-      <section className="bg-[#18181c] border border-[#222226] rounded-xl p-5 md:p-6 flex flex-col gap-5">
-        <div className="flex items-center gap-3 border-b border-[#222226]/50 pb-3">
-          <Terminal className="text-[#f59e0b]" size={20} />
-          <h2 className="text-sm font-black text-white uppercase tracking-wider">
-            Cấu hình cảnh báo vận hành hệ thống (Webhook Bot)
-          </h2>
-        </div>
+      <div className="relative opacity-35 cursor-not-allowed select-none transition-all duration-200">
+        {/* Lớp phủ trong suốt — chặn tuyệt đối mọi tương tác chuột/bàn phím */}
+        <div className="absolute inset-0 z-50 bg-transparent"></div>
 
-        <form onSubmit={handleSaveWebhook} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-bold text-admin-text-muted uppercase tracking-wide">
-              Telegram Bot API Endpoint URL
-            </label>
-            <input 
-              type="text" 
-              value={webhookUrl}
-              onChange={(e) => setWebhookUrl(e.target.value)}
-              placeholder="https://api.telegram.org/bot<TOKEN>/sendMessage"
-              className="w-full bg-[#131316] border border-[#222226] rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-[#f59e0b] focus:ring-1 focus:ring-[#f59e0b] transition-all"
-            />
+        {/* Nhãn "Sắp ra mắt" góc trên phải */}
+        <div className="absolute top-4 right-4 z-50 bg-amber-500/10 border border-amber-500/30 text-amber-500 text-xs font-semibold px-2.5 py-1 rounded">Sắp ra mắt</div>
+
+        <section className="bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl p-5 md:p-6 flex flex-col gap-5">
+          <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800/50 pb-3">
+            <Terminal className="text-amber-500" size={20} />
+            <h2 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+              Cấu hình cảnh báo vận hành hệ thống (Webhook Bot)
+            </h2>
           </div>
 
-          <div className="flex flex-col gap-1.5 mt-2 bg-[#0f0f11] p-4 rounded-xl border border-[#222226]/40">
-            <div className="flex items-center justify-between">
-              <div className="flex flex-col gap-0.5 text-left">
-                <span className="text-xs font-bold text-white uppercase tracking-wide">Cảnh báo chi phí API vượt ngưỡng</span>
-                <span className="text-[10px] text-admin-text-muted leading-relaxed">
-                  Nhận tin nhắn khẩn cấp khi mức tiêu dùng API trong ngày chạm ngưỡng 80% hạn mức thanh toán.
-                </span>
+          <form onSubmit={handleSaveWebhook} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">
+                Telegram Bot API Endpoint URL
+              </label>
+              <input 
+                type="text" 
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)}
+                placeholder="https://api.telegram.org/bot<TOKEN>/sendMessage"
+                className="w-full bg-white dark:bg-slate-800 dark:border-slate-700 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 transition-all"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5 mt-2 bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border-slate-200 dark:border-slate-800/40">
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-0.5 text-left">
+                  <span className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wide">Cảnh báo chi phí API vượt ngưỡng</span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                    Nhận tin nhắn khẩn cấp khi mức tiêu dùng API trong ngày chạm ngưỡng 80% hạn mức thanh toán.
+                  </span>
+                </div>
+                
+                <button 
+                  type="button"
+                  onClick={() => setIsAlertCostActive(!isAlertCostActive)}
+                  className={`w-12 h-6 rounded-full p-1 transition-all duration-350 cursor-pointer ${isAlertCostActive ? 'bg-[#10b981]' : 'bg-zinc-800'}`}
+                >
+                  <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-350 shadow-md ${isAlertCostActive ? 'translate-x-6' : 'translate-x-0'}`} />
+                </button>
               </div>
-              
+            </div>
+
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 mt-2">
+              <span className="text-xs font-bold text-green-400">
+                {webhookMsg}
+              </span>
               <button 
-                type="button"
-                onClick={() => setIsAlertCostActive(!isAlertCostActive)}
-                className={`w-12 h-6 rounded-full p-1 transition-all duration-350 cursor-pointer ${isAlertCostActive ? 'bg-[#10b981]' : 'bg-zinc-800'}`}
+                type="submit"
+                className="w-full md:w-auto py-3 px-6 bg-amber-500 hover:bg-amber-600 text-black font-black uppercase text-xs tracking-wider rounded-xl transition-all hover:scale-[1.01] hover:shadow-[0_0_20px_rgba(245,158,11,0.25)] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
               >
-                <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-350 shadow-md ${isAlertCostActive ? 'translate-x-6' : 'translate-x-0'}`} />
+                <Save size={14} />
+                CẬP NHẬT CẤU HÌNH BOT
               </button>
             </div>
-          </div>
-
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4 mt-2">
-            <span className="text-xs font-bold text-green-400">
-              {webhookMsg}
-            </span>
-            <button 
-              type="submit"
-              className="w-full md:w-auto py-3 px-6 bg-[#f59e0b] hover:bg-amber-600 text-black font-black uppercase text-xs tracking-wider rounded-xl transition-all hover:scale-[1.01] hover:shadow-[0_0_20px_rgba(245,158,11,0.4)] active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <Save size={14} />
-              CẬP NHẬT CẤU HÌNH BOT
-            </button>
-          </div>
-        </form>
-      </section>
+          </form>
+        </section>
+      </div>
 
       {/* ─── MODULE 6: NATIVE LIGHT/DARK THEME SELECTOR ─── */}
-      <section className="bg-[#18181c] border border-[#222226] rounded-xl p-5 md:p-6 flex flex-col gap-5">
-        <div className="flex items-center gap-3 border-b border-[#222226]/50 pb-3">
-          <Palette className="text-[#f59e0b]" size={20} />
-          <h2 className="text-sm font-black text-white uppercase tracking-wider">
+      <section className="bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl p-5 md:p-6 flex flex-col gap-5">
+        <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800/50 pb-3">
+          <Palette className="text-amber-500" size={20} />
+          <h2 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider">
             Cài đặt chủ đề hiển thị hệ thống quản trị
           </h2>
         </div>
@@ -703,28 +891,28 @@ export default function AdminProfile() {
           
           {/* Card Option A: Dark Theme (Studio Deep Dark) */}
           <div 
-            onClick={() => setActiveTheme('dark')}
-            className={`p-5 rounded-xl border flex flex-col gap-3 text-left transition-all cursor-pointer ${activeTheme === 'dark' ? 'border-[#f59e0b] bg-[#f59e0b]/5 shadow-md shadow-amber-500/5' : 'border-[#222226] bg-[#0f0f11]/50 hover:border-zinc-800'}`}
+            onClick={() => { document.documentElement.classList.add('dark'); setActiveTheme('dark'); }}
+            className={`p-5 rounded-xl border flex flex-col gap-3 text-left transition-all cursor-pointer ${activeTheme === 'dark' ? 'border-amber-500/70 bg-amber-500/10' : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 hover:border-zinc-400 dark:hover:border-slate-600'}`}
           >
             <div className="flex justify-between items-center">
-              <span className="text-xs font-black text-white uppercase tracking-wide">Chủ đề tối (Studio Deep Dark)</span>
-              {activeTheme === 'dark' && <div className="w-5 h-5 bg-[#f59e0b] text-black rounded-full flex items-center justify-center"><Check size={12} strokeWidth={3} /></div>}
+              <span className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-wide">Chủ đề tối (Studio Deep Dark)</span>
+              {activeTheme === 'dark' && <div className="w-5 h-5 bg-amber-500 text-black rounded-full flex items-center justify-center"><Check size={12} strokeWidth={3} /></div>}
             </div>
-            <p className="text-[10px] text-admin-text-muted leading-relaxed">
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
               Tối ưu cho mắt người sử dụng trong thời gian dài. Giao diện tối hiện đại với các đường viền nhấn nổi bật Hổ Phách.
             </p>
           </div>
 
           {/* Card Option B: Light Theme (Clean Light mode) */}
           <div 
-            onClick={() => setActiveTheme('light')}
-            className={`p-5 rounded-xl border flex flex-col gap-3 text-left transition-all cursor-pointer ${activeTheme === 'light' ? 'border-[#f59e0b] bg-[#f59e0b]/5 shadow-md shadow-amber-500/5' : 'border-[#222226] bg-[#0f0f11]/50 hover:border-zinc-800'}`}
+            onClick={() => { document.documentElement.classList.remove('dark'); setActiveTheme('light'); }}
+            className={`p-5 rounded-xl border flex flex-col gap-3 text-left transition-all cursor-pointer ${activeTheme === 'light' ? 'border-amber-500/70 bg-amber-500/10' : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 hover:border-zinc-400 dark:hover:border-slate-600'}`}
           >
             <div className="flex justify-between items-center">
-              <span className="text-xs font-black text-white uppercase tracking-wide">Chủ đề sáng (Clean Light mode)</span>
-              {activeTheme === 'light' && <div className="w-5 h-5 bg-[#f59e0b] text-black rounded-full flex items-center justify-center"><Check size={12} strokeWidth={3} /></div>}
+              <span className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-wide">Chủ đề sáng (Clean Light mode)</span>
+              {activeTheme === 'light' && <div className="w-5 h-5 bg-amber-500 text-black rounded-full flex items-center justify-center"><Check size={12} strokeWidth={3} /></div>}
             </div>
-            <p className="text-[10px] text-admin-text-muted leading-relaxed">
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
               Độ tương phản sáng rõ rệt phù hợp làm việc ban ngày hoặc môi trường nhiều ánh sáng bên ngoài.
             </p>
           </div>
@@ -737,7 +925,7 @@ export default function AdminProfile() {
         <button
           onClick={scrollToTop}
           type="button"
-          className="fixed bottom-6 right-6 z-40 p-3.5 bg-[#f59e0b] hover:bg-amber-600 text-black rounded-full shadow-2xl transition-all cursor-pointer border border-[#f59e0b] hover:scale-105 active:scale-95 flex items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-300"
+          className="fixed bottom-6 right-6 z-40 p-3.5 bg-amber-500 hover:bg-amber-600 text-black rounded-full shadow-2xl transition-all cursor-pointer border border-amber-500/70 hover:scale-105 active:scale-95 flex items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-300"
           title="Quay lại đầu trang"
         >
           <ArrowUp size={18} strokeWidth={2.5} />

@@ -6,7 +6,7 @@ const AdminProtectedRoute = () => {
   const { isAuthenticated, loading } = useAdminAuth();
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-admin-text">Đang tải...</div>;
+    return <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-admin-text">Đang tải...</div>;
   }
 
   if (!isAuthenticated) {

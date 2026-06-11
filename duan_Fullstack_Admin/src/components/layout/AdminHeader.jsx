@@ -1,10 +1,66 @@
-import React, { useState, useEffect, useRef } from 'react';
-import io from 'socket.io-client';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAdminAuth } from '../../hooks/useAdminAuth';
-import { LogOut, Bell, UserCircle, X, Trash2, Info, CheckCircle, AlertTriangle, AlertOctagon, Menu, TrendingUp, Zap } from 'lucide-react';
+import { LogOut, Bell, UserCircle, X, Trash2, Info, CheckCircle, AlertTriangle, AlertOctagon, Menu, TrendingUp, Zap, CreditCard, ServerCrash, Settings2, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import axiosAdminClient from '../../services/axiosAdminClient';
+import { getSocket } from '../../services/socketService';
 
+// ─── Notification Sound Helper ───────────────────────────────────────
+const playNotificationSound = () => {
+  try {
+    // Tạo âm thanh "ting" bằng Web Audio API (không cần file mp3 bên ngoài)
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    oscillator.frequency.setValueAtTime(1200, audioCtx.currentTime);
+    oscillator.frequency.setValueAtTime(1600, audioCtx.currentTime + 0.08);
+    oscillator.frequency.setValueAtTime(1200, audioCtx.currentTime + 0.15);
+
+    oscillator.type = 'sine';
+    gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+
+    oscillator.start(audioCtx.currentTime);
+    oscillator.stop(audioCtx.currentTime + 0.4);
+  } catch (e) {
+    console.warn('[SOUND] Không thể phát âm thanh thông báo:', e.message);
+  }
+};
+
+// ─── Toast Component ─────────────────────────────────────────────────
+const ToastNotification = ({ toast, onDismiss }) => {
+  useEffect(() => {
+    const timer = setTimeout(() => onDismiss(toast.id), 5000);
+    return () => clearTimeout(timer);
+  }, [toast.id, onDismiss]);
+
+  const typeConfig = {
+    billing: { icon: <CreditCard size={16} />, color: 'from-emerald-500/20 to-emerald-600/5 border-emerald-500/40', iconColor: 'text-emerald-400' },
+    error:   { icon: <ServerCrash size={16} />, color: 'from-red-500/20 to-red-600/5 border-red-500/40', iconColor: 'text-red-400' },
+    system:  { icon: <Settings2 size={16} />, color: 'from-blue-500/20 to-blue-600/5 border-blue-500/40', iconColor: 'text-blue-400' },
+  };
+
+  const config = typeConfig[toast.type] || typeConfig.system;
+
+  return (
+    <div className={`flex items-start gap-3 px-4 py-3 rounded-xl border bg-gradient-to-r ${config.color} backdrop-blur-xl shadow-2xl shadow-black/30 animate-slide-in-right min-w-[340px] max-w-[420px]`}>
+      <span className={`mt-0.5 ${config.iconColor}`}>{config.icon}</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-[11px] font-bold text-white/90 truncate">{toast.title}</p>
+        <p className="text-[10px] text-white/60 mt-0.5 line-clamp-2 leading-relaxed">{toast.content}</p>
+      </div>
+      <button onClick={() => onDismiss(toast.id)} className="text-white/30 hover:text-white/70 transition-colors mt-0.5 cursor-pointer">
+        <X size={14} />
+      </button>
+    </div>
+  );
+};
+
+// ─── AdminHeader Component ───────────────────────────────────────────
 const AdminHeader = ({ toggleSidebar }) => {
   const { admin, logout } = useAdminAuth();
   const navigate = useNavigate();
@@ -12,62 +68,76 @@ const AdminHeader = ({ toggleSidebar }) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
-  const [recentCreditEvent, setRecentCreditEvent] = useState(null); // tracks latest user:credit_updated event
-  const [socket, setSocket] = useState(null);
+  const [recentCreditEvent, setRecentCreditEvent] = useState(null);
+  const [toasts, setToasts] = useState([]);
   const dialogRef = useRef(null);
+  const toastIdRef = useRef(0);
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
 
-  // Sync avatar changes in real-time
+  // ─── Sync avatar ───────────────────────────────────────────────────
   useEffect(() => {
     const handleAvatarChange = () => {
       setAvatar(localStorage.getItem('admin_avatar') || '');
     };
     window.addEventListener('admin-avatar-changed', handleAvatarChange);
-    return () => {
-      window.removeEventListener('admin-avatar-changed', handleAvatarChange);
-    };
+    return () => window.removeEventListener('admin-avatar-changed', handleAvatarChange);
   }, []);
 
-  // Connect to server SSE for real-time notifications
-  useEffect(() => {
-    const eventSource = new EventSource('http://localhost:3000/api/admin/notifications/stream');
+  // ─── Toast helpers ─────────────────────────────────────────────────
+  const addToast = useCallback((notification) => {
+    const id = ++toastIdRef.current;
+    setToasts(prev => [...prev, { ...notification, id }].slice(-4)); // Max 4 toasts
+  }, []);
 
-    eventSource.onmessage = (event) => {
+  const dismissToast = useCallback((id) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  // ─── Fetch initial notifications from DB ───────────────────────────
+  useEffect(() => {
+    const fetchNotifications = async () => {
       try {
-        const newNotif = JSON.parse(event.data);
-        setNotifications(prev => [newNotif, ...prev]);
-        setUnreadCount(prev => prev + 1);
+        const res = await axiosAdminClient.get('../v1/auth/notifications');
+        if (res?.success || res?.data) {
+          setNotifications(res.data || []);
+          setUnreadCount(res.unreadCount || 0);
+        }
       } catch (err) {
-        console.error('Error parsing SSE data:', err);
+        console.error('[ADMIN HEADER] Lỗi khi tải thông báo:', err.message || err);
       }
     };
-
-    eventSource.onerror = (err) => {
-      console.error('EventSource failed:', err);
-      eventSource.close();
-    };
-
-    return () => {
-      console.log("[SSE CLEANUP] Đóng kết nối để tránh lag trình duyệt");
-      eventSource.close();
-    };
+    fetchNotifications();
   }, []);
 
-  // Set up Socket.io connection for real-time credit balance & notification updates
+  // ─── Socket.io: join admin_room + listen NEW_ADMIN_NOTIFICATION ────
   useEffect(() => {
-    const socketInstance = io('http://localhost:3000', {
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionAttempts: Infinity
-    });
+    const socket = getSocket();
 
-    // Listen for REAL credit update events (fired from backend after nap tien / admin adjust)
-    socketInstance.on('user:credit_updated', (data) => {
+    // Lắng nghe sự kiện NEW_ADMIN_NOTIFICATION từ admin_room
+    const handleNewAdminNotification = (data) => {
+      console.log('[SOCKET.IO] 🔔 Received NEW_ADMIN_NOTIFICATION:', data);
+
+      // Thêm vào đầu danh sách
+      setNotifications(prev => [data, ...prev]);
+
+      // Tăng badge
+      setUnreadCount(prev => prev + 1);
+
+      // Hiện Toast popup
+      addToast(data);
+
+      // Phát âm thanh "ting"
+      playNotificationSound();
+    };
+
+    socket.on('NEW_ADMIN_NOTIFICATION', handleNewAdminNotification);
+
+    // Giữ lại listener credit + transaction hiện có
+    socket.on('user:credit_updated', (data) => {
       console.log('[SOCKET.IO] Received user:credit_updated:', data);
       setRecentCreditEvent({
         userId: data.userId,
@@ -75,276 +145,320 @@ const AdminHeader = ({ toggleSidebar }) => {
         creditsAdded: data.creditsAdded,
         timestamp: new Date(data.timestamp)
       });
-      // Add a notification to the bell panel
-      const creditNotif = {
-        id: Date.now(),
-        type: 'success',
-        title: 'Cập nhật số dư',
-        message: `User #${data.userId} vừa được ${data.creditsAdded > 0 ? '+' : ''}${data.creditsAdded} Credits. Số dư mới: ${(data.credits || 0).toLocaleString()} credits.`,
-        time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-      };
-      setNotifications(prev => [creditNotif, ...prev]);
-      setUnreadCount(prev => prev + 1);
     });
-
-    socketInstance.on('image_analysis:updated', (data) => {
-      console.log('[SOCKET.IO] Received image_analysis:updated:', data);
-      // Add notification about image analysis completion
-      if (data.status === 'success') {
-        const analysisNotif = {
-          id: Date.now(),
-          type: 'success',
-          title: 'Mắt Thần AI hoàn thành',
-          message: `Phân tích ảnh "${data.image_name}" của ${data.owner?.name || 'người dùng'} đã hoàn tất.`,
-          time: 'Vừa xong'
-        };
-        setNotifications(prev => [analysisNotif, ...prev]);
-        setUnreadCount(prev => prev + 1);
-      } else if (data.status === 'failed') {
-        const failNotif = {
-          id: Date.now(),
-          type: 'danger',
-          title: 'Mắt Thần AI thất bại',
-          message: `Phân tích ảnh "${data.image_name}" của ${data.owner?.name || 'người dùng'} đã thất bại.`,
-          time: 'Vừa xong'
-        };
-        setNotifications(prev => [failNotif, ...prev]);
-        setUnreadCount(prev => prev + 1);
-      }
-    });
-
-    socketInstance.on('transaction:created', (data) => {
-      console.log('[SOCKET.IO] Received transaction:created:', data);
-      const transactionNotif = {
-        id: Date.now(),
-        type: 'info',
-        title: 'Giao dịch nạp tiền mới',
-        message: `${data.user?.name || 'Người dùng'} vừa tạo đơn nạp tiền ${data.amount}đ.`,
-        time: 'Vừa xong'
-      };
-      setNotifications(prev => [transactionNotif, ...prev]);
-      setUnreadCount(prev => prev + 1);
-    });
-
-    socketInstance.on('transaction:updated', (data) => {
-      console.log('[SOCKET.IO] Received transaction:updated:', data);
-      if (data.status === 'success') {
-        const approveNotif = {
-          id: Date.now(),
-          type: 'success',
-          title: 'Giao dịch được duyệt',
-          message: `Giao dịch của ${data.user?.name || 'người dùng'} đã được duyệt thành công.`,
-          time: 'Vừa xong'
-        };
-        setNotifications(prev => [approveNotif, ...prev]);
-        setUnreadCount(prev => prev + 1);
-      }
-    });
-
-    socketInstance.on('disconnect', () => {
-      console.log('[SOCKET.IO] Disconnected from server');
-    });
-
-    socketInstance.on('connect', () => {
-      console.log('[SOCKET.IO] Connected to server');
-    });
-
-    setSocket(socketInstance);
 
     return () => {
-      socketInstance.disconnect();
+      socket.off('NEW_ADMIN_NOTIFICATION', handleNewAdminNotification);
+      socket.off('user:credit_updated');
     };
-  }, []);
+  }, [addToast]);
 
-  // Close dialog on clicking outside
+  // ─── Click outside to close dropdown ───────────────────────────────
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dialogRef.current && !dialogRef.current.contains(event.target)) {
         setIsNotifOpen(false);
       }
     };
-    if (isNotifOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
+    if (isNotifOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isNotifOpen]);
 
+  // ─── Handlers ──────────────────────────────────────────────────────
   const handleOpenNotif = () => {
     setIsNotifOpen(!isNotifOpen);
-    setUnreadCount(0); // Mark all as read when opening the modal
   };
 
-  const handleClearNotif = () => {
-    setNotifications([]);
-    setUnreadCount(0);
-  };
-
-  const getNotifIcon = (type) => {
-    switch (type) {
-      case 'success':
-        return <CheckCircle className="text-green-500 shrink-0" size={18} />;
-      case 'warning':
-        return <AlertTriangle className="text-amber-500 shrink-0" size={18} />;
-      case 'danger':
-        return <AlertOctagon className="text-red-500 shrink-0" size={18} />;
-      default:
-        return <Info className="text-blue-400 shrink-0" size={18} />;
+  const handleMarkAsRead = async (notifId) => {
+    try {
+      await axiosAdminClient.put(`../v1/auth/notifications/${notifId}/read`);
+      setNotifications(prev =>
+        prev.map(n => (n.id === notifId ? { ...n, is_read: true } : n))
+      );
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch (err) {
+      console.error('[ADMIN HEADER] Lỗi đánh dấu đã đọc:', err.message || err);
     }
   };
 
-  const getNotifColor = (type) => {
+  const handleMarkAllRead = async () => {
+    try {
+      await axiosAdminClient.put('../v1/auth/notifications/read-all');
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+    } catch (err) {
+      console.error('[ADMIN HEADER] Lỗi đánh dấu đọc tất cả:', err.message || err);
+    }
+  };
+
+  const handleClearAll = async () => {
+    try {
+      await axiosAdminClient.delete('../v1/auth/notifications/clear-all');
+      setNotifications([]);
+      setUnreadCount(0);
+    } catch (err) {
+      console.error('[ADMIN HEADER] Lỗi xóa thông báo:', err.message || err);
+    }
+  };
+
+  // ─── Icon & Color helpers ──────────────────────────────────────────
+  const getNotifIcon = (type) => {
     switch (type) {
-      case 'success':
-        return 'border-green-500/20 bg-green-500/5 hover:bg-green-500/10';
-      case 'warning':
-        return 'border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10';
-      case 'danger':
-        return 'border-red-500/20 bg-red-500/5 hover:bg-red-500/10';
-      default:
-        return 'border-blue-500/20 bg-blue-500/5 hover:bg-blue-500/10';
+      case 'billing': return <CreditCard className="text-emerald-400 shrink-0" size={16} />;
+      case 'error':   return <AlertOctagon className="text-red-400 shrink-0" size={16} />;
+      case 'system':  return <Settings2 className="text-blue-400 shrink-0" size={16} />;
+      case 'success': return <CheckCircle className="text-green-500 shrink-0" size={16} />;
+      case 'warning': return <AlertTriangle className="text-amber-500 shrink-0" size={16} />;
+      case 'danger':  return <AlertOctagon className="text-red-500 shrink-0" size={16} />;
+      default:        return <Info className="text-blue-400 shrink-0" size={16} />;
+    }
+  };
+
+  const getNotifColor = (type, isRead) => {
+    const opacity = isRead ? 'opacity-50' : '';
+    switch (type) {
+      case 'billing': return `border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 ${opacity}`;
+      case 'error':   return `border-red-500/20 bg-red-500/5 hover:bg-red-500/10 ${opacity}`;
+      case 'system':  return `border-blue-500/20 bg-blue-500/5 hover:bg-blue-500/10 ${opacity}`;
+      case 'success': return `border-green-500/20 bg-green-500/5 hover:bg-green-500/10 ${opacity}`;
+      case 'warning': return `border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10 ${opacity}`;
+      case 'danger':  return `border-red-500/20 bg-red-500/5 hover:bg-red-500/10 ${opacity}`;
+      default:        return `border-blue-500/20 bg-blue-500/5 hover:bg-blue-500/10 ${opacity}`;
+    }
+  };
+
+  const formatTime = (dateStr) => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return 'Vừa xong';
+    if (diffMins < 60) return `${diffMins} phút trước`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours} giờ trước`;
+    return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+  };
+
+  const getTypeLabel = (type) => {
+    switch (type) {
+      case 'billing': return 'NẠP TIỀN';
+      case 'error':   return 'LỖI HỆ THỐNG';
+      case 'system':  return 'HỆ THỐNG';
+      default:        return 'THÔNG BÁO';
     }
   };
 
   return (
-    <header className="h-16 bg-[#13161c] border-b border-admin-border flex items-center justify-between px-6 sticky top-0 z-20">
-      <div className="flex items-center gap-3">
-        <button 
-          onClick={toggleSidebar} 
-          className="text-admin-text-muted hover:text-white transition-colors cursor-pointer p-2 rounded-lg hover:bg-admin-card flex items-center justify-center border-none"
-        >
-          <Menu size={20} />
-        </button>
-        <div className="flex items-center gap-1.5 select-none shrink-0">
-          <span className="bg-admin-primary text-white px-1.5 py-0.5 rounded-md text-[9px] sm:text-[11px] font-black tracking-wider leading-none shrink-0">
-            AI
-          </span>
-          <span className="text-[11px] sm:text-xs font-black text-white uppercase tracking-wider whitespace-nowrap">
-            Studio Admin
-          </span>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-6 relative">
-        {/* Credit Event Real-time Display */}
-        {recentCreditEvent && (
-          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-admin-primary/10 border border-admin-primary/30 animate-pulse">
-            <Zap size={16} className="text-yellow-400" />
-            <div className="flex flex-col">
-              <span className="text-[10px] text-admin-text-muted font-semibold uppercase tracking-wider">User #{recentCreditEvent.userId}</span>
-              <span className="text-sm font-bold text-yellow-400">
-                {recentCreditEvent.creditsAdded > 0 ? '+' : ''}{recentCreditEvent.creditsAdded} → {(recentCreditEvent.credits || 0).toLocaleString()}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Notification Bell Button */}
-        <button 
-          onClick={handleOpenNotif}
-          className="text-admin-text-muted hover:text-white transition-colors relative cursor-pointer p-1.5 rounded-full hover:bg-admin-card"
-        >
-          <Bell size={20} />
-          {unreadCount > 0 && (
-            <span className="absolute top-0 right-0 w-4 h-4 bg-admin-danger text-white text-[9px] font-black rounded-full flex items-center justify-center border border-[#13161c]">
-              {unreadCount}
-            </span>
-          )}
-        </button>
-
-        {/* Real-time Notification Dialog */}
-        {isNotifOpen && (
-          <div 
-            ref={dialogRef}
-            className="absolute right-0 top-12 w-96 bg-[#181b21]/95 border border-admin-border rounded-xl shadow-2xl z-50 overflow-hidden backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-200"
+    <>
+      <header className="h-16 bg-white dark:bg-[#13161c] border-b border-slate-200 dark:border-admin-border flex items-center justify-between px-6 sticky top-0 z-20">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={toggleSidebar}
+            className="text-slate-500 dark:text-admin-text-muted hover:text-slate-700 dark:hover:text-white transition-colors cursor-pointer p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-admin-card flex items-center justify-center border-none"
           >
-            {/* Header */}
-            <div className="p-4 border-b border-admin-border flex items-center justify-between bg-[#13161c]/60">
-              <div className="flex items-center gap-2">
-                <Bell size={16} className="text-admin-primary" />
-                <h3 className="text-xs font-bold text-admin-text uppercase tracking-wider">Thông báo hệ thống</h3>
-              </div>
-              <div className="flex items-center gap-3">
-                {notifications.length > 0 && (
-                  <button 
-                    onClick={handleClearNotif}
-                    title="Xóa tất cả"
-                    className="text-admin-text-muted hover:text-admin-danger transition-colors cursor-pointer p-1 rounded hover:bg-admin-card"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                )}
-                <button 
-                  onClick={() => setIsNotifOpen(false)}
-                  className="text-admin-text-muted hover:text-white transition-colors cursor-pointer p-1 rounded hover:bg-admin-card"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            </div>
-
-            {/* List */}
-            <div className="max-h-[360px] overflow-y-auto divide-y divide-admin-border/50">
-              {notifications.length === 0 ? (
-                <div className="p-8 text-center flex flex-col items-center justify-center gap-2">
-                  <Bell size={24} className="text-zinc-600 animate-pulse" />
-                  <p className="text-xs text-admin-text-muted font-semibold">Hiện chưa có thông báo mới nào</p>
-                  <p className="text-[10px] text-zinc-500">Đang lắng nghe cập nhật từ server...</p>
-                </div>
-              ) : (
-                notifications.map((item) => (
-                  <div 
-                    key={item.id}
-                    className={`p-3.5 border-l-2 flex gap-3 transition-colors text-left ${getNotifColor(item.type)}`}
-                  >
-                    {getNotifIcon(item.type)}
-                    <div className="flex-1 flex flex-col gap-1 min-w-0">
-                      <div className="flex justify-between items-start gap-2">
-                        <span className="text-[11px] font-bold text-admin-text truncate">{item.title}</span>
-                        <span className="text-[9px] text-admin-text-muted whitespace-nowrap shrink-0">{item.time}</span>
-                      </div>
-                      <p className="text-[10px] text-admin-text-muted font-medium leading-relaxed">{item.message}</p>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="p-2.5 border-t border-admin-border bg-[#13161c]/40 text-center">
-              <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider flex items-center justify-center gap-1.5">
-                <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-ping"></span>
-                Real-time Active (SSE + WebSocket)
-              </span>
-            </div>
-          </div>
-        )}
-
-        <div 
-          onClick={() => navigate('/profile')}
-          className="flex items-center gap-3 border-l border-admin-border pl-6 cursor-pointer hover:opacity-85 transition-opacity"
-        >
-          {avatar ? (
-            <img src={avatar} alt="Admin Avatar" className="w-7 h-7 rounded-full object-cover border border-[#f59e0b]/40 shrink-0" />
-          ) : (
-            <UserCircle size={28} className="text-admin-text-muted shrink-0" />
-          )}
-          <div className="flex flex-col text-left">
-            <span className="text-sm font-medium text-admin-text">{admin?.name || 'Admin'}</span>
-            <span className="text-xs text-admin-primary">{admin?.role || 'System Administrator'}</span>
+            <Menu size={20} />
+          </button>
+          <div className="flex items-center gap-1.5 select-none shrink-0">
+            <span className="bg-admin-primary text-white px-1.5 py-0.5 rounded-md text-[9px] sm:text-[11px] font-black tracking-wider leading-none shrink-0">
+              AI
+            </span>
+            <span className="text-[11px] sm:text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider whitespace-nowrap">
+              Studio Admin
+            </span>
           </div>
         </div>
 
-        <button 
-          onClick={handleLogout}
-          className="ml-4 text-admin-text-muted hover:text-admin-danger transition-colors cursor-pointer"
-          title="Đăng xuất"
-        >
-          <LogOut size={20} />
-        </button>
+        <div className="flex items-center gap-6 relative">
+          {/* Credit Event Real-time Display */}
+          {recentCreditEvent && (
+            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-admin-primary/10 border border-admin-primary/30 animate-pulse">
+              <Zap size={16} className="text-yellow-400" />
+              <div className="flex flex-col">
+                <span className="text-[10px] text-admin-text-muted font-semibold uppercase tracking-wider">User #{recentCreditEvent.userId}</span>
+                <span className="text-sm font-bold text-yellow-400">
+                  {recentCreditEvent.creditsAdded > 0 ? '+' : ''}{recentCreditEvent.creditsAdded} → {(recentCreditEvent.credits || 0).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Notification Bell Button */}
+          <button
+            id="admin-notification-bell"
+            onClick={handleOpenNotif}
+            className="text-slate-500 dark:text-admin-text-muted hover:text-slate-700 dark:hover:text-white transition-all relative cursor-pointer p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-admin-card group"
+          >
+            <Bell size={20} className={unreadCount > 0 ? 'animate-[wiggle_0.5s_ease-in-out]' : ''} />
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-gradient-to-br from-red-500 to-red-600 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-white dark:border-[#13161c] shadow-lg shadow-red-500/30">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {/* Real-time Notification Dropdown */}
+          {isNotifOpen && (
+            <div
+              ref={dialogRef}
+              className="absolute right-0 top-14 w-[400px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-50 overflow-hidden backdrop-blur-xl"
+              style={{ animation: 'slideDown 0.2s ease-out' }}
+            >
+              {/* Header */}
+              <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/80">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-admin-primary/15 flex items-center justify-center">
+                    <Bell size={15} className="text-admin-primary" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs text-slate-900 dark:text-white font-bold uppercase tracking-wider">Thông báo Admin</h3>
+                    <span className="text-[9px] text-slate-400 dark:text-slate-500">{unreadCount} chưa đọc</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={handleMarkAllRead}
+                      title="Đánh dấu đọc tất cả"
+                      className="text-admin-text-muted hover:text-emerald-400 transition-colors cursor-pointer p-1.5 rounded-lg hover:bg-admin-card"
+                    >
+                      <Check size={14} />
+                    </button>
+                  )}
+                  {notifications.length > 0 && (
+                    <button
+                      onClick={handleClearAll}
+                      title="Xóa tất cả"
+                      className="text-admin-text-muted hover:text-red-400 transition-colors cursor-pointer p-1.5 rounded-lg hover:bg-admin-card"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setIsNotifOpen(false)}
+                    className="text-admin-text-muted hover:text-white transition-colors cursor-pointer p-1.5 rounded-lg hover:bg-admin-card"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+
+              {/* List */}
+              <div className="max-h-[400px] overflow-y-auto divide-y divide-slate-200 dark:divide-slate-800/60 custom-scrollbar">
+                {notifications.length === 0 ? (
+                  <div className="p-10 text-center flex flex-col items-center justify-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-admin-card flex items-center justify-center">
+                      <Bell size={22} className="text-zinc-600" />
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">Chưa có thông báo nào</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">Đang lắng nghe sự kiện từ hệ thống...</p>
+                  </div>
+                ) : (
+                  notifications.map((item) => (
+                    <div
+                      key={item.id}
+                      onClick={() => !item.is_read && handleMarkAsRead(item.id)}
+                      className={`p-3.5 border-l-[3px] flex gap-3 transition-all cursor-pointer ${getNotifColor(item.type, item.is_read)}`}
+                    >
+                      <div className="mt-0.5">{getNotifIcon(item.type)}</div>
+                      <div className="flex-1 flex flex-col gap-1 min-w-0">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-[11px] text-slate-800 dark:text-slate-200 font-semibold truncate">{item.title}</span>
+                            {!item.is_read && (
+                              <span className="w-1.5 h-1.5 bg-admin-primary rounded-full shrink-0 animate-pulse" />
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">
+                              {getTypeLabel(item.type)}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-slate-600 dark:text-slate-400 font-medium leading-relaxed line-clamp-2">
+                          {item.content || item.message}
+                        </p>
+                        <span className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">
+                          {formatTime(item.created_at || item.createdAt)}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 text-center">
+                <span className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider flex items-center justify-center gap-1.5">
+                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-ping" />
+                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full absolute" />
+                  Real-time Active (Socket.io → admin_room)
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div
+            onClick={() => navigate('/profile')}
+            className="flex items-center gap-3 border-l border-slate-200 dark:border-admin-border pl-6 cursor-pointer hover:opacity-85 transition-opacity"
+          >
+            {avatar ? (
+              <img src={avatar} alt="Admin Avatar" className="w-7 h-7 rounded-full object-cover border border-amber-500/40 shrink-0" />
+            ) : (
+              <UserCircle size={28} className="text-admin-text-muted shrink-0" />
+            )}
+            <div className="flex flex-col text-left">
+              <span className="text-sm font-medium text-slate-900 dark:text-admin-text">{admin?.name || 'Admin'}</span>
+              <span className="text-xs text-admin-primary">{admin?.role || 'System Administrator'}</span>
+            </div>
+          </div>
+
+          <button
+            onClick={handleLogout}
+            className="ml-4 text-slate-500 dark:text-admin-text-muted hover:text-red-500 dark:hover:text-admin-danger transition-colors cursor-pointer"
+            title="Đăng xuất"
+          >
+            <LogOut size={20} />
+          </button>
+        </div>
+      </header>
+
+      {/* Toast Container - Fixed Top Right */}
+      <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2.5 pointer-events-none">
+        {toasts.map(toast => (
+          <div key={toast.id} className="pointer-events-auto">
+            <ToastNotification toast={toast} onDismiss={dismissToast} />
+          </div>
+        ))}
       </div>
-    </header>
+
+      {/* Inject keyframe animations */}
+      <style>{`
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateY(-8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes wiggle {
+          0%, 100% { transform: rotate(0deg); }
+          15% { transform: rotate(14deg); }
+          30% { transform: rotate(-12deg); }
+          45% { transform: rotate(8deg); }
+          60% { transform: rotate(-6deg); }
+          75% { transform: rotate(3deg); }
+        }
+        .animate-slide-in-right {
+          animation: slideInRight 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes slideInRight {
+          from { opacity: 0; transform: translateX(100px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+      `}</style>
+    </>
   );
 };
 

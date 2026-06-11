@@ -76,7 +76,7 @@ const UserTable = () => {
       </div>
 
       {/* ── Tab Bar ─────────────────────────────────────────────────────── */}
-      <div className="px-6 pt-4 pb-0 flex items-center gap-2 border-b border-admin-border bg-[#111115]/60">
+      <div className="px-6 pt-4 pb-0 flex items-center gap-2 border-b border-admin-border bg-slate-50/60 dark:bg-[#111115]/60">
 
         {/* Tab: Tất cả */}
         <button
@@ -198,9 +198,9 @@ const UserTable = () => {
       </div>
 
       {/* Thanh Phân Trang */}
-      <div className="flex justify-between items-center pt-4 border-t border-gray-800 w-full px-6 pb-6 bg-[#0e0e11] rounded-b-lg">
+      <div className="flex justify-between items-center pt-4 border-t border-gray-200 dark:border-gray-800 w-full px-6 pb-6 bg-slate-100 dark:bg-[#0e0e11] rounded-b-lg">
         {/* Phía bên trái (Thông tin trang) */}
-        <div className="text-gray-400 text-xs">
+        <div className="text-gray-400 dark:text-gray-500 text-xs">
           Trang {currentPage} trên {totalPages} (Hiển thị {users.length} dòng)
         </div>
 
@@ -212,8 +212,8 @@ const UserTable = () => {
             onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
             className={`px-3 py-1.5 text-xs rounded transition-colors font-medium cursor-pointer ${
               currentPage === 1 
-                ? 'bg-[#1a1a24]/40 text-gray-600 cursor-not-allowed' 
-                : 'bg-[#1a1a24] hover:bg-[#2b2b36] text-white'
+                ? 'bg-gray-200/40 dark:bg-[#1a1a24]/40 text-gray-400 dark:text-gray-600 cursor-not-allowed' 
+                : 'bg-gray-200 dark:bg-[#1a1a24] hover:bg-gray-300 dark:hover:bg-[#2b2b36] text-gray-700 dark:text-white'
             }`}
           >
             &lt; Trước
@@ -228,7 +228,7 @@ const UserTable = () => {
               className={`px-2.5 py-1 text-xs rounded transition-colors font-medium cursor-pointer ${
                 currentPage === pageNum
                   ? 'bg-blue-600 text-white font-bold'
-                  : 'bg-[#1a1a24] hover:bg-[#2b2b36] text-gray-300 hover:text-white'
+                  : 'bg-gray-200 dark:bg-[#1a1a24] hover:bg-gray-300 dark:hover:bg-[#2b2b36] text-gray-500 dark:text-gray-300 dark:hover:text-white'
               }`}
             >
               {pageNum}
@@ -241,8 +241,8 @@ const UserTable = () => {
             onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
             className={`px-3 py-1.5 text-xs rounded transition-colors font-medium cursor-pointer ${
               (currentPage === totalPages || totalPages === 0)
-                ? 'bg-[#1a1a24]/40 text-gray-600 cursor-not-allowed' 
-                : 'bg-[#1a1a24] hover:bg-[#2b2b36] text-white'
+                ? 'bg-gray-200/40 dark:bg-[#1a1a24]/40 text-gray-400 dark:text-gray-600 cursor-not-allowed' 
+                : 'bg-gray-200 dark:bg-[#1a1a24] hover:bg-gray-300 dark:hover:bg-[#2b2b36] text-gray-700 dark:text-white'
             }`}
           >
             Sau &gt;
