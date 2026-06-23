@@ -13,6 +13,7 @@ router.post('/payment/webhook', userController.receiveWebhook);
 // Payment endpoints (Protected)
 router.post('/payment/create', authenticateJWT, userController.createPayment);
 router.get('/payment/status/:id', authenticateJWT, userController.checkPaymentStatus);
+router.get('/payment/detail/:id', authenticateJWT, userController.getPaymentDetail);
 router.put('/payment/cancel/:id', authenticateJWT, userController.cancelPayment);
 router.patch('/payment/expire/:id', authenticateJWT, userController.expirePayment);
 

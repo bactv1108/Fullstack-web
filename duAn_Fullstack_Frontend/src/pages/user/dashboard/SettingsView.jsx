@@ -117,6 +117,7 @@ export default function SettingsView() {
   const limitPerPage = 10;
   const [packages, setPackages] = useState([]);
   const [timeLeft, setTimeLeft] = useState(60);
+  const [buyingId, setBuyingId] = useState(null);
 
 
 
@@ -564,22 +565,21 @@ export default function SettingsView() {
 
   const handlePurchasePackage = async (packageId) => {
     try {
-      const response = await axiosClient.post('/user/payment/create', { packageId });
-      if (response) {
-        setTimeLeft(60); // Reset bộ đếm ngược 60s
-        setActiveTransaction({
-          id: response.id,
-          amount: response.amount,
-          credits: response.credits,
-          memo: response.memo
-        });
-        setIsModalOpen(true);
+      setBuyingId(packageId);
+      const response = await axiosClient.post('/payment/create-link', { packageId: packageId.toLowerCase() });
+      if (response && response.checkoutUrl) {
+        window.location.href = response.checkoutUrl;
+      } else {
+        throw new Error('Không nhận được liên kết thanh toán từ cổng PayOS.');
       }
     } catch (err) {
-      console.error('[SETTINGS] Error creating payment order:', err);
-      alert(err.response?.data?.message || err.message || 'Khởi tạo giao dịch nạp tiền thất bại.');
+      console.error('[SETTINGS] Error creating PayOS payment order:', err);
+      alert(err.response?.data?.message || err.message || 'Khởi tạo giao dịch nạp tiền qua PayOS thất bại.');
+    } finally {
+      setBuyingId(null);
     }
   };
+
 
   return (
     <div className="!w-full !max-w-[1920px] !mx-auto !px-4 sm:!px-6 lg:!px-8 !min-h-screen !bg-[#09090b] text-white !py-8 !block !clear-both">
@@ -750,7 +750,7 @@ export default function SettingsView() {
           <h3 className="text-xl font-black text-zinc-400 uppercase tracking-wider">Cấu hình gói cước hệ thống</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mt-2">
             {packages?.map((pkg) => {
-              const meta = packageMeta[pkg.id] || {
+              const meta = packageMeta[pkg.id.toLowerCase()] || {
                 badge: 'Sponsor',
                 badgeClass: 'text-cyan-400',
                 description: 'Gói cước mở rộng hệ thống.',
@@ -781,16 +781,17 @@ export default function SettingsView() {
                         </div>
                       ))}
                     </div>
-                    {pkg.id !== 'free' ? (
+                    {pkg.id.toLowerCase() !== 'free' ? (
                       <button 
                         onClick={() => handlePurchasePackage(pkg.id)}
+                        disabled={buyingId !== null}
                         className={`!p-2 w-full mt-3 py-2.5 px-4 font-black uppercase text-[10px] tracking-wider rounded-lg transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer flex items-center justify-center gap-1.5 border-none ${
-                          pkg.id === 'premium'
+                          pkg.id.toLowerCase() === 'premium'
                             ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-lg shadow-purple-500/20'
                             : 'bg-[#f59e0b] hover:bg-amber-600 text-black'
                         }`}
                       >
-                        Nạp gói ngay
+                        {buyingId === pkg.id ? 'Đang kết nối cổng...' : 'Nạp gói ngay'}
                       </button>
                     ) : (
                       <button 
@@ -1062,18 +1063,18 @@ export default function SettingsView() {
                   {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(invoiceDetails.amount).replace('₫', 'đ')}
                 </span>
               </div>
-              <div className="flex justify-between items-center pb-2 border-b border-[#222226]/50">
+              <div className=" flex justify-between items-center pb-2 border-b border-[#222226]/50">
                 <span className="text-zinc-400 text-xs">Số Credits nhận được</span>
                 <span className="font-bold text-amber-500 flex items-center gap-1">
                   <Coins size={14} className="text-amber-500 animate-bounce" />
                   {invoiceDetails.credits} Credits
                 </span>
               </div>
-              <div className="flex justify-between items-center pb-2 border-b border-[#222226]/50">
+              <div className=" flex justify-between items-center pb-2 border-b border-[#222226]/50">
                 <span className="text-zinc-400 text-xs">Phương thức thanh toán</span>
                 <span className="font-medium text-zinc-300 text-xs">{invoiceDetails.paymentMethod}</span>
               </div>
-              <div className="flex justify-between items-center">
+              <div className=" flex justify-between items-center">
                 <span className="text-zinc-400 text-xs">Thời gian</span>
                 <span className="text-zinc-300 text-xs">{invoiceDetails.time}</span>
               </div>

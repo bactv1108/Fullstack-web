@@ -513,7 +513,7 @@ const getAllTransactions = async (req, res) => {
 
     const whereClause = conditions.length > 0 ? { [Op.and]: conditions } : {};
 
-    const { count, rows: transactions } = await Transaction.findAndCountAll({
+    let { count, rows: transactions } = await Transaction.findAndCountAll({
       limit,
       offset,
       order: [['createdAt', 'DESC']],
@@ -528,9 +528,57 @@ const getAllTransactions = async (req, res) => {
       ]
     });
 
+    let transactionList = transactions.map(t => t.toJSON());
+
+    // Fallback search in payment_transactions table when searching
+    if (search) {
+      try {
+        const db = require('../config/db');
+        const [paymentTxs] = await db.execute(
+          `SELECT pt.*, u.email FROM payment_transactions pt
+           JOIN users u ON pt.user_id = u.id
+           WHERE pt.order_code = ? OR pt.id = ? OR u.email LIKE ?`,
+          [search, search, `%${search}%`]
+        );
+
+        if (paymentTxs && paymentTxs.length > 0) {
+          const statusMap = {
+            'SUCCESS': 'success',
+            'PENDING': 'pending',
+            'CANCELLED': 'failed'
+          };
+          
+          paymentTxs.forEach(row => {
+            const orderCodeStr = String(row.order_code);
+            const exists = transactionList.some(t => String(t.id) === orderCodeStr);
+            if (!exists) {
+              const formatted = {
+                id: orderCodeStr,
+                userId: row.user_id,
+                package_name: row.credits_added >= 1000 ? 'Premium Plan' : 'Basic Plan',
+                amount: row.amount,
+                credits_added: -Math.abs(row.credits_added), // Return negative number for Admin "Bán" display
+                status: statusMap[row.status] || row.status.toLowerCase(),
+                type: 'ban', // Must be 'ban'
+                createdAt: row.created_at,
+                updatedAt: row.created_at,
+                user: {
+                  email: row.email
+                }
+              };
+              transactionList.unshift(formatted);
+              count += 1;
+            }
+          });
+        }
+      } catch (dbErr) {
+        console.error('[ADMIN CONTROLLER] getAllTransactions fallback error:', dbErr.message);
+      }
+    }
+
     return res.status(200).json({
       success: true,
-      data: transactions,
+      data: transactionList,
       totalItems: count,
       totalPages: Math.ceil(count / limit),
       currentPage: page
@@ -538,6 +586,88 @@ const getAllTransactions = async (req, res) => {
   } catch (err) {
     console.error('[ADMIN CONTROLLER] getAllTransactions error:', err.message);
     return res.status(500).json({ message: 'Lỗi hệ thống khi tải tất cả lịch sử giao dịch.' });
+  }
+};
+
+/**
+ * GET /api/admin/transactions/:id
+ * Retrieve detail of a transaction by ID with fallback support for PayOS transactions
+ */
+const getTransactionDetail = async (req, res) => {
+  const transactionId = req.params.id;
+
+  try {
+    const { Transaction, User } = require('../models');
+    
+    // Step 1: Find transaction in old transactions table
+    const transaction = await Transaction.findOne({
+      where: { id: transactionId },
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['email']
+        }
+      ]
+    });
+
+    if (transaction) {
+      return res.status(200).json({
+        success: true,
+        data: transaction
+      });
+    }
+
+    // Step 2: Fallback to payment_transactions table
+    const db = require('../config/db');
+    const [rows] = await db.execute(
+      `SELECT pt.*, u.email FROM payment_transactions pt
+       JOIN users u ON pt.user_id = u.id
+       WHERE pt.order_code = ? OR pt.id = ?`,
+      [transactionId, transactionId]
+    );
+
+    if (rows && rows.length > 0) {
+      const row = rows[0];
+      const statusMap = {
+        'SUCCESS': 'success',
+        'PENDING': 'pending',
+        'CANCELLED': 'failed'
+      };
+
+      // Step 3: Map payment_transactions to old transactions JSON structure
+      const formattedTx = {
+        id: String(row.order_code),
+        userId: row.user_id,
+        package_name: row.credits_added >= 1000 ? 'Premium Plan' : 'Basic Plan',
+        amount: row.amount,
+        credits_added: -Math.abs(row.credits_added), // Return negative number for Admin "Bán" display
+        status: statusMap[row.status] || row.status.toLowerCase(),
+        type: 'ban', // Must be 'ban'
+        createdAt: row.created_at,
+        updatedAt: row.created_at,
+        user: {
+          email: row.email
+        }
+      };
+
+      return res.status(200).json({
+        success: true,
+        data: formattedTx
+      });
+    }
+
+    return res.status(404).json({
+      success: false,
+      message: 'Không tìm thấy chi tiết giao dịch.'
+    });
+
+  } catch (err) {
+    console.error('[ADMIN CONTROLLER] getTransactionDetail error:', err.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi hệ thống khi lấy chi tiết giao dịch.'
+    });
   }
 };
 
@@ -1005,6 +1135,7 @@ module.exports = {
   getCreditStats,
   getImageAnalyses,
   getAllTransactions,
+  getTransactionDetail,
   approveTransactionManually,
   getModerationQueue,
   reviewModerationItem,

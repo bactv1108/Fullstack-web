@@ -107,6 +107,8 @@ const sessionRouter = require('./routes/session.routes');
 const adminNotificationRouter = require('./routes/adminNotification.routes');
 const moderationRouter = require('./routes/moderation.routes');
 const videoJobRouter   = require('./routes/videoJob.routes');
+const paymentRouter   = require('./routes/payment.routes');
+
 
 const app = express();
 const server = http.createServer(app);
@@ -310,6 +312,8 @@ app.use('/api/v1/auth', sessionRouter);           // Session Management
 app.use('/api/v1/auth', adminNotificationRouter); // Admin Notifications
 app.use('/api/v1/admin', moderationRouter);       // Image Moderation Queue & Review
 app.use('/api/video-jobs', videoJobRouter);        // Video AI Animation (Fal.ai)
+app.use('/api/payment', paymentRouter);           // PayOS Payment Integration
+
 
 // ===== SOCKET.IO - REAL-TIME HANDLERS =====
 const jwt = require('jsonwebtoken');

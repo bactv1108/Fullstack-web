@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import io from 'socket.io-client';
+import { getSocket } from '../../services/socketService';
 import { ArrowUpRight, X, Search } from 'lucide-react';
 import axiosAdminClient from '../../services/axiosAdminClient';
 
@@ -18,6 +18,44 @@ const BillingView = () => {
   
   const [searchParams, setSearchParams] = useSearchParams();
   const searchCode = searchParams.get('search');
+  
+  // Custom dialog state
+  const [dialog, setDialog] = useState({ 
+    isOpen: false, 
+    type: 'confirm', 
+    title: '', 
+    message: '', 
+    onConfirm: null 
+  });
+
+  const limitPerPage = 10;
+  const lastFetchedRef = useRef({ page: null, search: null, type: null });
+
+  const fetchData = (page = currentPage, searchVal = activeSearch, typeVal = activeTab) => {
+    // Avoid duplicate fetching with same parameters
+    if (
+      lastFetchedRef.current.page === page &&
+      lastFetchedRef.current.search === searchVal &&
+      lastFetchedRef.current.type === typeVal
+    ) {
+      return;
+    }
+    lastFetchedRef.current = { page, search: searchVal, type: typeVal };
+
+    setLoading(true);
+    axiosAdminClient.get(`/transactions?page=${page}&limit=${limitPerPage}&search=${encodeURIComponent(searchVal)}&type=${typeVal}`)
+      .then(res => {
+        // axiosAdminClient response interceptor returns data field directly
+        setTransactions(res.data || []);
+        setTotalPages(res.totalPages || 1);
+        setTotalCount(res.totalItems || 0);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error('[BILLING VIEW] Fetch transactions failed:', err.message);
+        setLoading(false);
+      });
+  };
 
   // Automatically trigger search when searchCode is detected on mount or param change
   useEffect(() => {
@@ -25,8 +63,18 @@ const BillingView = () => {
       setSearchTerm(searchCode);
       setActiveSearch(searchCode);
       setCurrentPage(1);
+      fetchData(1, searchCode, activeTab);
     }
   }, [searchCode]);
+
+  // Re-fetch whenever page, search, OR active tab changes
+  useEffect(() => {
+    // If there is searchCode in the URL, wait for the searchCode useEffect to fetch it directly
+    if (searchCode && activeSearch !== searchCode) {
+      return;
+    }
+    fetchData(currentPage, activeSearch, activeTab);
+  }, [currentPage, activeSearch, activeTab]);
 
   // Handle automatic popup of approval modal for matched transaction
   useEffect(() => {
@@ -44,105 +92,36 @@ const BillingView = () => {
     }
   }, [searchCode, transactions]);
   
-  // Custom dialog state
-  const [dialog, setDialog] = useState({ 
-    isOpen: false, 
-    type: 'confirm', 
-    title: '', 
-    message: '', 
-    onConfirm: null 
-  });
-
-  const limitPerPage = 10;
-
-  const fetchData = (page = currentPage, searchVal = activeSearch, typeVal = activeTab) => {
-    setLoading(true);
-    axiosAdminClient.get(`/transactions?page=${page}&limit=${limitPerPage}&search=${encodeURIComponent(searchVal)}&type=${typeVal}`)
-      .then(res => {
-        // axiosAdminClient response interceptor returns data field directly
-        setTransactions(res.data || []);
-        setTotalPages(res.totalPages || 1);
-        setTotalCount(res.totalItems || 0);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error('[BILLING VIEW] Fetch transactions failed:', err.message);
-        setLoading(false);
-      });
-  };
-
-  // Re-fetch whenever page, search, OR active tab changes
-  useEffect(() => {
-    fetchData(currentPage, activeSearch, activeTab);
-  }, [currentPage, activeSearch, activeTab]);
-
   // Set up Socket.io connection for real-time transaction updates
   useEffect(() => {
-    // Connect to backend Socket.io server
-    const socketInstance = io('http://localhost:3000', {
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionAttempts: Infinity
-    });
-
-    // Listen for new transaction created
-    socketInstance.on('transaction:created', (newTransaction) => {
-      console.log('[SOCKET.IO] Received transaction:created:', newTransaction);
-      
-      // Add new transaction to the top of the list
-      setTransactions(prevTransactions => {
-        return [newTransaction, ...prevTransactions];
-      });
-      
-      // Update total count
-      setTotalCount(prevCount => prevCount + 1);
-      console.log(`[ADMIN] New transaction created: ${newTransaction.id}`);
-    });
-
-    // Listen for transaction deleted
-    socketInstance.on('transaction:deleted', (deletedTransaction) => {
-      console.log('[SOCKET.IO] Received transaction:deleted:', deletedTransaction);
-      
-      // Remove transaction from the list
-      setTransactions(prevTransactions => {
-        return prevTransactions.filter(item => item.id !== deletedTransaction.id);
-      });
-      
-      // Update total count
-      setTotalCount(prevCount => Math.max(0, prevCount - 1));
-      console.log(`[ADMIN] Transaction deleted: ${deletedTransaction.id}`);
-    });
-
-    // Listen for transaction updated
-    socketInstance.on('transaction:updated', (updatedTransaction) => {
-      console.log('[SOCKET.IO] Received transaction:updated:', updatedTransaction);
-      
-      // Update the transaction in the list
-      setTransactions(prevTransactions => {
-        return prevTransactions.map(item => 
-          item.id === updatedTransaction.id ? updatedTransaction : item
-        );
-      });
-      
-      console.log(`[ADMIN] Transaction updated: ${updatedTransaction.id} status: ${updatedTransaction.status}`);
-    });
-
-    // Clean up connection on unmount
-    socketInstance.on('disconnect', () => {
-      console.log('[SOCKET.IO] Disconnected from server');
-    });
-
-    socketInstance.on('connect', () => {
-      console.log('[SOCKET.IO] Connected to server');
-    });
-
+    const socketInstance = getSocket();
     setSocket(socketInstance);
 
-    return () => {
-      socketInstance.disconnect();
+    const handleTransactionCreated = (newTransaction) => {
+      console.log('[SOCKET.IO] Received transaction:created, reloading data:', newTransaction);
+      fetchData(currentPage, activeSearch, activeTab);
     };
-  }, []);
+
+    const handleTransactionDeleted = (deletedTransaction) => {
+      console.log('[SOCKET.IO] Received transaction:deleted, reloading data:', deletedTransaction);
+      fetchData(currentPage, activeSearch, activeTab);
+    };
+
+    const handleTransactionUpdated = (updatedTransaction) => {
+      console.log('[SOCKET.IO] Received transaction:updated, reloading data:', updatedTransaction);
+      fetchData(currentPage, activeSearch, activeTab);
+    };
+
+    socketInstance.on('transaction:created', handleTransactionCreated);
+    socketInstance.on('transaction:deleted', handleTransactionDeleted);
+    socketInstance.on('transaction:updated', handleTransactionUpdated);
+
+    return () => {
+      socketInstance.off('transaction:created', handleTransactionCreated);
+      socketInstance.off('transaction:deleted', handleTransactionDeleted);
+      socketInstance.off('transaction:updated', handleTransactionUpdated);
+    };
+  }, [currentPage, activeSearch, activeTab]);
 
   // Formatter for VNĐ currency
   const formatVND = (value) => {

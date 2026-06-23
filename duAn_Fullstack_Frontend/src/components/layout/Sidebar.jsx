@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Image, Mic, Eye, Zap, Clock, Settings, X, Clapperboard, LogOut } from 'lucide-react';
+import { Image, Mic, Eye, Zap, Clock, Settings, X, Clapperboard, LogOut, CreditCard } from 'lucide-react';
+
 import { useAuth } from '../../hooks/useAuth';
 
 export default function Sidebar({ 

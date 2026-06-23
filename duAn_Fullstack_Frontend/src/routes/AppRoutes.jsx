@@ -23,6 +23,10 @@ const HistoryView = lazy(() => import('../pages/user/dashboard/HistoryView'));
 const SettingsView = lazy(() => import('../pages/user/dashboard/SettingsView'));
 const ImageViewerPage = lazy(() => import('../pages/user/dashboard/ImageViewerPage'));
 const VideoStudioView = lazy(() => import('../pages/user/dashboard/VideoStudioView'));
+
+const PaymentSuccess = lazy(() => import('../pages/auth/PaymentSuccess'));
+const PaymentCancel = lazy(() => import('../pages/auth/PaymentCancel'));
+
 // const AffiliateAssistant = lazy(() => import('../pages/user/dashboard/AffiliateAssistant'));
 
 const LoadingFallback = () => (
@@ -58,6 +62,9 @@ const AppRoutes = () => {
         <Route path="/auth/google/callback" element={<GoogleCallback />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/verify-email" element={<VerifyEmail />} />
+        <Route path="/payment-success" element={<PaymentSuccess />} />
+        <Route path="/payment-cancel" element={<PaymentCancel />} />
+
         {/* Protected Routes cho User */}
         <Route element={<ProtectedRoute />}>
           <Route element={<MainLayout />}>
@@ -73,6 +80,8 @@ const AppRoutes = () => {
               <Route path="image-viewer" element={<ImageViewerPage />} />
               {/* Studio Tạo Video AI Animation */}
               <Route path="video-studio" element={<VideoStudioView />} />
+
+
               {/* Tạm thời đóng băng tuyến đường Affiliate Assistant */}
               {/* <Route path="affiliate" element={<AffiliateAssistant />} /> */}
             </Route>

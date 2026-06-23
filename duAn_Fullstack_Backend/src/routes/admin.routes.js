@@ -22,6 +22,8 @@ router.put('/billing/plans', adminController.updateBillingPlans);
 router.get('/billing/transactions', adminController.getBillingTransactions);
 router.get('/admin/transactions', adminMiddleware, adminController.getAllTransactions);
 router.get('/transactions', adminMiddleware, adminController.getAllTransactions);
+router.get('/transactions/:id', adminMiddleware, adminController.getTransactionDetail);
+router.get('/admin/transactions/:id', adminMiddleware, adminController.getTransactionDetail);
 router.put('/transactions/:id/approve', adminMiddleware, adminController.approveTransactionManually);
 router.put('/admin/transactions/:id/approve', adminMiddleware, adminController.approveTransactionManually);
 

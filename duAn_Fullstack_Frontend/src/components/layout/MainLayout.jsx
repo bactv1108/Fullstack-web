@@ -44,6 +44,7 @@ const MainLayout = () => {
     }
   }, [location.pathname, location.search]);
 
+
   // Preview Dialog state lifted globally
   const [previewJob, setPreviewJob] = useState(null);
   const [modalPlaying, setModalPlaying] = useState(false);

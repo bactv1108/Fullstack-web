@@ -211,9 +211,23 @@ const AdminHeader = ({ toggleSidebar }) => {
         navigate(item.redirectUrl);
       } else {
         const content = item.content || item.message || '';
-        const match = content.match(/(?:Mã|Mã GD|Mã:)\s*([A-Za-z0-9_-]+)/i);
-        if (match && match[1]) {
-          navigate(`/admin/deposits?search=${match[1]}`);
+        let txCode = item.transactionCode;
+        if (!txCode) {
+          // Match standard formats like "Mã GD: 2210008723988", "Mã GD 2210008723988", "Mã: 2210008723988", "Mã GD:2210008723988"
+          const match = content.match(/(?:Mã\s*GD|Mã|Mã\s*GD\s*:|Mã\s*:)\s*:?\s*([A-Za-z0-9_-]+)/i);
+          if (match && match[1]) {
+            txCode = match[1];
+          } else {
+            // Fallback: look for any 10 to 15 digit sequence representing PayOS order code
+            const numMatch = content.match(/\b\d{10,15}\b/);
+            if (numMatch) {
+              txCode = numMatch[0];
+            }
+          }
+        }
+
+        if (txCode) {
+          navigate(`/admin/deposits?search=${txCode}`);
         } else {
           navigate('/admin/deposits');
         }

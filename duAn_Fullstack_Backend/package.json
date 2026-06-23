@@ -15,6 +15,7 @@
     "@fal-ai/client": "^1.10.1",
     "@google/generative-ai": "^0.24.1",
     "@ngrok/ngrok": "^1.7.0",
+    "@payos/node": "^2.0.5",
     "axios": "^1.16.1",
     "bcrypt": "^6.0.0",
     "cloudinary": "^1.41.3",

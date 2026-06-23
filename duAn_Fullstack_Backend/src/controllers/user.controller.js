@@ -703,6 +703,70 @@ const checkPaymentStatus = async (req, res) => {
 };
 
 /**
+ * GET /api/user/payment/detail/:id
+ * Retrieve detail of a payment transaction with fallback to payment_transactions
+ */
+const getPaymentDetail = async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user.id;
+
+  try {
+    const { Transaction } = require('../models');
+    
+    // 1. Try to query from legacy transactions table
+    let transaction = await Transaction.findOne({
+      where: { id, userId }
+    });
+
+    if (transaction) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          id: transaction.id,
+          amount: transaction.amount,
+          credits_added: transaction.credits_added,
+          status: transaction.status,
+          createdAt: transaction.createdAt
+        }
+      });
+    }
+
+    // 2. Fallback to payment_transactions
+    const db = require('../config/db');
+    const [rows] = await db.execute(
+      `SELECT * FROM payment_transactions WHERE (order_code = ? OR id = ?) AND user_id = ?`,
+      [id, id, userId]
+    );
+
+    if (rows && rows.length > 0) {
+      const row = rows[0];
+      const statusMap = {
+        'SUCCESS': 'success',
+        'PENDING': 'pending',
+        'CANCELLED': 'failed'
+      };
+      
+      return res.status(200).json({
+        success: true,
+        data: {
+          id: String(row.order_code),
+          amount: row.amount,
+          credits_added: row.credits_added,
+          status: statusMap[row.status] || row.status.toLowerCase(),
+          createdAt: row.created_at
+        }
+      });
+    }
+
+    return res.status(404).json({ success: false, message: 'Không tìm thấy chi tiết giao dịch.' });
+
+  } catch (err) {
+    console.error('[USER CONTROLLER] getPaymentDetail error:', err.message);
+    return res.status(500).json({ success: false, message: 'Lỗi hệ thống khi lấy chi tiết giao dịch.' });
+  }
+};
+
+/**
  * POST /api/user/payment/webhook
  * Public webhook callback to confirm transaction nạp tiền và credits update
  */
@@ -1012,6 +1076,7 @@ module.exports = {
   getPackages,
   createPayment,
   checkPaymentStatus,
+  getPaymentDetail,
   receiveWebhook,
   getTransactions,
   cancelPayment,
