@@ -707,7 +707,12 @@ const checkPaymentStatus = async (req, res) => {
  * Public webhook callback to confirm transaction nạp tiền và credits update
  */
 const receiveWebhook = async (req, res) => {
-  const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || 'STUDIO_SECRET_2026';
+  const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET
+  // Chốt chặn an toàn: Nếu thiếu key trong .env thì chặn luôn, không cho chạy xuống dưới
+  if (!WEBHOOK_SECRET) {
+    console.error('[CRITICAL] WEBHOOK_SECRET is missing in .env file!');
+    return res.status(500).json({ success: false, message: 'Server configuration error.' });
+  }
   
   // 1. Signature check
   const signature = req.headers['x-webhook-signature'] || req.body.signature;

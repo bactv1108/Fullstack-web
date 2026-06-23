@@ -47,7 +47,8 @@ Thumbs.db
 *.sln
 *.swp
 *.xml
-
+# Giấu các file script test cá nhân
+**/test_*.js
 
 
 

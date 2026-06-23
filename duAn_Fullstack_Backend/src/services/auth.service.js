@@ -20,13 +20,13 @@ const generateTokens = (user) => {
       two_factor_enabled: isTwoFactorEnabled,
       twofa: isTwoFactorEnabled
     },
-    process.env.JWT_SECRET || 'secret',
+    process.env.JWT_SECRET,
     { expiresIn: ACCESS_TOKEN_EXPIRY }
   );
 
   const refresh_token = jwt.sign(
     { id: user.id },
-    process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'refresh_secret',
+      process.env.JWT_REFRESH_SECRET,
     { expiresIn: REFRESH_TOKEN_EXPIRY }
   );
 

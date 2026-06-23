@@ -4,6 +4,11 @@ const path = require('path');
 const http = require('http');
 const { Server } = require('socket.io');
 require('dotenv').config();
+// CHÈN THÊM ĐOẠN NÀY:
+if (!process.env.JWT_SECRET || !process.env.JWT_REFRESH_SECRET) {
+  console.error('❌ [CRITICAL] JWT_SECRET hoặc JWT_REFRESH_SECRET chưa được cấu hình trong file .env!');
+  process.exit(1); // Dừng server ngay lập tức
+}
 
 // ── Ngrok Auto-Tunnel (chỉ dev) ───────────────────────────────────────────────
 // Import an toàn: nếu package chưa được cài sẽ bỏ qua thay vì crash server
@@ -343,7 +348,7 @@ io.on('connection', (socket) => {
         return;
       }
 
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
       // Gắn thông tin user vào socket instance
       socket.userId = decoded.id;

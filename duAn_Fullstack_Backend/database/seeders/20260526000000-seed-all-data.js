@@ -5,11 +5,15 @@ require('dotenv').config();
 module.exports = {
   up: async (queryInterface, Sequelize) => {
     // Dynamic credentials config from process.env with secure fallback options
-    const adminEmail = process.env.SEED_ADMIN_EMAIL || 'admin@system.com';
-    const admin123Email = process.env.SEED_ADMIN123_EMAIL || 'admin@gmail.com';
-    const adminPass = process.env.SEED_ADMIN_PASSWORD || 'admin';
-    const admin123Pass = process.env.SEED_ADMIN123_PASSWORD || 'admin123';
-    const userPass = process.env.SEED_USER_PASSWORD || 'user1234';
+    const adminEmail = process.env.SEED_ADMIN_EMAIL;
+    const admin123Email = process.env.SEED_ADMIN123_EMAIL ;
+    const adminPass = process.env.SEED_ADMIN_PASSWORD ;
+    const admin123Pass = process.env.SEED_ADMIN123_PASSWORD;
+    const userPass = process.env.SEED_USER_PASSWORD ;
+    if (!adminEmail || !admin123Email || !adminPass || !admin123Pass || !userPass) {
+      console.error('❌ [CRITICAL] Seeder thất bại: Thiếu các biến cấu hình dữ liệu mẫu mẫu trong file .env!');
+      throw new Error('Missing seed credentials in environment variables.');
+    }
 
     // Hash passwords dynamically using bcrypt rounds = 12
     const adminPasswordHash = await bcrypt.hash(adminPass, 12);
