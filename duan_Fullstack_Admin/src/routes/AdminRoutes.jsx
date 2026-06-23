@@ -7,6 +7,8 @@ import AdminLayout from '../components/layout/AdminLayout';
 const AdminLogin = lazy(() => import('../pages/AdminLogin'));
 const AdminDashboard = lazy(() => import('../pages/AdminDashboard'));
 const AdminProfile = lazy(() => import('../pages/admin/AdminProfile'));
+const ApiLogsView = lazy(() => import('../pages/admin/ApiLogsView'));
+const VideoManagement = lazy(() => import('../components/video-management/VideoManagement'));
 
 const LoadingFallback = () => (
   <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-admin-text">
@@ -27,11 +29,14 @@ const AdminRoutes = () => {
             <Route path="/" element={<AdminDashboard />} />
             <Route path="/dashboard" element={<AdminDashboard />} />
             <Route path="/billing" element={<AdminDashboard tab="billing" />} />
+            <Route path="/admin/deposits" element={<AdminDashboard tab="billing" />} />
             <Route path="/api-resources" element={<AdminDashboard tab="api" />} />
             <Route path="/moderation" element={<AdminDashboard tab="moderation" />} />
             <Route path="/image-analyses" element={<AdminDashboard tab="image-analyses" />} />
+            <Route path="/video-management" element={<VideoManagement />} />
             <Route path="/users" element={<AdminDashboard tab="users" />} />
             <Route path="/profile" element={<AdminProfile />} />
+            <Route path="/admin/logs" element={<ApiLogsView />} />
           </Route>
         </Route>
 

@@ -38,6 +38,11 @@ router.get('/moderation/blacklist', adminController.getBlacklist);
 router.post('/moderation/blacklist', adminController.addWordToBlacklist);
 router.delete('/moderation/blacklist', adminController.removeWordFromBlacklist);
 
+// Content Moderation (Queue & Review)
+router.get('/moderation/queue', adminController.getModerationQueue);
+router.post('/moderation/review', adminController.reviewModerationItem);
+router.post('/moderation/reject', adminController.confirmImageViolation);
+
 // Client User Operations
 router.get('/users', adminController.getUsers);
 router.put('/users/:id/credits', adminController.updateUserCredits);
@@ -48,5 +53,9 @@ router.get('/system/queue', adminController.getQueueStatus);
 router.get('/system/costs', adminController.getApiCosts);
 router.get('/system/credits', adminController.getCreditStats);
 router.get('/image-analyses', adminController.getImageAnalyses);
+router.get('/video-jobs', adminController.getVideoJobs);
+router.get('/credit-statistics', adminController.getCreditStatistics);
+router.get('/detailed-logs', adminController.getDetailedApiLogs);
+router.get('/admin/detailed-logs', adminController.getDetailedApiLogs);
 
 module.exports = router;

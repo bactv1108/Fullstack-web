@@ -1,5 +1,5 @@
 const bcrypt = require('bcrypt');
-const { User, Job, ImageJob, Package, Transaction, ImageAnalysis, sequelize } = require('../models');
+const { User, Job, ImageJob, Package, Transaction, ImageAnalysis, VideoJob, sequelize } = require('../models');
 
 const toBoolean = (value) => {
   if (typeof value === 'boolean') return value;
@@ -26,6 +26,14 @@ const getProfile = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: 'Không tìm thấy người dùng.' });
     }
+
+    // Tự động xóa trạng thái khóa khi thời gian cấm đã trôi qua
+    if (user.banned_until && new Date() >= new Date(user.banned_until)) {
+      user.banned_until = null;
+      user.mat_than_muted_until = null;
+      await user.save();
+    }
+
     return res.status(200).json({
       id: user.id,
       name: user.name,
@@ -36,7 +44,9 @@ const getProfile = async (req, res) => {
       status: user.status,
       avatar: user.avatar,
       is_two_factor_enabled: toBoolean(user.is_two_factor_enabled),
-      theme_preference: user.theme_preference || 'dark'
+      theme_preference: user.theme_preference || 'dark',
+      current_package: user.current_package || 'free',
+      banned_until: user.banned_until ? new Date(user.banned_until).toISOString() : null
     });
   } catch (err) {
     console.error('[USER CONTROLLER] getProfile error:', err.message);
@@ -52,13 +62,18 @@ const getHistory = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // 1. Quét dữ liệu Video AI và Giọng nói (Giữ nguyên)
+    // 1. Quét dữ liệu Video AI và Giọng nói từ bảng jobs cũ.
+    //    CHỈ lấy type Video và Voice — KHÔNG lấy Image để tránh trùng lặp
+    //    với bảng image_jobs mới (nơi lưu ảnh Fal.ai Flux Schnell).
     const jobs = await Job.findAll({
-      where: { userId },
+      where: {
+        userId,
+        type: ['Video', 'Voice']
+      },
       order: [['id', 'DESC']]
     });
 
-    // 2. Quét dữ liệu Tạo Ảnh AI từ bảng image_jobs mới
+    // 2. Quét dữ liệu Tạo Ảnh AI từ bảng image_jobs (Fal.ai Flux Schnell)
     const imageJobs = await ImageJob.findAll({
       where: { userId },
       order: [['id', 'DESC']]
@@ -67,6 +82,12 @@ const getHistory = async (req, res) => {
     // 3. Quét dữ liệu phân tích ảnh Mắt Thần AI
     const analyses = await ImageAnalysis.findAll({
       where: { user_id: userId, status: 'success' },
+      order: [['id', 'DESC']]
+    });
+
+    // 4. Quét dữ liệu Video AI từ bảng video_jobs (Fal.ai pipeline mới)
+    const videoJobs = await VideoJob.findAll({
+      where: { userId },
       order: [['id', 'DESC']]
     });
 
@@ -84,7 +105,11 @@ const getHistory = async (req, res) => {
       const jobPlain = job.get({ plain: true });
       return {
         ...jobPlain,
-        type: 'image'
+        type: 'image',
+        // Thêm field provider để frontend hiển thị đúng tên model
+        provider: 'Fal.ai Flux Schnell',
+        // Đảm bảo aspectRatio luôn có mặt (Sequelize dùng alias camelCase)
+        aspectRatio: jobPlain.aspectRatio || jobPlain.aspect_ratio || '1:1',
       };
     });
 
@@ -96,8 +121,23 @@ const getHistory = async (req, res) => {
       };
     });
 
-    // Gộp cả 4 loại dữ liệu
-    const combinedHistory = [...mappedJobs, ...mappedImageJobs, ...mappedAnalyses];
+    // 5. Map dữ liệu VideoJob sang định dạng chung
+    const mappedVideoJobs = videoJobs.map(job => {
+      const jobPlain = job.get({ plain: true });
+      return {
+        ...jobPlain,
+        type: 'video',
+        // Đảm bảo 'status' tương thích cả 2 hệ thống (success vs Completed)
+        status: jobPlain.status === 'success' ? 'Completed' : jobPlain.status === 'failed' ? 'Failed' : jobPlain.status === 'queueing' || jobPlain.status === 'processing' ? 'Pending' : jobPlain.status,
+        // Giữ nguyên videoUrl để frontend mapping
+        videoUrl: jobPlain.videoUrl || jobPlain.video_url || null,
+        // Fallback output_url từ videoUrl (tương thích ngược)
+        output_url: jobPlain.videoUrl || jobPlain.video_url || jobPlain.output_url || null,
+      };
+    });
+
+    // Gộp cả 5 loại dữ liệu
+    const combinedHistory = [...mappedJobs, ...mappedVideoJobs, ...mappedImageJobs, ...mappedAnalyses];
 
     // Sắp xếp theo thời gian createdAt mới nhất đến cũ nhất
     combinedHistory.sort((a, b) => {
@@ -106,7 +146,10 @@ const getHistory = async (req, res) => {
       return dateB - dateA;
     });
 
-    return res.status(200).json(combinedHistory);
+    return res.status(200).json({
+      success: true,
+      data: combinedHistory
+    });
 
   } catch (err) {
     console.error('[USER CONTROLLER] getHistory error:', err.message);
@@ -397,7 +440,8 @@ const updateSettings = async (req, res) => {
         email: user.email,
         role: user.role,
         credits: user.credits,
-        avatar: user.avatar
+        avatar: user.avatar,
+        banned_until: user.banned_until ? new Date(user.banned_until).toISOString() : null
       }
     });
   } catch (err) {
@@ -490,7 +534,8 @@ const updateProfile = async (req, res) => {
         phone: user.phone,
         avatar: user.avatar,
         role: user.role,
-        credits: user.credits
+        credits: user.credits,
+        banned_until: user.banned_until ? new Date(user.banned_until).toISOString() : null
       }
     });
   } catch (err) {
@@ -615,9 +660,11 @@ const createPayment = async (req, res) => {
     // Bắn thông báo real-time về Admin Dashboard
     if (req.app && req.app.emitAdminNotification) {
       req.app.emitAdminNotification({
-        title: 'Đơn nạp tiền mới',
+        title: 'Đơn nạp tiền mới 💰',
         content: `Người dùng "${req.user.name || req.user.email}" vừa tạo đơn nạp ${pkg.name} - ${price.toLocaleString()}đ (Mã: ${transactionId})`,
-        type: 'billing'
+        type: 'billing',
+        transactionCode: transactionId,
+        redirectUrl: `/admin/deposits?search=${transactionId}`
       });
     }
 
@@ -715,9 +762,13 @@ const receiveWebhook = async (req, res) => {
       // Step 1: Update transaction status
       await transaction.update({ status: 'success' }, { transaction: t });
 
-      // Step 2: Increment credits
-      await User.increment(
-        { credits: transaction.credits_added },
+      // Step 2 & 3: Update credits and current_package
+      const targetPackage = transaction.package_name.toLowerCase().includes('premium') ? 'premium' : 'free';
+      await User.update(
+        { 
+          credits: sequelize.literal(`credits + ${transaction.credits_added}`),
+          current_package: targetPackage
+        }, 
         { where: { id: transaction.userId }, transaction: t }
       );
 
@@ -765,7 +816,9 @@ const receiveWebhook = async (req, res) => {
           req.app.emitAdminNotification({
             title: 'Nạp tiền thành công ✓',
             content: `"${paidUser?.name || paidUser?.email || 'User #' + transaction.userId}" đã nạp thành công +${transaction.credits_added} Credits (${receivedAmount.toLocaleString()}đ). Mã GD: ${transactionId}`,
-            type: 'billing'
+            type: 'billing',
+            transactionCode: transactionId,
+            redirectUrl: `/admin/deposits?search=${transactionId}`
           });
         }
       } catch (adminNotifErr) {
@@ -791,11 +844,33 @@ const getTransactions = async (req, res) => {
   try {
     const userId = req.user.id;
     const page = parseInt(req.query?.page, 10) || 1;
-    const limit = parseInt(req.query?.limit, 10) || 10;
+    const limit = 10; // Ép cứng giới hạn tối đa 10 dòng
     const offset = (page - 1) * limit;
+    const { Op } = require('sequelize');
+
+    let whereClause = { userId };
+    const typeFilter = req.query?.type;
+
+    if (typeFilter === 'income') {
+      whereClause[Op.or] = [
+        { id: { [Op.like]: 'TRX-REFUND-%' } },
+        { type: 'refund' },
+        { package_name: { [Op.like]: '%Free%' } },
+        { type: 'Gift' },
+        { type: 'Hệ thống tặng' },
+        { amount: { [Op.gt]: 0 } }
+      ];
+    } else if (typeFilter === 'expense') {
+      whereClause[Op.and] = [
+        { amount: { [Op.lte]: 0 } },
+        { id: { [Op.notLike]: 'TRX-REFUND-%' } },
+        { type: { [Op.notIn]: ['refund', 'Gift', 'Hệ thống tặng'] } },
+        { package_name: { [Op.notLike]: '%Free%' } }
+      ];
+    }
 
     const { count, rows: transactions } = await Transaction.findAndCountAll({
-      where: { userId },
+      where: whereClause,
       limit,
       offset,
       order: [['createdAt', 'DESC']]

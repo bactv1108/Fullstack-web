@@ -5,13 +5,17 @@ import Sidebar from './Sidebar';
 import Toast from '../ui/Toast';
 import { Play, Pause, Download, X, Rocket, Mic, Image as ImageIcon } from 'lucide-react';
 import { userService } from '../../services/user.service';
+import { useAuth } from '../../hooks/useAuth';
+import socketService from '../../services/socketService';
 
 const MainLayout = () => {
+  const { user, updateUserState } = useAuth();
   const [currentMenu, setCurrentMenu] = useState('image-generator');
   const [credits, setCredits] = useState(0);
   const [activeModal, setActiveModal] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [userProfile, setUserProfile] = useState({ name: '', email: '', role: '', avatar: null });
+  const [notificationCount, setNotificationCount] = useState(0);
   const location = useLocation();
 
   useEffect(() => {
@@ -29,6 +33,8 @@ const MainLayout = () => {
       setCurrentMenu('history');
     } else if (path.includes('/dashboard/settings')) {
       setCurrentMenu('settings');
+    } else if (path.includes('/dashboard/video-studio')) {
+      setCurrentMenu('video-studio');
     } else if (path.includes('/dashboard/affiliate')) {
       setCurrentMenu('affiliate');
     } else if (tabParam && ['all', 'video', 'audio', 'analysis'].includes(tabParam)) {
@@ -78,7 +84,8 @@ const MainLayout = () => {
 
   const loadHistory = () => {
     userService.getHistory()
-      .then(data => {
+      .then(res => {
+        const data = res?.data || res;
         if (data) {
           const mapped = data.map(job => {
             const isVideo = job.type === 'Video' || job.type === 'video' || job.type === 'render_task';
@@ -93,10 +100,12 @@ const MainLayout = () => {
               status: job.status,
               progress: job.progress,
               output_url: job.output_url,
+              videoUrl: job.videoUrl || job.video_url || job.output_url,
               image_path: job.image_path,
               image_name: job.image_name,
               prompt_output: job.prompt_output,
               createdAt: job.createdAt || job.created_at,
+              provider: job.provider || (isImage ? 'Fal.ai Flux Schnell' : null),
               ratio: isImage
                 ? (job.aspectRatio === '9:16' || job.aspect_ratio === '9:16' ? '9:16 Dọc' :
                    job.aspectRatio === '16:9' || job.aspect_ratio === '16:9' ? '16:9 Ngang' : '1:1 Vuông')
@@ -110,7 +119,9 @@ const MainLayout = () => {
               duration: '10 giây',
               icon: isVideo ? Rocket : isImage ? ImageIcon : Mic,
               iconColor: isVideo ? '#a855f7' : isImage ? '#f59e0b' : '#f59e0b',
-              gradient: isVideo ? 'from-purple-900/30 to-[#0f0f13]' : isImage ? 'from-amber-950/30 to-[#0f0f13]' : null
+              gradient: isVideo ? 'from-purple-900/30 to-[#0f0f13]' : isImage ? 'from-amber-950/30 to-[#0f0f13]' : null,
+              modelName: job.modelName || job.model_name || null,
+              model_name: job.modelName || job.model_name || null
             };
           });
           setHistoryList(mapped);
@@ -127,6 +138,73 @@ const MainLayout = () => {
     loadHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Lắng nghe sự kiện socket cập nhật tín dụng & thông báo thời gian thực
+  useEffect(() => {
+    const socket = socketService.connectSocket();
+
+    const handleCreditUpdated = (data) => {
+      console.log('[REAL-TIME HEADER] Nhận tín hiệu cập nhật số dư tự động:', data);
+      
+      // Kiểm tra tính chính chủ của tài khoản người dùng hiện tại
+      if (user && parseInt(data.userId, 10) === parseInt(user.id, 10)) {
+        // Cập nhật ngay lập tức số dư Credits mới nhất lên thanh Header mà không cần F5
+        try {
+          const rawCredits = data?.newBalance ?? data?.balance ?? data?.credits ?? data?.data?.credits;
+          console.log('[DEBUG NAN] Dữ liệu thô nhận được từ socket:', data);
+          console.log('[DEBUG NAN] Giá trị bóc tách được từ socket:', rawCredits);
+
+          const soDuDichThuc = Number(rawCredits);
+          if (!isNaN(soDuDichThuc)) {
+            if (typeof setCredits === 'function') {
+              setCredits(soDuDichThuc);
+            }
+            if (typeof updateUserState === 'function') {
+              updateUserState({ credits: soDuDichThuc });
+            }
+          } else {
+            console.error('[CRITICAL] Hệ thống nhận về giá trị không phải là số từ socket, từ chối cập nhật để tránh lỗi NaN');
+          }
+        } catch (errorCredits) {
+          console.error('[CRITICAL ERROR] Lỗi cập nhật số dư Credits từ socket:', errorCredits.message);
+        }
+      }
+    };
+
+    const handleNotificationReceived = (notificationData) => {
+      console.log('[REAL-TIME NOTIFICATION] Nhận thông báo mới từ hệ thống:', notificationData);
+      
+      // Kích hoạt tăng số lượng thông báo hiển thị trên quả chuông đỏ của Header
+      if (typeof setNotificationCount === 'function') {
+        setNotificationCount(prevCount => (parseInt(prevCount, 10) || 0) + 1);
+      }
+    };
+
+    const handleUserPipelineUpdate = (payload) => {
+      console.log('[REAL-TIME MAINLAYOUT] Nhận dữ liệu cập nhật ví & thông báo:', payload);
+      if (payload && payload.credits !== null) {
+        const soDuDichThuc = Number(payload.credits);
+        if (!isNaN(soDuDichThuc)) {
+          if (typeof setCredits === 'function') {
+            setCredits(soDuDichThuc);
+          }
+          if (typeof updateUserState === 'function') {
+            updateUserState({ credits: soDuDichThuc });
+          }
+        }
+      }
+    };
+
+    socket.on('user:credit_updated', handleCreditUpdated);
+    socket.on('notification:received', handleNotificationReceived);
+    socket.on('USER_PIPELINE_UPDATE', handleUserPipelineUpdate);
+
+    return () => {
+      socket.off('user:credit_updated', handleCreditUpdated);
+      socket.off('notification:received', handleNotificationReceived);
+      socket.off('USER_PIPELINE_UPDATE', handleUserPipelineUpdate);
+    };
+  }, [user, updateUserState]);
 
   // Sync volume of audio element and handle reset play state when job changes
   useEffect(() => {
@@ -269,11 +347,14 @@ const MainLayout = () => {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }} className="relative">
       <Header 
         credits={credits} 
+        setCredits={setCredits} 
         toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
         avatar={userProfile.avatar}
         name={userProfile.name}
         setPreviewJob={setPreviewJob}
         loadHistory={loadHistory}
+        unreadCount={notificationCount}
+        setUnreadCount={setNotificationCount}
       />
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }} className="relative">
         {/* Backdrop for mobile/tablet when sidebar is open */}
@@ -329,7 +410,7 @@ const MainLayout = () => {
       {/* High-Specification History Preview Dialog Modal Audio */}
       {previewJob && (
         <div className="backdrop-blur-sm bg-black/60 fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="!p-6 bg-zinc-950 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl relative text-left flex flex-col gap-4">
+          <div className={`!p-6 bg-zinc-950 border border-zinc-800 rounded-2xl w-full shadow-2xl relative text-left flex flex-col gap-4 transition-all duration-300 ${previewJob?.type === 'video' ? '!max-w-2xl' : '!max-w-md'}`}>
             
             {/* Header */}
             <div className="flex justify-between items-center pb-3 border-b border-zinc-900">
@@ -355,7 +436,7 @@ const MainLayout = () => {
             {previewJob.type === 'video' ? (
               <div className="w-full aspect-video bg-black rounded-xl overflow-hidden border border-zinc-900">
                 <video 
-                  src={`http://localhost:3000/uploads/videos/AI_Studio_Video_ID_${previewJob.id}.mp4`}
+                  src={previewJob.output_url || previewJob.videoUrl}
                   controls 
                   autoPlay 
                   className="w-full h-full object-contain"

@@ -1,100 +1,139 @@
-const { VideoJob } = require('../models');
+const { fal } = require('@fal-ai/client');
+const { VideoJob, SystemConfig } = require('../models');
+
+const getConfigValue = async (key, envFallback = null) => {
+  try {
+    const row = await SystemConfig.findByPk(key);
+    if (row && row.value && row.value.trim()) {
+      return row.value.trim();
+    }
+  } catch (err) {
+    console.warn(`[VIDEO SERVICE] Khong the doc key="${key}" tu DB:`, err.message);
+  }
+  return envFallback;
+};
+
+const getFalApiKey = async () => {
+  return getConfigValue('fal_api_key', process.env.FAL_API_KEY || '');
+};
 
 class VideoService {
-  /**
-   * Triggers the async third-party AI Video generation API (e.g. Kling AI / Runway Gen-3)
-   * @param {number} jobId - Local database job ID
-   */
-  async triggerThirdPartyVideoGeneration(jobId) {
-    try {
-      const job = await VideoJob.findByPk(jobId);
-      if (!job) {
-        console.error(`[VIDEO SERVICE] Job #${jobId} not found.`);
-        return;
-      }
 
-      // 1. Prepare callback webhook URL
-      const webhookUrl = process.env.WEBHOOK_URL || "http://localhost:3000/api/video/webhook";
-
-      // 2. Fetch active OpenAI key from database configs dynamically
-      const dbConfig = await require('../models').SystemConfig.findByPk('openai_key');
-      const activeOpenaiKey = (dbConfig && dbConfig.value) ? dbConfig.value : (process.env.OPENAI_API_KEY || '');
-
-      console.log(`[VIDEO SERVICE] Formulating third-party API payload for job #${jobId}. Key status: ${activeOpenaiKey ? 'Configured' : 'Empty'}`);
-      
-      // Simulate network request delay (e.g., 200ms)
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      const apiResponseTaskId = `task_kling_${Math.random().toString(36).substring(2, 15)}`;
-
-      // 3. Update local database record: set taskId and status to 'Processing'
-      job.thirdPartyTaskId = apiResponseTaskId;
-      job.status = 'Processing';
-      await job.save();
-
-      console.log(`[VIDEO SERVICE] Task accepted by third-party. Task ID: ${apiResponseTaskId}. Status: Processing.`);
-
-      // 4. AUTOMATIC CALLBACK SIMULATOR
-      // To simulate the third-party webhook firing after video rendering finishes:
-      const simulatedDelay = 5000 + Math.random() * 3000; // 5 to 8 seconds
-      setTimeout(async () => {
-        try {
-          console.log(`[CALLBACK SIMULATOR] Firing webhook for task: ${apiResponseTaskId}`);
-          
-          // Absolute path of mock video uploads
-          const mockVideoUrl = `http://localhost:3000/uploads/videos/AI_Studio_Video_ID_${jobId}.mp4`;
-
-          // Fire local POST webhook request
-          const response = await fetch(webhookUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              task_id: apiResponseTaskId,
-              task_status: 'SUCCEEDED',
-              video_url: mockVideoUrl
-            })
-          });
-          
-          if (!response.ok) {
-            console.error(`[CALLBACK SIMULATOR] Webhook request failed with status: ${response.status}`);
-          }
-        } catch (webhookErr) {
-          console.error('[CALLBACK SIMULATOR] Error firing webhook:', webhookErr.message);
-        }
-      }, simulatedDelay);
-
-    } catch (error) {
-      console.error(`[VIDEO SERVICE] Error in triggerThirdPartyVideoGeneration for job #${jobId}:`, error.message);
-      // Mark job as failed
-      try {
-        const job = await VideoJob.findByPk(jobId);
-        if (job) {
-          job.status = 'Failed';
-          await job.save();
-        }
-      } catch (dbErr) {
-        console.error('[VIDEO SERVICE] Failed to update job status to Failed:', dbErr.message);
-      }
+  async generateVideo({ jobId, modelName, prompt, imageUrl, aspectRatio, duration, webhookUrl }) {
+    const falKey = await getFalApiKey();
+    if (!falKey) {
+      throw new Error('Fal.ai API key khong duoc cau hinh.');
     }
+
+    fal.config({ credentials: falKey });
+
+    // 💡 BỦA BỌC THÉP: Chuyển đổi aspect_ratio sang định dạng Fal.ai chấp nhận
+    let finalAspectRatio = '16:9';
+    const inputRatio = aspectRatio || '16:9';
+
+    if (['16:9', '9:16', '1:1', 'auto'].includes(inputRatio)) {
+      finalAspectRatio = inputRatio;
+    } else if (inputRatio === '4:3') {
+      // Nếu người dùng chọn chuẩn 4:3, ép về 'auto' để mô hình Wan không bị nổ lỗi Client Error
+      finalAspectRatio = 'auto'; 
+    }
+
+    // =========================================================================
+    // RE NHANH ENDPOINT CHUAN FAL.AI
+    // =========================================================================
+    let falEndpoint = '';
+    let falPayload  = {};
+
+    if (modelName === 'kling_v2_5_standard') {
+      falEndpoint = 'fal-ai/kling-video/v2.5-turbo/standard/image-to-video';
+      falPayload = {
+        image_url   : imageUrl,
+        prompt      : prompt,
+        aspect_ratio: finalAspectRatio,
+        duration    : Number(duration || 5),
+        mode        : 'std',
+      };
+
+    } else if (modelName === 'wan_turbo') {
+      falEndpoint = 'fal-ai/wan/v2.2-a14b/image-to-video/turbo';
+      falPayload = {
+        image_url   : imageUrl,
+        prompt      : prompt,
+        aspect_ratio: finalAspectRatio,
+      };
+
+    } else {
+      // Fallback về wan_turbo nếu model không xác định
+      falEndpoint = 'fal-ai/wan/v2.2-a14b/image-to-video/turbo';
+      falPayload = {
+        image_url   : imageUrl,
+        prompt      : prompt,
+        aspect_ratio: finalAspectRatio,
+      };
+    }
+
+    const submitOptions = { input: falPayload };
+
+    if (webhookUrl) {
+      submitOptions.webhookUrl = webhookUrl;
+      console.log(`[VIDEO SERVICE] Webhook URL duoc gan cho job #${jobId}: ${webhookUrl}`);
+    }
+
+    console.log(`[VIDEO SERVICE] Gui yeu cau queue den endpoint: ${falEndpoint} cho job #${jobId}`);
+    console.log(`[VIDEO SERVICE] Payload gui len Fal.ai:`, JSON.stringify(falPayload).substring(0, 300));
+
+    const response = await fal.queue.submit(falEndpoint, submitOptions);
+
+    console.log(`[VIDEO SERVICE] Fal.ai queue submit response cho job #${jobId}:`, JSON.stringify(response).substring(0, 200));
+
+    const requestId = response.request_id;
+
+    if (!requestId) {
+      throw new Error('Fal.ai khong tra ve request_id sau khi queue.submit.');
+    }
+
+    // ── Ghi nhận hóa đơn chi phí (ApiCost) ──
+    try {
+      const { ApiCost } = require('../models');
+      let estimatedUsdCost = 0.05; // Mặc định cho Wan v2.2 Turbo
+
+      if (modelName === 'kling_v2_5_standard') {
+        // Kling v2.5 Standard 10s tốn tài nguyên hơn 5s
+        estimatedUsdCost = Number(duration) === 10 ? 0.20 : 0.10;
+      } else if (modelName === 'kling_v1_6') {
+        estimatedUsdCost = 0.15;
+      }
+
+      await ApiCost.create({
+        provider: 'Fal',
+        cost: estimatedUsdCost,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+      console.log(`[API LOG COST] Đã lưu vết chi phí: Fal | $${estimatedUsdCost} cho Job #${jobId}`);
+    } catch (databaseError) {
+      console.error('[VIDEO SERVICE] ⚠️ Lỗi khi ghi nhận ApiCost Fal.ai:', databaseError.message);
+    }
+
+    // Tra ve falEndpoint cung voi requestId de controller build URL polling chinh xac
+    // Tranh loi 404 do dung basePath rut gon thay vi full endpoint path
+    return { requestId, falEndpoint, videoUrl: null };
   }
 }
 
 module.exports = new VideoService();
 
-// Register VideoJob hook dynamically to send notifications when VideoJob status changes to Completed or Failed
 const { Notification } = require('../models');
 const notificationEmitter = require('../utils/notificationEmitter');
 
 VideoJob.afterUpdate('notifyVideoJobStatusChange', async (job, options) => {
   if (job.changed('status')) {
-    if (job.status === 'Completed') {
+    if (job.status === 'success') {
       try {
         const successNotif = await Notification.create({
           userId: job.userId,
-          title: 'Tác vụ hoàn tất',
-          message: `Tạo video AI thành công cho tác vụ #${job.id}`,
+          title: 'Tac vu hoan tat',
+          message: `Tao video AI thanh cong cho tac vu #${job.id}`,
           type: 'info',
           is_read: false
         });
@@ -103,12 +142,12 @@ VideoJob.afterUpdate('notifyVideoJobStatusChange', async (job, options) => {
       } catch (err) {
         console.error('[VIDEO JOB HOOK] Error sending success notification:', err.message);
       }
-    } else if (job.status === 'Failed') {
+    } else if (job.status === 'failed') {
       try {
         const failNotif = await Notification.create({
           userId: job.userId,
-          title: 'Lỗi xử lý tác vụ',
-          message: `Gặp lỗi khi tạo video AI cho tác vụ #${job.id}`,
+          title: 'Loi xu ly tac vu',
+          message: `Gap loi khi tao video AI cho tac vu #${job.id}`,
           type: 'error',
           is_read: false
         });
@@ -120,4 +159,3 @@ VideoJob.afterUpdate('notifyVideoJobStatusChange', async (job, options) => {
     }
   }
 });
-

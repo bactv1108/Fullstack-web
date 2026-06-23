@@ -23,7 +23,7 @@ module.exports = (sequelize) => {
       field: 'aspect_ratio'
     },
     status: {
-      type: DataTypes.ENUM('Pending', 'Rendering', 'Failed', 'Completed'),
+      type: DataTypes.ENUM('Pending', 'Rendering', 'Failed', 'Completed', 'failed_violation'),
       defaultValue: 'Pending',
       allowNull: false,
     },

@@ -1,5 +1,5 @@
 const adminService = require('../services/admin.service');
-const { ApiCost, CreditStat, Job } = require('../models');
+const { ApiCost, CreditStat, Job, sequelize } = require('../models');
 
 /**
  * GET /api/admin/dashboard/stats
@@ -355,12 +355,26 @@ const getQueueStatus = async (req, res) => {
  */
 const getApiCosts = async (req, res) => {
   try {
-    const costs = await ApiCost.findAll();
-    const totalCosts = costs.reduce((sum, c) => sum + parseFloat(c.cost), 0);
-    return res.status(200).json({
-      total: parseFloat(totalCosts.toFixed(2)),
-      providers: costs.map(c => ({ name: c.provider, cost: parseFloat(c.cost) }))
+    const { Op } = require('sequelize');
+    const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+    const providerStats = await ApiCost.findAll({
+      where: {
+        createdAt: {
+          [Op.gte]: startOfMonth
+        }
+      },
+      attributes: [
+        'provider',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'total_calls'],
+        [sequelize.fn('SUM', sequelize.col('cost')), 'total_spend']
+      ],
+      group: ['provider'], 
+      order: [[sequelize.literal('total_spend'), 'DESC']],
+      raw: true
     });
+
+    return res.status(200).json({ success: true, data: providerStats });
   } catch (err) {
     console.error('[ADMIN CONTROLLER] getApiCosts error:', err.message);
     return res.status(500).json({ message: 'Lỗi hệ thống khi tải chi phí API.' });
@@ -554,9 +568,13 @@ const approveTransactionManually = async (req, res) => {
       // 1. Update status
       await transaction.update({ status: 'success' }, { transaction: t });
 
-      // 2. Increment user credits
-      await User.increment(
-        { credits: transaction.credits_added },
+      // 2 & 3. Update credits and current_package
+      const targetPackage = transaction.package_name.toLowerCase().includes('premium') ? 'premium' : 'free';
+      await User.update(
+        { 
+          credits: sequelize.literal(`credits + ${transaction.credits_added}`),
+          current_package: targetPackage
+        }, 
         { where: { id: transaction.userId }, transaction: t }
       );
 
@@ -617,6 +635,358 @@ const approveTransactionManually = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/admin/moderation/queue
+ * Lấy danh sách các Job đang chờ kiểm duyệt (status = 'Pending')
+ * Kèm thông tin owner (name, email, avatar) để hiển thị trên Card
+ */
+const getModerationQueue = async (req, res) => {
+  try {
+    const { Job, User } = require('../models');
+    const items = await Job.findAll({
+      where: { status: 'Pending' },
+      order: [['id', 'DESC']],
+      limit: 50,
+      include: [{
+        model: User,
+        as: 'owner',
+        attributes: ['id', 'name', 'email', 'avatar']
+      }]
+    });
+
+    return res.status(200).json({
+      success: true,
+      items: items.map(job => ({
+        id: job.id,
+        name: job.name,
+        type: job.type,
+        status: job.status,
+        prompt: job.prompt,
+        output_url: job.output_url,
+        meta_data: job.meta_data,
+        created_at: job.created_at,
+        user: job.owner ? {
+          id: job.owner.id,
+          name: job.owner.name,
+          email: job.owner.email,
+          avatar: job.owner.avatar
+        } : null
+      }))
+    });
+  } catch (err) {
+    console.error('[ADMIN CONTROLLER] getModerationQueue error:', err.message);
+    return res.status(500).json({ message: 'Lỗi hệ thống khi tải hàng đợi kiểm duyệt.' });
+  }
+};
+
+/**
+ * POST /api/admin/moderation/review
+ * Xử lý quyết định kiểm duyệt của Admin
+ * Body: { itemId: number, action: 'approved' | 'rejected' }
+ * - 'approved' → cập nhật status = 'Completed'
+ * - 'rejected'  → cập nhật status = 'Failed'
+ */
+const reviewModerationItem = async (req, res) => {
+  const { itemId, action } = req.body;
+
+  if (!itemId || !['approved', 'rejected'].includes(action)) {
+    return res.status(400).json({
+      message: 'Dữ liệu không hợp lệ. Cần itemId và action (approved | rejected).'
+    });
+  }
+
+  try {
+    const { Job } = require('../models');
+    const job = await Job.findByPk(itemId);
+
+    if (!job) {
+      return res.status(404).json({ message: `Không tìm thấy item ID ${itemId}.` });
+    }
+
+    const newStatus = action === 'approved' ? 'Completed' : 'Failed';
+    await job.update({ status: newStatus });
+
+    console.log(`[MODERATION] Item #${itemId} → ${newStatus} bởi Admin`);
+
+    return res.status(200).json({
+      success: true,
+      message: action === 'approved'
+        ? `Đã duyệt item #${itemId} thành công.`
+        : `Đã từ chối item #${itemId}.`,
+      itemId,
+      newStatus
+    });
+  } catch (err) {
+    console.error('[ADMIN CONTROLLER] reviewModerationItem error:', err.message);
+    return res.status(500).json({ message: 'Lỗi hệ thống khi xử lý kiểm duyệt.' });
+  }
+};
+
+/**
+ * GET /api/admin/video-jobs
+ * Retrieve paginated & filtered video jobs history logs
+ * Query params: page (default 1), limit (forced 10), status ('all'|'success'|'failed'|'processing'|'queueing'), modelName ('wan_turbo'|'kling_v2_5_standard'), search/searchWord (optional string)
+ * Returns: { rows, totalPages, currentPage, totalItems, countAll, countSuccess, countFailed, countProcessing, countQueueing, countWanTurbo, countKlingStandard, counts }
+ */
+const getVideoJobs = async (req, res) => {
+  try {
+    const { VideoJob, User } = require('../models');
+    const { Op } = require('sequelize');
+
+    // ── Hard-lock pagination: 10 rows per page ──
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = 10;
+    const offset = (page - 1) * limit;
+
+    // ── Search filter (by id, user name, or user email) ──
+    const searchWord = (req.query.search || req.query.searchWord || '').trim();
+    const statusParam = (req.query.status || 'all').trim().toLowerCase();
+    const modelNameParam = (req.query.modelName || '').trim().toLowerCase();
+
+    let isSearchNumeric = false;
+    if (searchWord) {
+      const parsedId = parseInt(searchWord, 10);
+      if (!isNaN(parsedId) && String(parsedId) === searchWord) {
+        isSearchNumeric = true;
+      }
+    }
+
+    const hasUserTextSearch = searchWord && !isSearchNumeric;
+    const includeRequired = hasUserTextSearch ? true : false;
+
+    // Build main where condition
+    const whereClause = {};
+    if (searchWord) {
+      if (isSearchNumeric) {
+        whereClause.id = parseInt(searchWord, 10);
+      } else {
+        whereClause[Op.or] = [
+          { '$owner.name$': { [Op.like]: `%${searchWord}%` } },
+          { '$owner.email$': { [Op.like]: `%${searchWord}%` } }
+        ];
+      }
+    }
+
+    if (['success', 'failed', 'processing', 'queueing'].includes(statusParam)) {
+      whereClause.status = statusParam;
+    }
+
+    if (['wan_turbo', 'kling_v2_5_standard'].includes(modelNameParam)) {
+      whereClause.modelName = modelNameParam;
+    }
+
+    // Build base where condition for tab counts (ignores status and model filters, applies search filter)
+    const baseWhere = {};
+    if (searchWord) {
+      if (isSearchNumeric) {
+        baseWhere.id = parseInt(searchWord, 10);
+      } else {
+        baseWhere[Op.or] = [
+          { '$owner.name$': { [Op.like]: `%${searchWord}%` } },
+          { '$owner.email$': { [Op.like]: `%${searchWord}%` } }
+        ];
+      }
+    }
+
+    const countInclude = [{
+      model: User,
+      as: 'owner',
+      attributes: [],
+      required: includeRequired
+    }];
+
+    // ── Parallel: paginated query + counts for tab badges ──
+    const [
+      { count, rows },
+      countAll,
+      countSuccess,
+      countFailed,
+      countProcessing,
+      countQueueing,
+      countWanTurbo,
+      countKlingStandard
+    ] = await Promise.all([
+      VideoJob.findAndCountAll({
+        where: whereClause,
+        limit,
+        offset,
+        order: [['id', 'DESC']],
+        include: [{
+          model: User,
+          as: 'owner',
+          attributes: ['name', 'email'],
+          required: includeRequired
+        }]
+      }),
+      VideoJob.count({
+        where: baseWhere,
+        include: countInclude
+      }),
+      VideoJob.count({
+        where: { ...baseWhere, status: 'success' },
+        include: countInclude
+      }),
+      VideoJob.count({
+        where: { ...baseWhere, status: 'failed' },
+        include: countInclude
+      }),
+      VideoJob.count({
+        where: { ...baseWhere, status: 'processing' },
+        include: countInclude
+      }),
+      VideoJob.count({
+        where: { ...baseWhere, status: 'queueing' },
+        include: countInclude
+      }),
+      VideoJob.count({
+        where: { ...baseWhere, modelName: 'wan_turbo' },
+        include: countInclude
+      }),
+      VideoJob.count({
+        where: { ...baseWhere, modelName: 'kling_v2_5_standard' },
+        include: countInclude
+      })
+    ]);
+
+    const totalPages = Math.ceil(count / limit) || 1;
+
+    const formattedData = rows.map(r => ({
+      id: r.id,
+      prompt: r.prompt,
+      model_name: r.modelName || r.model_name,
+      aspect_ratio: r.aspectRatio || r.aspect_ratio,
+      status: r.status,
+      videoUrl: r.videoUrl,
+      createdAt: r.createdAt,
+      owner: r.owner ? {
+        name: r.owner.name,
+        email: r.owner.email
+      } : null
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: formattedData,
+      pagination: {
+        totalItems: count,
+        totalPages: totalPages,
+        currentPage: page,
+        counts: {
+          all: countAll,
+          success: countSuccess,
+          failed: countFailed,
+          processing: countProcessing,
+          queueing: countQueueing,
+          wan_turbo: countWanTurbo,
+          kling_v2_5_standard: countKlingStandard
+        }
+      }
+    });
+  } catch (error) {
+    console.error('[ADMIN CONTROLLER] getVideoJobs error:', error.message);
+    return res.status(500).json({ message: 'Lỗi hệ thống khi tải lịch sử Video AI.' });
+  }
+};
+
+const getCreditStatistics = async (request, response) => {
+  try {
+    const statisticsData = await CreditStat.findAll({ order: [['id', 'ASC']] });
+    const formattedData = statisticsData.map((item) => ({
+      id: item.id,
+      month: item.month,
+      credits_used: item.creditsUsed,
+      credits_purchased: item.creditsPurchased
+    }));
+    return response.json({ success: true, data: formattedData });
+  } catch (error) {
+    console.error('[ADMIN CONTROLLER] getCreditStatistics error:', error.message);
+    return response.status(500).json({ success: false, message: 'Lỗi hệ thống khi tải dữ liệu thống kê tín dụng.' });
+  }
+};
+
+const getDetailedApiLogs = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 20;
+    const offset = (page - 1) * limit;
+    const { provider } = req.query;
+
+    const whereClause = {};
+    if (provider) {
+      whereClause.provider = provider;
+    }
+
+    const { count, rows } = await ApiCost.findAndCountAll({
+      where: whereClause,
+      limit: limit,
+      offset: offset,
+      order: [['createdAt', 'DESC']],
+      raw: true
+    });
+
+    // Ánh xạ dữ liệu sang định dạng hiển thị
+    const mappedLogs = rows.map(log => ({
+      id: log.id,
+      provider_name: log.provider,
+      amount: log.cost,
+      action_type: 'Gọi API ' + log.provider,
+      userId: 'Hệ thống',
+      createdAt: log.createdAt
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: mappedLogs,
+      pagination: {
+        totalItems: count,
+        totalPages: Math.ceil(count / limit),
+        currentPage: page,
+        itemsPerPage: limit
+      }
+    });
+  } catch (error) {
+    console.error('[ADMIN CONTROLLER] getDetailedApiLogs error:', error.message);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const confirmImageViolation = async (req, res) => {
+  try {
+    const { imageId } = req.body;
+    const { ImageAnalysis } = require('../models');
+    const log = await ImageAnalysis.findByPk(imageId);
+    if (!log) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy bản ghi kiểm duyệt.' });
+    }
+
+    // Cập nhật trạng thái vĩnh viễn xuống DB chống lỗi F5 hiện lại
+    await log.update({ status: 'rejected' });
+
+    // Phát tin nhắn socket cho user room để đồng bộ trạng thái ở client nếu cần
+    const io = req.io;
+    if (io && log.user_id) {
+      const userRoom = `user_room_${log.user_id}`;
+      io.to(userRoom).emit('image_analysis_result', {
+        itemId: Number(imageId),
+        status: 'failed',
+        resultData: {
+          id: log.id,
+          prompt_output: log.prompt_output || null,
+          input_tokens: log.input_tokens || null,
+          output_tokens: log.output_tokens || null,
+          status: 'failed',
+          error_message: log.error_message || 'Ảnh của bạn đã bị Admin xác nhận vi phạm chính sách.',
+        },
+        message: 'Ảnh của bạn đã bị Admin xác nhận vi phạm chính sách.'
+      });
+    }
+
+    return res.status(200).json({ success: true, message: 'Đã cập nhật trạng thái vi phạm vĩnh viễn.' });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   getDashboardStats,
   getBillingPlans,
@@ -635,7 +1005,14 @@ module.exports = {
   getCreditStats,
   getImageAnalyses,
   getAllTransactions,
-  approveTransactionManually
+  approveTransactionManually,
+  getModerationQueue,
+  reviewModerationItem,
+  getVideoJobs,
+  getCreditStatistics,
+  getDetailedApiLogs,
+  confirmImageViolation
 };
+
 
 

@@ -52,6 +52,11 @@ export default function TtsView() {
   const [playingVoiceId, setPlayingVoiceId] = useState(null);
   const previewAudioRef = useRef(null);
 
+  const truncateText = (str, maxLen = 200) => {
+    if (!str || typeof str !== 'string') return str;
+    return str.length > maxLen ? str.substring(0, maxLen) + '...' : str;
+  };
+
   const [showScrollTop, setShowScrollTop] = useState(false);
   useEffect(() => {
     const handleScroll = () => { setShowScrollTop(window.scrollY > 300); };
@@ -131,18 +136,19 @@ export default function TtsView() {
   };
 
   const initialPremiumVoices = [
-    { id: "vi-VN-NamMinhNeural", identifier: "vi-VN-NamMinhNeural", name: "Giọng mặc định (Nam Minh)", gender: "Male", preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
-    { id: "vi-VN-HoaiMyNeural", identifier: "vi-VN-HoaiMyNeural", name: "Giọng mặc định (Hoài My)", gender: "Female", preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
-    { id: "en-US-JennyNeural", identifier: "en-US-JennyNeural", name: "Giọng mặc định (Jenny)", gender: "Female", preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
-    { id: "ja-JP-NanamiNeural", identifier: "ja-JP-NanamiNeural", name: "Giọng mặc định (Nanami)", gender: "Female", preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
-    { id: "pNInz6obpgmA5QCmsfUR", identifier: "pNInz6obpgmA5QCmsfUR", name: "Adam (Nam Trầm - Cuốn hút)", gender: "Male", tags: ["Narration", "Lifestyle"], preview_url: "https://storage.googleapis.com/eleven-public-prod/premade/voices/pNInz6obpgDQGcFmaJgB/38a69695-2ca9-4b9e-b9ec-f07ced494a58.mp3" },
-    { id: "21m00Tcm4TlvDq8ikWAM", identifier: "21m00Tcm4TlvDq8ikWAM", name: "Rachel (Nữ Ấm áp - Quốc dân)", gender: "Female", tags: ["Review", "Story"], preview_url: "https://storage.googleapis.com/eleven-public-prod/premade/voices/21m00Tcm4TlvDq8ikWAM/df6788f9-5c96-470d-8312-aab3b3d8f50a.mp3" },
-    { id: "ErXwobaYiN019PkySvjV", identifier: "ErXwobaYiN019PkySvjV", name: "Antoni (Nam Đọc Sắc nét - Pro)", gender: "Male", tags: ["Technology", "Ads"], preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
-    { id: "EXAVITQu4vr4xnSDxMaL", identifier: "EXAVITQu4vr4xnSDxMaL", name: "Bella (Nữ Nhẹ nhàng - Sâu lắng)", gender: "Female", tags: ["Podcast", "Vlog"], preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
-    { id: "jBpfYwDxm6atqNs9Q7gH", identifier: "jBpfYwDxm6atqNs9Q7gH", name: "Gigi (Nữ Năng động - TikTok trend)", gender: "Female", tags: ["Animation", "Promo"], preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
-    { id: "TxGEqn7nU7vIuJ7DgnCc", identifier: "TxGEqn7nU7vIuJ7DgnCc", name: "Josh (Nam Trầm dày - Thương hiệu)", gender: "Male", tags: ["Commercial"], preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
-    { id: "MF3mGyEYCl7XYWbms88w", identifier: "MF3mGyEYCl7XYWbms88w", name: "Elli (Nữ Trong trẻo - Tin tức)", gender: "Female", tags: ["News", "Tutorial"], preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
-    { id: "IKne3meq5aSn9XLyUdCD", identifier: "IKne3meq5aSn9XLyUdCD", name: "Arnold (Nam Mạnh mẽ - Động lực)", gender: "Male", tags: ["Motivation"], preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" }
+    { id: "vi-VN-NamMinhNeural",  identifier: "vi-VN-NamMinhNeural",  name: "Nam Minh (Nam Việt Nam)",             gender: "Male",   preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
+    { id: "vi-VN-HoaiMyNeural",   identifier: "vi-VN-HoaiMyNeural",   name: "Hoài My (Nữ Việt Nam)",              gender: "Female", preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
+    { id: "en-US-JennyNeural",    identifier: "en-US-JennyNeural",    name: "Jenny (Nữ - English US)",            gender: "Female", preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
+    { id: "en-US-GuyNeural",      identifier: "en-US-GuyNeural",      name: "Guy (Nam - English US)",              gender: "Male",   preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
+    { id: "ja-JP-NanamiNeural",   identifier: "ja-JP-NanamiNeural",   name: "Nanami (Nữ - Japanese)",             gender: "Female", preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
+    { id: "pNInz6obpgmA5QCmsfUR", identifier: "pNInz6obpgmA5QCmsfUR", name: "Adam (Nam Trầm - Cuốn hút)",           gender: "Male",   tags: ["Narration", "Lifestyle"], preview_url: "https://storage.googleapis.com/eleven-public-prod/premade/voices/pNInz6obpgDQGcFmaJgB/38a69695-2ca9-4b9e-b9ec-f07ced494a58.mp3" },
+    { id: "21m00Tcm4TlvDq8ikWAM", identifier: "21m00Tcm4TlvDq8ikWAM", name: "Rachel (Nữ Ấm áp - Quốc dân)",         gender: "Female", tags: ["Review", "Story"], preview_url: "https://storage.googleapis.com/eleven-public-prod/premade/voices/21m00Tcm4TlvDq8ikWAM/df6788f9-5c96-470d-8312-aab3b3d8f50a.mp3" },
+    { id: "ErXwobaYiN019PkySvjV",  identifier: "ErXwobaYiN019PkySvjV",  name: "Antoni (Nam Đọc Sắc nét - Pro)",       gender: "Male",   tags: ["Technology", "Ads"],  preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
+    { id: "EXAVITQu4vr4xnSDxMaL", identifier: "EXAVITQu4vr4xnSDxMaL", name: "Bella (Nữ Nhẹ nhàng - Sâu lắng)",      gender: "Female", tags: ["Podcast", "Vlog"],   preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
+    { id: "jBpfYwDxm6atqNs9Q7gH",  identifier: "jBpfYwDxm6atqNs9Q7gH",  name: "Gigi (Nữ Năng động - TikTok trend)",  gender: "Female", tags: ["Animation", "Promo"], preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
+    { id: "TxGEqn7nU7vIuJ7DgnCc",  identifier: "TxGEqn7nU7vIuJ7DgnCc",  name: "Josh (Nam Trầm dày - Thương hiệu)",    gender: "Male",   tags: ["Commercial"],        preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
+    { id: "MF3mGyEYCl7XYWbms88w",  identifier: "MF3mGyEYCl7XYWbms88w",  name: "Elli (Nữ Trong trẻẻ - Tin tức)",       gender: "Female", tags: ["News", "Tutorial"],   preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
+    { id: "IKne3meq5aSn9XLyUdCD",  identifier: "IKne3meq5aSn9XLyUdCD",  name: "Arnold (Nam Mạnh mẽ - Động lực)",      gender: "Male",   tags: ["Motivation"],        preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" }
   ];
 
   const [voices, setVoices] = useState(initialPremiumVoices);
@@ -244,12 +250,22 @@ export default function TtsView() {
       const url = '/voices';
       const data = await axiosClient.get(url);
       const voiceList = Array.isArray(data) ? data : (data?.voices || data?.data || []);
-      const mapped = voiceList.map(v => ({
-        id: v.id,
-        identifier: v.voice_id || v.identifier || v.id,
-        name: v.name,
-        preview_url: v.preview_url
-      }));
+
+      // Map deprecated voice identifiers sang giọng hiện tại để dùng Frontend luôn hiển thị đúng
+      const VOICE_ALIAS_MAP = {
+        'vi-VN-HoaiAnNeural': 'vi-VN-HoaiMyNeural',
+      };
+
+      const mapped = voiceList.map(v => {
+        const rawId = v.voice_id || v.identifier || v.id;
+        const resolvedId = VOICE_ALIAS_MAP[rawId] || rawId;
+        return {
+          id: v.id,
+          identifier: resolvedId,
+          name: v.name,
+          preview_url: v.preview_url
+        };
+      });
       setVoices(mapped);
     } catch (err) {
       console.error('[TTS VIEW] Failed to load voice assets:', err.message);
@@ -352,6 +368,7 @@ export default function TtsView() {
   };
 
   const progressPercentage = audioDuration ? (audioCurrentTime / audioDuration) * 100 : 0;
+  const activeTrack = activeJobId ? historyList.find(item => item.id === activeJobId) : null;
 
   useEffect(() => {
     const tx = ttsTextareaRef.current;
@@ -363,7 +380,7 @@ export default function TtsView() {
 
   return (
     <div className="!w-full !min-h-[calc(100vh-65px)] !bg-[#09090b] text-white !py-8 !px-4 sm:!px-6 lg:!px-8 !block !clear-both">
-      <div className="!max-w-7xl !mx-auto !w-full !flex !flex-col !gap-6 md:!gap-8 !items-stretch">
+      <div className="!max-w-[1920px] !mx-auto !w-full !flex !flex-col !gap-6 md:!gap-8 !items-stretch">
         
         {/* KHU VỰC TIÊU ĐỀ TRANG */}
         <div className="!flex !flex-col !gap-1 !w-full">
@@ -379,7 +396,7 @@ export default function TtsView() {
         </div>
 
         {/* Outer panel container styled matching geometric layout */}
-        <div className="!p-6 !bg-[#111114] !border !border-[#222226] !rounded-2xl p-5 sm:p-6 md:p-8 !w-full !shadow-2xl flex flex-col lg:flex-row gap-8 relative select-none">
+        <div className="!p-4 !bg-[#111114] !border !border-[#222226] !rounded-2xl p-5 sm:p-6 md:p-8 !w-full !shadow-2xl flex flex-col lg:flex-row gap-8 relative select-none">
 
         {/* Configuration Panel */}
         <section
@@ -421,7 +438,7 @@ export default function TtsView() {
                 ref={ttsTextareaRef}
                 value={text}
                 onChange={handleTextChange}
-                className="w-full !p-3 min-h-[120px] h-32 bg-[#0f0f11] text-white p-4 rounded-xl border border-[#222226] placeholder-zinc-500 transition-all focus:outline-none focus:border-[#f59e0b] resize-none font-medium text-sm shadow-inner"
+                className="!p-2 !w-full !h-[260px] !min-h-[200px] !max-h-[300px] !overflow-y-auto !resize-none bg-[#18181a] border border-[#222226] rounded-xl p-4 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 transition-all duration-200"
                 placeholder="Nhập kịch bản văn bản tại đây..."
               />
             </div>
@@ -703,11 +720,9 @@ export default function TtsView() {
               }}
             />
 
-            <p className="text-center max-w-xl mx-auto leading-relaxed px-4 py-1 select-none">
-              <span className="text-zinc-300 text-sm font-bold tracking-wide">
-                {activeJobId 
-                  ? (historyList.find(item => item.id === activeJobId)?.title || `Giọng nói #${activeJobId}`) 
-                  : "Giọng nói bản nháp mới"}
+            <p className="!text-center !max-w-xl !mx-auto !leading-relaxed !px-4 !py-1 !select-none !break-words !overflow-wrap-break-word !whitespace-pre-wrap" style={{ wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}>
+              <span className="!text-zinc-300 !text-sm !font-bold !tracking-wide">
+                {truncateText(activeTrack?.title || activeTrack?.prompt || text?.trim()?.split(/\s+/)?.slice(0, 7)?.join(' ') || 'Trình phát âm thanh AI', 200)}
               </span>
             </p>
 
@@ -863,7 +878,14 @@ export default function TtsView() {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (triggerDeleteHistory) triggerDeleteHistory(item);
+                        if (triggerDeleteHistory) {
+                          // Đảm bảo truyền object đầy đủ với type đúng để Global Dialog
+                          // route tới đúng endpoint: DELETE /api/user/jobs/:id (bảng Job)
+                          triggerDeleteHistory({
+                            ...item,
+                            type: item.type || 'tts', // guard: luôn có type
+                          });
+                        }
                       }}
                       className="p-1.5 text-zinc-550 hover:text-red-400 hover:bg-red-955/20 rounded transition-colors cursor-pointer bg-transparent border-none flex items-center justify-center"
                       title="Xóa"
@@ -887,7 +909,7 @@ export default function TtsView() {
       <button
         type="button"
         onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-        className={`fixed bottom-6 right-6 bg-[#f59e0b] hover:bg-[#d97706] text-black font-black rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 ease-in-out cursor-pointer z-50 text-xs tracking-wider border border-black/10 ${
+        className={`!fixed !bottom-6 !right-6 !z-[9999] !block bg-amber-500 text-black p-3 rounded-full shadow-lg hover:bg-amber-400 hover:shadow-[0_0_24px_rgba(245,158,11,0.5)] active:scale-[0.98] transition-all duration-200 ${
           showScrollTop ? '!h-11 !w-11 opacity-100' : '!h-0 !w-0 opacity-0 pointer-events-none overflow-hidden'
         }`}
         title="Cuộn về đầu trang"

@@ -10,7 +10,9 @@ const Login = lazy(() => import('../pages/auth/Login'));
 const GoogleCallback = lazy(() => import('../pages/auth/GoogleCallback'));
 const Dashboard = lazy(() => import('../pages/user/Dashboard'));
 const AdminDashboard = lazy(() => import('../pages/admin/AdminDashboard'));
+const ApiLogsView = lazy(() => import('../pages/admin/ApiLogsView'));
 const ResetPassword = lazy(() => import('../pages/auth/ResetPassword'));
+const VerifyEmail = lazy(() => import('../components/auth/VerifyEmail'));
 const MatThanDetailView = lazy(() => import('../pages/user/dashboard/MatThanDetailView'));
 
 // Sub-views under User Dashboard
@@ -19,6 +21,8 @@ const TtsView = lazy(() => import('../pages/user/dashboard/TtsView'));
 const ImageAnalyzerView = lazy(() => import('../pages/user/dashboard/ImageAnalyzerView'));
 const HistoryView = lazy(() => import('../pages/user/dashboard/HistoryView'));
 const SettingsView = lazy(() => import('../pages/user/dashboard/SettingsView'));
+const ImageViewerPage = lazy(() => import('../pages/user/dashboard/ImageViewerPage'));
+const VideoStudioView = lazy(() => import('../pages/user/dashboard/VideoStudioView'));
 // const AffiliateAssistant = lazy(() => import('../pages/user/dashboard/AffiliateAssistant'));
 
 const LoadingFallback = () => (
@@ -53,6 +57,7 @@ const AppRoutes = () => {
         <Route path="/login" element={<Login />} />
         <Route path="/auth/google/callback" element={<GoogleCallback />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
         {/* Protected Routes cho User */}
         <Route element={<ProtectedRoute />}>
           <Route element={<MainLayout />}>
@@ -64,6 +69,10 @@ const AppRoutes = () => {
               <Route path="mat-than" element={<Navigate to="/dashboard/image-analyzer" replace />} />
               <Route path="history" element={<HistoryView />} />
               <Route path="settings" element={<SettingsView />} />
+              {/* Trang chi tiết ảnh AI — truy cập qua /dashboard/image-viewer?jobId=... */}
+              <Route path="image-viewer" element={<ImageViewerPage />} />
+              {/* Studio Tạo Video AI Animation */}
+              <Route path="video-studio" element={<VideoStudioView />} />
               {/* Tạm thời đóng băng tuyến đường Affiliate Assistant */}
               {/* <Route path="affiliate" element={<AffiliateAssistant />} /> */}
             </Route>
@@ -75,6 +84,7 @@ const AppRoutes = () => {
         <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
           <Route element={<MainLayout />}>
             <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin/logs" element={<ApiLogsView />} />
           </Route>
         </Route>
 

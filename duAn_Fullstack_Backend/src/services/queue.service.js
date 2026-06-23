@@ -6,16 +6,8 @@ const voiceService = require('./voice.service');
 const cleanupService = require('./cleanup.service');
 require('dotenv').config();
 
-// SMTP Transporter
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-  port: Number(process.env.EMAIL_PORT) || 465,
-  secure: process.env.EMAIL_SECURE === 'true',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+// Tái sử dụng đối tượng gửi thư emailTransporter từ email.service
+const { emailTransporter } = require('./email.service');
 
 /**
  * Enqueue a job into the queue_jobs table with optional delay
@@ -102,7 +94,7 @@ const processWorker = async () => {
       try {
         if (job.type === 'send_email') {
           const { to, subject, html } = job.payload;
-          await transporter.sendMail({
+          await emailTransporter.sendMail({
             from: `"Fullstack App" <${process.env.EMAIL_USER}>`,
             to,
             subject,

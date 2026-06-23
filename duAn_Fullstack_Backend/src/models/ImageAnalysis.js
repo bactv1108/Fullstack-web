@@ -39,10 +39,10 @@ module.exports = (sequelize) => {
       comment: 'Kịch bản/Prompt chi tiết dạng Markdown do Gemini trả về'
     },
     status: {
-      type: DataTypes.ENUM('processing', 'success', 'failed'),
+      type: DataTypes.ENUM('processing', 'pending', 'success', 'failed', 'rejected', 'confirmed_violation'),
       defaultValue: 'processing',
       allowNull: false,
-      comment: 'Trạng thái xử lý tác vụ'
+      comment: 'Trạng thái xử lý: processing → pending (nghi vấn, chờ Admin duyệt) | success (an toàn) | failed (vi phạm) | rejected | confirmed_violation'
     },
     error_message: {
       type: DataTypes.TEXT,

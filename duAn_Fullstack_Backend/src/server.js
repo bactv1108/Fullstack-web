@@ -5,6 +5,87 @@ const http = require('http');
 const { Server } = require('socket.io');
 require('dotenv').config();
 
+// ── Ngrok Auto-Tunnel (chỉ dev) ───────────────────────────────────────────────
+// Import an toàn: nếu package chưa được cài sẽ bỏ qua thay vì crash server
+let ngrok = null;
+try {
+  ngrok = require('@ngrok/ngrok');
+} catch (_) {
+  console.warn('[NGROK] ⚠️  Package @ngrok/ngrok chưa được cài đặt — bỏ qua auto-tunnel.');
+}
+
+/**
+ * startAutotunnel(port)
+ * ──────────────────────────────────────────────────────────────────────────────
+ * Khởi động Ngrok tunnel tự động cho môi trường phát triển.
+ * Điều kiện kích hoạt:
+ *   • process.env.ENABLE_TUNNEL === 'true'
+ *   • process.env.NODE_ENV      !== 'production'
+ *   • package @ngrok/ngrok đã được cài đặt
+ *
+ * Sau khi thành công:
+ *   • In log trực quan ra Terminal (Local / Public / Webhook URL)
+ *   • Gán process.env.DYNAMIC_WEBHOOK_URL để controller bốc ra dùng
+ * ──────────────────────────────────────────────────────────────────────────────
+ */
+async function startAutotunnel(port) {
+  // ── Guard conditions ─────────────────────────────────────────────────────
+  if (!ngrok) {
+    console.warn('[NGROK] ⚠️  Bỏ qua tunnel: package không khả dụng.');
+    return;
+  }
+  if (process.env.ENABLE_TUNNEL !== 'true') {
+    console.log('[NGROK] ℹ️  Tunnel bị tắt. Đặt ENABLE_TUNNEL=true trong .env để bật.');
+    return;
+  }
+  if (process.env.NODE_ENV === 'production') {
+    console.warn('[NGROK] ⚠️  Bỏ qua tunnel: không sử dụng Ngrok ở môi trường production.');
+    return;
+  }
+
+  const authToken = process.env.NGROK_AUTHTOKEN;
+  if (!authToken) {
+    console.warn('[NGROK] ⚠️  Thiếu NGROK_AUTHTOKEN trong .env — bỏ qua auto-tunnel.');
+    return;
+  }
+
+  try {
+    // Nạp auth token vào ngrok session
+    await ngrok.authtoken(authToken);
+
+    // Mở tunnel HTTP → port local
+    const listener = await ngrok.connect({ proto: 'http', addr: port });
+    const tunnelUrl = listener.url();
+
+    if (!tunnelUrl) throw new Error('ngrok.connect() không trả về URL hợp lệ.');
+
+    // Tạo webhook URL hoàn chỉnh
+    const webhookPath   = '/api/video-jobs/webhook';
+    const webhookFullUrl = `${tunnelUrl}${webhookPath}`;
+
+    // Gán vào biến môi trường động để controller đọc tại runtime
+    process.env.DYNAMIC_WEBHOOK_URL = webhookFullUrl;
+
+    // In log trực quan
+    const LINE = '═'.repeat(60);
+    console.log(`\n${LINE}`);
+    console.log('  🚇 NGROK AUTO-TUNNEL — ACTIVE');
+    console.log(LINE);
+    console.log(`  📍 Local Server   : http://localhost:${port}`);
+    console.log(`  🌐 Public Tunnel  : ${tunnelUrl}`);
+    console.log(`  🔗 Webhook URL    : ${webhookFullUrl}`);
+    console.log(LINE);
+    console.log('  💡 Dán URL Webhook này vào cấu hình Fal.ai Dashboard');
+    console.log('     hoặc hệ thống sẽ tự động sử dụng qua DYNAMIC_WEBHOOK_URL');
+    console.log(`${LINE}\n`);
+
+  } catch (err) {
+    console.error('[NGROK] ❌ Không thể khởi động tunnel:', err.message);
+    console.warn('[NGROK]    Hệ thống sẽ tiếp tục chạy bình thường (không có tunnel).');
+    // Không ném lỗi ra ngoài — server vẫn phải tiếp tục hoạt động
+  }
+}
+
 const authRoutes = require('./routes/auth.routes');
 const adminRoutes = require('./routes/admin.routes');
 const userRoutes = require('./routes/user.routes');
@@ -19,6 +100,8 @@ const imageRouter = require('./routes/image.routes');
 const affiliateRouter = require('./routes/affiliate.routes');
 const sessionRouter = require('./routes/session.routes');
 const adminNotificationRouter = require('./routes/adminNotification.routes');
+const moderationRouter = require('./routes/moderation.routes');
+const videoJobRouter   = require('./routes/videoJob.routes');
 
 const app = express();
 const server = http.createServer(app);
@@ -34,6 +117,7 @@ const io = new Server(server, {
 
 // Export io để các controller có thể sử dụng
 app.io = io;
+global.io = io;
 
 app.use(cors({
   origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176'], // Frontend & Admin URLs
@@ -217,8 +301,10 @@ app.use('/api/profile', profileRoutes);
 app.use('/api', notificationRouter);
 app.use('/api/image', imageRouter);
 app.use('/api/affiliate', affiliateRouter);
-app.use('/api/v1/auth', sessionRouter); // Session Management: GET /sessions, POST /sessions/revoke
-app.use('/api/v1/auth', adminNotificationRouter); // Admin Notifications: GET/PUT/DELETE /notifications
+app.use('/api/v1/auth', sessionRouter);           // Session Management
+app.use('/api/v1/auth', adminNotificationRouter); // Admin Notifications
+app.use('/api/v1/admin', moderationRouter);       // Image Moderation Queue & Review
+app.use('/api/video-jobs', videoJobRouter);        // Video AI Animation (Fal.ai)
 
 // ===== SOCKET.IO - REAL-TIME HANDLERS =====
 const jwt = require('jsonwebtoken');
@@ -364,7 +450,7 @@ app.forceLogoutSocket = (userId, revokedRefreshToken) => {
 };
 
 // ── Helper toàn cục: tạo admin notification + bắn socket về admin_room ──────────────
-app.emitAdminNotification = async ({ title, content, type = 'system' }) => {
+app.emitAdminNotification = async ({ title, content, type = 'system', transactionCode, redirectUrl }) => {
   try {
     const { AdminNotification } = require('./models');
     const notif = await AdminNotification.create({
@@ -374,6 +460,10 @@ app.emitAdminNotification = async ({ title, content, type = 'system' }) => {
       is_read: false
     });
     const notifData = notif.toJSON();
+
+    if (transactionCode) notifData.transactionCode = transactionCode;
+    if (redirectUrl) notifData.redirectUrl = redirectUrl;
+
     io.to('admin_room').emit('NEW_ADMIN_NOTIFICATION', notifData);
     console.log(`🔔 [ADMIN NOTIF] Đã bắn thông báo → admin_room: "${title}"`);
     return notifData;
@@ -410,17 +500,35 @@ const PORT = process.env.PORT || 3000;
 const db = require('./models');
 const { startScheduler } = require('./services/scheduler.service');
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 💡 BỌC THÉP TỐI THƯỢNG: Sửa ENUM trực tiếp TRƯỚC KHI gọi sync()
+//    Nguyên nhân gốc rễ: sync({ alter: true }) crash khi Sequelize cố ALTER
+//    cột ENUM đang có giá trị không có trong danh sách Model mới → khối lệnh
+//    phía sau sync không bao giờ chạy tới.
+//    Giải pháp: Authenticate DB → chạy raw ALTER TABLE → rồi mới sync().
+// ═══════════════════════════════════════════════════════════════════════════
+const fixImageAnalysesEnum = async () => {
+  try {
+    await db.sequelize.query(
+      "ALTER TABLE `image_analyses` MODIFY COLUMN `status` ENUM('processing','pending','success','failed','rejected','confirmed_violation') NOT NULL DEFAULT 'processing'"
+    );
+    console.log('[DB PATCH] ✅ image_analyses.status ENUM cập nhật thành công (rejected, confirmed_violation đã thêm vào).');
+  } catch (err) {
+    // Bảng chưa tồn tại (lần khởi chạy đầu tiên) hoặc ENUM đã khớp → bỏ qua an toàn
+    console.warn('[DB PATCH] ⚠️  Bỏ qua ALTER TABLE image_analyses (có thể bảng chưa tồn tại hoặc ENUM đã đúng):', err.message);
+  }
+};
+
 // Database synchronization executing correctly on startup
 (async () => {
   try {
-    try {
-      await db.sequelize.query("DROP TABLE IF EXISTS video_jobs");
-      console.log('Obsolete table video_jobs dropped successfully.');
-    } catch (err) {
-      console.warn('Could not drop video_jobs table:', err.message);
-    }
+    // BƯỚC 0: Cưỡng chế sửa ENUM TRƯỚC sync() để tránh sync crash vì conflict cột status
+    await fixImageAnalysesEnum();
 
-    await db.sequelize.sync({ force: false });
+    // BƯỚC 1: Sync schema như bình thường sau khi ENUM đã ổn định
+    // NOTE: Không drop bảng — dữ liệu cần được bảo toàn.
+    // alter: true — tự động thêm cột mới (model_name, current_package) mà không mất dữ liệu cũ
+    await db.sequelize.sync({ force: false, alter: true });
     console.log('Database synced successfully.');
 
     try {
@@ -430,17 +538,108 @@ const { startScheduler } = require('./services/scheduler.service');
       console.warn('Could not alter jobs.type ENUM column, it may already be updated:', err.message);
     }
 
+    // ── admin_notifications: Nới rộng ENUM type để thêm 'moderation' ─────────
+    try {
+      await db.sequelize.query(
+        "ALTER TABLE `admin_notifications` MODIFY COLUMN `type` ENUM('billing','error','system','moderation') NOT NULL DEFAULT 'system'"
+      );
+      console.log('[DB MIGRATION] ✅ admin_notifications.type ENUM nới rộng thành công (thêm moderation).');
+    } catch (err) {
+      console.warn('[DB MIGRATION] ⚠️  Không thể nới rộng admin_notifications.type ENUM:', err.message);
+    }
+
+    // ── video_jobs: Thêm cột analysis_id (INT NULL) nếu chưa tồn tại ──────────
+    // Liên kết FK tuỳ chọn tới bảng image_analyses (kịch bản Mắt Thần AI)
+    try {
+      await db.sequelize.query(
+        'ALTER TABLE video_jobs ADD COLUMN analysis_id INT NULL AFTER user_id'
+      );
+      console.log('[MIGRATION] ✅ video_jobs.analysis_id column added successfully.');
+    } catch (err) {
+      if (err.original?.code === 'ER_DUP_FIELDNAME' || err.message?.includes('Duplicate column')) {
+        console.log('[MIGRATION] ℹ️  video_jobs.analysis_id already exists — skipped.');
+      } else {
+        console.warn('[MIGRATION] ⚠️  Could not add video_jobs.analysis_id:', err.message);
+      }
+    }
+
+    // ── video_jobs: Thêm cột input_image_url (VARCHAR 2048 NULL) nếu chưa tồn tại
+    // Lưu URL ảnh đầu vào cho luồng image-to-video của Fal.ai
+    try {
+      await db.sequelize.query(
+        'ALTER TABLE video_jobs ADD COLUMN input_image_url VARCHAR(2048) NULL AFTER prompt'
+      );
+      console.log('[MIGRATION] ✅ video_jobs.input_image_url column added successfully.');
+    } catch (err) {
+      if (err.original?.code === 'ER_DUP_FIELDNAME' || err.message?.includes('Duplicate column')) {
+        console.log('[MIGRATION] ℹ️  video_jobs.input_image_url already exists — skipped.');
+      } else {
+        console.warn('[MIGRATION] ⚠️  Could not add video_jobs.input_image_url:', err.message);
+      }
+    }
+
+    // ── video_jobs: Đảm bảo ENUM aspect_ratio có đủ 3 giá trị (thêm '4:3') ────
+    try {
+      await db.sequelize.query(
+        "ALTER TABLE video_jobs MODIFY COLUMN aspect_ratio ENUM('9:16','16:9','4:3') NOT NULL DEFAULT '16:9'"
+      );
+      console.log('[MIGRATION] ✅ video_jobs.aspect_ratio ENUM updated (added 4:3).');
+    } catch (err) {
+      console.warn('[MIGRATION] ⚠️  Could not alter video_jobs.aspect_ratio ENUM:', err.message);
+    }
+
+    // ── video_jobs: Đảm bảo ENUM status khớp với giá trị DB thực tế ────────────
+    try {
+      await db.sequelize.query(
+        "ALTER TABLE video_jobs MODIFY COLUMN status ENUM('queueing','processing','success','failed') NOT NULL DEFAULT 'queueing'"
+      );
+      console.log('[MIGRATION] ✅ video_jobs.status ENUM updated.');
+    } catch (err) {
+      console.warn('[MIGRATION] ⚠️  Could not alter video_jobs.status ENUM:', err.message);
+    }
+
+    // ── image_jobs: Đảm bảo ENUM status khớp với giá trị DB thực tế ────────────
+    try {
+      await db.sequelize.query(
+        "ALTER TABLE image_jobs MODIFY COLUMN status ENUM('Pending','Rendering','Failed','Completed','failed_violation') NOT NULL DEFAULT 'Pending'"
+      );
+      console.log('[MIGRATION] ✅ image_jobs.status ENUM updated (added failed_violation).');
+    } catch (err) {
+      console.warn('[MIGRATION] ⚠️  Could not alter image_jobs.status ENUM:', err.message);
+    }
+
+
+    // -- video_jobs: Them cot error_log (TEXT NULL) neu chua ton tai --
+    // Luu chi tiet loi khi Fal.ai tu choi request (422, 401, network error...)
+    try {
+      await db.sequelize.query(
+        'ALTER TABLE video_jobs ADD COLUMN error_log TEXT NULL AFTER video_url'
+      );
+      console.log('[MIGRATION] video_jobs.error_log column added successfully.');
+    } catch (err) {
+      if (err.original?.code === 'ER_DUP_FIELDNAME' || err.message?.includes('Duplicate column')) {
+        console.log('[MIGRATION] video_jobs.error_log already exists - skipped.');
+      } else {
+        console.warn('[MIGRATION] Could not add video_jobs.error_log:', err.message);
+      }
+    }
+
     startScheduler();
-    server.listen(PORT, () => {
+    server.listen(PORT, async () => {
       console.log(`🚀 Server đang chạy trên: http://localhost:${PORT}`);
       console.log(`📡 WebSocket sẵn sàng kết nối`);
+      // Khởi động Ngrok auto-tunnel sau khi server local đã sẵn sàng
+      await startAutotunnel(PORT);
     });
   } catch (err) {
     console.error('Failed to sync database:', err.message);
     // Start server even if DB connection fails temporarily
-    server.listen(PORT, () => {
+    server.listen(PORT, async () => {
       console.log(`Server is running on port ${PORT} (Database sync failed)`);
+      // Vẫn khởi động tunnel dù DB sync lỗi
+      await startAutotunnel(PORT);
     });
   }
 })();
+
 

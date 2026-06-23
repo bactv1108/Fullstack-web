@@ -8,12 +8,12 @@ module.exports = (sequelize) => {
       primaryKey: true,
     },
     provider: {
-      type: DataTypes.ENUM('OpenAI', 'ElevenLabs', 'Runway'),
+      type: DataTypes.ENUM('OpenAI', 'ElevenLabs', 'Runway', 'Fal', 'OpenRouter', 'Gemini'),
       allowNull: false,
     },
     cost: {
-      type: DataTypes.FLOAT,
-      defaultValue: 0.00,
+      type: DataTypes.DECIMAL(16, 8),
+      defaultValue: 0.00000000,
       allowNull: false,
     }
   }, {

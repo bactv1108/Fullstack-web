@@ -358,6 +358,23 @@ Trả về duy nhất một đối tượng JSON hợp lệ (không chứa markd
     try {
       const response = await axios.post(geminiUrl, { contents: [{ parts: [{ text: promptText }] }], generationConfig: { responseMimeType: "application/json" } });
       parsedContent = JSON.parse(response.data.candidates[0].content.parts[0].text.trim());
+
+      // Tự động ghi sổ hóa đơn chi phí API Google Gemini
+      try {
+        const { ApiCost } = require('../models');
+        const usageMetadata = response.data?.usageMetadata;
+        const promptTokenCount = usageMetadata ? usageMetadata.promptTokenCount : 0;
+        const candidatesTokenCount = usageMetadata ? usageMetadata.candidatesTokenCount : 0;
+        // Đơn giá gemini-2.0-flash: $0.075 / 1M input tokens, $0.3 / 1M output tokens
+        const calculatedCost = (promptTokenCount * 0.000000075) + (candidatesTokenCount * 0.0000003) || 0.00015;
+        await ApiCost.create({
+          provider: 'Gemini',
+          cost: Number(calculatedCost.toFixed(8))
+        });
+        console.log(`[AFFILIATE GEMINI] ✅ Ghi nhận chi phí Gemini: ${calculatedCost} USD`);
+      } catch (databaseError) {
+        console.error('[AFFILIATE GEMINI] ⚠️ Lỗi khi ghi sổ ApiCost Gemini:', databaseError.message);
+      }
     } catch (e) {
       console.error('[GEMINI CONTROLLER ERROR] Gemini API failed. Generating dynamic backup content from scraped data:', e.message);
       

@@ -1,4 +1,5 @@
-const { Asset } = require('../models');
+const axios = require('axios');
+const { Asset, SystemConfig } = require('../models');
 
 /**
  * GET /api/assets
@@ -23,22 +24,84 @@ const getAllAssets = async (req, res) => {
 };
 
 /**
+ * Lấy ElevenLabs API key từ bảng system_configs.
+ * Trả về null nếu không tìm thấy hoặc DB lỗi.
+ */
+const getElevenLabsKey = async () => {
+  try {
+    const configRow = await SystemConfig.findOne({ where: { key: 'elevenlabs_key' } });
+    return (configRow && configRow.value) ? configRow.value.trim() : null;
+  } catch (err) {
+    console.error('[ASSET CONTROLLER] Không thể đọc elevenlabs_key từ DB:', err.message);
+    return null;
+  }
+};
+
+/**
  * POST /api/assets
- * Create a new asset record
+ * Create a new asset record.
+ * Nếu type=voice và identifier không chứa '-' (ElevenLabs Voice ID),
+ * tự động gọi ElevenLabs API để lấy preview_url trước khi lưu DB.
  */
 const createAsset = async (req, res) => {
   const { name, type, identifier, status } = req.body;
   if (!name || !type || !identifier) {
-    return res.status(400).json({ success: false, message: 'Vui lòng điền đầy đủ các thông tin: name, type, identifier.' });
+    return res.status(400).json({
+      success: false,
+      message: 'Vui lòng điền đầy đủ các thông tin: name, type, identifier.'
+    });
   }
+
+  // ── Tự động fetch preview_url từ ElevenLabs ──────────────────────────────
+  let previewUrl = null;
+  const isElevenLabsVoice = (type === 'voice' && !identifier.includes('-'));
+
+  if (isElevenLabsVoice) {
+    console.log(`[ASSET CONTROLLER] Phát hiện ElevenLabs Voice ID: "${identifier}". Đang lấy preview_url...`);
+
+    const elevenLabsKey = await getElevenLabsKey();
+
+    if (!elevenLabsKey) {
+      console.warn('[ASSET CONTROLLER] Không có elevenlabs_key → bỏ qua fetch preview_url, previewUrl sẽ là null.');
+    } else {
+      try {
+        const elevenLabsUrl = `https://api.elevenlabs.io/v1/voices/${identifier}`;
+        console.log(`[ASSET CONTROLLER] Gọi ElevenLabs API: GET ${elevenLabsUrl}`);
+
+        const { data: voiceData } = await axios.get(elevenLabsUrl, {
+          headers: { 'xi-api-key': elevenLabsKey }
+        });
+
+        // ElevenLabs trả về trường preview_url ở root của object voice
+        if (voiceData && voiceData.preview_url) {
+          previewUrl = voiceData.preview_url;
+          console.log(`[ASSET CONTROLLER] ✅ Lấy được preview_url: ${previewUrl}`);
+        } else {
+          console.warn(`[ASSET CONTROLLER] ElevenLabs API trả về thành công nhưng không có trường preview_url cho Voice ID "${identifier}".`);
+        }
+      } catch (elevenErr) {
+        // Lỗi (key sai, ID sai, mất mạng...) → ghi log nhưng KHÔNG crash
+        // Asset vẫn được tạo với previewUrl = null
+        const errDetail = elevenErr.response?.data?.detail?.message
+          || elevenErr.response?.data?.detail
+          || elevenErr.message;
+        console.error(`[ASSET CONTROLLER] ❌ Lấy preview_url từ ElevenLabs thất bại (Voice ID: "${identifier}"): ${errDetail}`);
+        console.error('[ASSET CONTROLLER] Asset sẽ được tạo với preview_url = null.');
+      }
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   try {
     const asset = await Asset.create({
       name,
       type,
       identifier,
-      status: status || 'active'
+      status: status || 'active',
+      previewUrl   // null nếu không lấy được, hoặc URL CDN từ ElevenLabs
     });
+
+    console.log(`[ASSET CONTROLLER] Tạo Asset thành công — ID: ${asset.id}, preview_url: ${previewUrl || 'null'}`);
     return res.status(201).json({ success: true, asset });
   } catch (error) {
     console.error('[ASSET CONTROLLER] createAsset error:', error.message);

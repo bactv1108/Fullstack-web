@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAdminAuth } from '../../hooks/useAdminAuth';
 import { LogOut, Bell, UserCircle, X, Trash2, Info, CheckCircle, AlertTriangle, AlertOctagon, Menu, TrendingUp, Zap, CreditCard, ServerCrash, Settings2, Check } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import axiosAdminClient from '../../services/axiosAdminClient';
 import { getSocket } from '../../services/socketService';
 
@@ -201,6 +201,29 @@ const AdminHeader = ({ toggleSidebar }) => {
     }
   };
 
+  const handleItemClick = async (item) => {
+    try {
+      if (!item.is_read) {
+        await handleMarkAsRead(item.id);
+      }
+
+      if (item.redirectUrl) {
+        navigate(item.redirectUrl);
+      } else {
+        const content = item.content || item.message || '';
+        const match = content.match(/(?:Mã|Mã GD|Mã:)\s*([A-Za-z0-9_-]+)/i);
+        if (match && match[1]) {
+          navigate(`/admin/deposits?search=${match[1]}`);
+        } else {
+          navigate('/admin/deposits');
+        }
+      }
+      setIsNotifOpen(false);
+    } catch (err) {
+      console.error("Lỗi xử lý click thông báo:", err);
+    }
+  };
+
   // ─── Icon & Color helpers ──────────────────────────────────────────
   const getNotifIcon = (type) => {
     switch (type) {
@@ -259,14 +282,10 @@ const AdminHeader = ({ toggleSidebar }) => {
           >
             <Menu size={20} />
           </button>
-          <div className="flex items-center gap-1.5 select-none shrink-0">
-            <span className="bg-admin-primary text-white px-1.5 py-0.5 rounded-md text-[9px] sm:text-[11px] font-black tracking-wider leading-none shrink-0">
-              AI
-            </span>
-            <span className="text-[11px] sm:text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider whitespace-nowrap">
-              Studio Admin
-            </span>
-          </div>
+          <Link to="/dashboard" className="flex items-center gap-2 cursor-pointer select-none">
+            <img src="/favicon.svg" alt="AI Studio Admin Logo" className="w-7 h-7 object-contain" />
+            <span className="text-slate-900 dark:text-white font-bold tracking-wider text-lg">STUDIO ADMIN</span>
+          </Link>
         </div>
 
         <div className="flex items-center gap-6 relative">
@@ -357,8 +376,8 @@ const AdminHeader = ({ toggleSidebar }) => {
                   notifications.map((item) => (
                     <div
                       key={item.id}
-                      onClick={() => !item.is_read && handleMarkAsRead(item.id)}
-                      className={`p-3.5 border-l-[3px] flex gap-3 transition-all cursor-pointer ${getNotifColor(item.type, item.is_read)}`}
+                      onClick={() => handleItemClick(item)}
+                      className={`p-3.5 border-l-[3px] flex gap-3 !transition-all !cursor-pointer hover:!bg-zinc-800/50 ${getNotifColor(item.type, item.is_read)}`}
                     >
                       <div className="mt-0.5">{getNotifIcon(item.type)}</div>
                       <div className="flex-1 flex flex-col gap-1 min-w-0">

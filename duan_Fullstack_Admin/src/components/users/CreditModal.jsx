@@ -36,7 +36,12 @@ const CreditModal = ({ user, onClose, onSuccess }) => {
         <div className="space-y-4">
           <div>
             <p className="text-sm text-admin-text-muted mb-1">Người dùng</p>
-            <p className="font-medium text-admin-text">{user.name} ({user.email})</p>
+            <p className="font-medium text-admin-text">
+              {user.name}{' '}
+              <span className="!break-all !max-w-full !block text-xs text-admin-text-muted mt-0.5">
+                ({user.email})
+              </span>
+            </p>
           </div>
           <div>
             <p className="text-sm text-admin-text-muted mb-1">Credit hiện tại</p>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import axios from 'axios';
 import { KeyRound, Eye, EyeOff, ShieldCheck, ArrowRight } from 'lucide-react';
 
 export default function ResetPassword() {
@@ -7,7 +8,8 @@ export default function ResetPassword() {
     const [searchParams] = useSearchParams();
 
     // 💡 TỰ ĐỘNG BÓC TÁCH MÃ TOKEN TỪ URL GMAIL GỬI VỀ
-    const token = searchParams.get('token');
+    const tokenFromUrl = searchParams.get('token');
+    console.log('[FRONTEND RESET] Token bóc từ URL:', tokenFromUrl);
 
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -54,7 +56,7 @@ export default function ResetPassword() {
                 setError('Mật khẩu xác nhận không khớp nhau!');
                 return;
             }
-            if (!token) {
+            if (!tokenFromUrl) {
                 setError('Mã xác thực (Token) không hợp lệ hoặc đã hết hạn từ Gmail!');
                 return;
             }
@@ -62,44 +64,31 @@ export default function ResetPassword() {
             setLoading(true);
 
             try {
-                // 🚀 SỬA CHÍNH XÁC DÒNG NÀY: Ép gọi thẳng sang cổng 3000 của Backend
-                const response = await fetch('http://localhost:3000/api/auth/reset-password', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        token: token,       // Mã token bóc từ URL thanh địa chỉ
-                        password: password, // Mật khẩu mới người dùng nhập
-                    }),
+                // Sử dụng thư viện Axios gửi yêu cầu POST bất đồng bộ lên cổng backend 3000
+                const response = await axios.post('http://localhost:3000/api/auth/reset-password', {
+                    token: tokenFromUrl,
+                    newPassword: password,
                 });
 
-                // 💡 Đoạn xử lý nhận response an toàn phía dưới giữ nguyên:
-                const responseText = await response.text();
-                let data = {};
+                // Axios trả về dữ liệu tự động đã được phân tích cú pháp trong thuộc tính data
+                const responseData = response.data;
 
-                if (responseText) {
-                    try {
-                        data = JSON.parse(responseText);
-                    } catch (e) {
-                        // Không phải JSON thì bỏ qua
-                    }
+                if (responseData && responseData.success) {
+                    setSuccess(true);
+                    setTimeout(() => {
+                        navigate('/login');
+                    }, 2000);
+                } else {
+                    throw new Error(responseData.message || 'Cập nhật database thất bại!');
                 }
 
-                if (!response.ok) {
-                    throw new Error(data.message || 'Cập nhật database thất bại!');
-                }
-
-                setSuccess(true);
-                setTimeout(() => {
-                    navigate('/login');
-                }, 2000);
-
-            } catch (err) {
-                if (err.message === 'Mật khẩu mới không được trùng với mật khẩu cũ.') {
+            } catch (apiError) {
+                const errorResponseData = apiError.response?.data;
+                const errorMessage = errorResponseData?.message || apiError.message || 'Lỗi kết nối hệ thống server Backend!';
+                if (errorMessage === 'Mật khẩu mới không được trùng với mật khẩu cũ.') {
                     setError('Mật khẩu hiện tại đã được sử dụng, vui lòng nhập mật khẩu mới');
                 } else {
-                    setError(err.message || 'Lỗi kết nối hệ thống server Backend!');
+                    setError(errorMessage);
                 }
             } finally {
                 setLoading(false);

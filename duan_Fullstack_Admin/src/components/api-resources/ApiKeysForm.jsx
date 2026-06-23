@@ -3,11 +3,13 @@ import { configService } from '../../services/config.service';
 import { Eye, EyeOff, Save } from 'lucide-react';
 
 const ApiKeysForm = () => {
-  const [huggingfaceToken, setHuggingfaceToken] = useState('');
+  const [openaiApiKey, setOpenaiApiKey] = useState('');
   const [elevenlabsApiKey, setElevenlabsApiKey] = useState('');
   const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [falApiKey, setFalApiKey] = useState('');
+  const [openrouterApiKey, setOpenrouterApiKey] = useState('');
 
-  const [show, setShow] = useState({ huggingface: false, elevenlabs: false, gemini: false });
+  const [show, setShow] = useState({ openai: false, elevenlabs: false, gemini: false, fal: false, openrouter: false });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -15,13 +17,12 @@ const ApiKeysForm = () => {
   useEffect(() => {
     configService.getSystemConfigs().then(res => {
       if (res) {
-        // Đảm bảo lấy đúng trường 'huggingface_token' từ API trả về để gán vào state
-        if (res.data && res.data.huggingface_token) {
-          setHuggingfaceToken(res.data.huggingface_token);
-        }
         const data = res.data || res;
+        setOpenaiApiKey(data.openai_api_key || '');
         setElevenlabsApiKey(data.elevenlabs_api_key || '');
         setGeminiApiKey(data.gemini_api_key || '');
+        setFalApiKey(data.fal_api_key || '');
+        setOpenrouterApiKey(data.openrouter_api_key || '');
       }
     }).catch(err => {
       console.error('[API KEYS] Load failed:', err.message);
@@ -41,9 +42,11 @@ const ApiKeysForm = () => {
 
     try {
       const payload = {
+        openai_api_key: openaiApiKey,
         gemini_api_key: geminiApiKey,
         elevenlabs_api_key: elevenlabsApiKey,
-        huggingface_token: huggingfaceToken // BẮT BUỘC gửi đúng tên trường này lên Backend
+        fal_api_key: falApiKey,
+        openrouter_api_key: openrouterApiKey,
       };
       await configService.updateSystemConfigs(payload);
       setMessage('🎉 Cập nhật khóa API hệ thống thành công!');
@@ -75,22 +78,23 @@ const ApiKeysForm = () => {
 
       <form onSubmit={handleSave} className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-admin-text-muted mb-2">Hugging Face Token</label>
+          <label className="block text-sm font-medium text-admin-text-muted mb-2">OpenAI API Key</label>
           <div className="relative">
             <input 
-              type={show.huggingface ? "text" : "password"} 
-              name="huggingface"
-              value={huggingfaceToken}
-              onChange={(e) => setHuggingfaceToken(e.target.value)}
-              placeholder="hf_..."
+              type={show.openai ? "text" : "password"} 
+              name="openai"
+              id="openai_api_key"
+              value={openaiApiKey}
+              onChange={(e) => setOpenaiApiKey(e.target.value)}
+              placeholder="sk-..."
               className="admin-input pr-10" 
             />
             <button 
               type="button" 
-              onClick={() => toggleShow('huggingface')}
+              onClick={() => toggleShow('openai')}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-admin-text-muted hover:text-white"
             >
-              {show.huggingface ? <EyeOff size={18} /> : <Eye size={18} />}
+              {show.openai ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
         </div>
@@ -131,6 +135,50 @@ const ApiKeysForm = () => {
               className="absolute right-3 top-1/2 -translate-y-1/2 text-admin-text-muted hover:text-white"
             >
               {show.gemini ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-admin-text-muted mb-2">Fal API Key</label>
+          <div className="relative">
+            <input 
+              type={show.fal ? "text" : "password"} 
+              name="fal"
+              id="fal_api_key"
+              value={falApiKey}
+              onChange={(e) => setFalApiKey(e.target.value)}
+              placeholder="fal-..."
+              className="admin-input pr-10" 
+            />
+            <button 
+              type="button" 
+              onClick={() => toggleShow('fal')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-admin-text-muted hover:text-white"
+            >
+              {show.fal ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-admin-text-muted mb-2">OpenRouter API Key</label>
+          <div className="relative">
+            <input 
+              type={show.openrouter ? "text" : "password"} 
+              name="openrouter"
+              id="openrouter_api_key"
+              value={openrouterApiKey}
+              onChange={(e) => setOpenrouterApiKey(e.target.value)}
+              placeholder="sk-or-..."
+              className="admin-input pr-10" 
+            />
+            <button 
+              type="button" 
+              onClick={() => toggleShow('openrouter')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-admin-text-muted hover:text-white"
+            >
+              {show.openrouter ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
         </div>

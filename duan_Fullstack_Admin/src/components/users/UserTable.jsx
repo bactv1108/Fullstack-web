@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { userService } from '../../services/user.service';
-import { MoreVertical, Search, Edit2, Ban, CheckCircle, X } from 'lucide-react';
+import { MoreVertical, Search, Edit2, Ban, CheckCircle, X, History, Key, Shield, Trash2 } from 'lucide-react';
 import CreditModal from './CreditModal';
 
 const UserTable = () => {
+  const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
+  const [userToDelete, setUserToDelete] = useState(null);
+  const [openDropdownUserId, setOpenDropdownUserId] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [statusTab, setStatusTab] = useState('all'); // 'all' | 'active' | 'banned'
@@ -28,6 +32,10 @@ const UserTable = () => {
       console.error('[FETCH USERS] Failed:', err.message);
     });
   }, [currentPage, searchTerm]);
+
+  const handleDropdownToggle = (userId) => {
+    setOpenDropdownUserId(prev => prev === userId ? null : userId);
+  };
 
   const handleToggleStatus = (user) => {
     const newStatus = user.status === 'Active' ? 'Banned' : 'Active';
@@ -172,24 +180,79 @@ const UserTable = () => {
                     : <span className="flex items-center gap-1 text-red-500 text-xs"><Ban size={14}/> {user.status}</span>
                   }
                 </td>
-                <td className="px-6 py-4 text-right space-x-2">
+                <td className="px-6 py-4 text-right space-x-2 relative">
                   <button 
                     onClick={() => setSelectedUser(user)}
-                    className="text-admin-text-muted hover:text-admin-primary p-1"
+                    className="text-admin-text-muted hover:text-admin-primary p-1 cursor-pointer bg-transparent border-none outline-none"
                     title="Chỉnh sửa Credit"
                   >
                     <Edit2 size={16} />
                   </button>
                   <button 
                     onClick={() => handleToggleStatus(user)}
-                    className={`p-1 ${user.status === 'Active' ? 'text-admin-text-muted hover:text-admin-danger' : 'text-admin-danger hover:text-green-500'}`}
+                    className={`p-1 cursor-pointer bg-transparent border-none outline-none ${user.status === 'Active' ? 'text-admin-text-muted hover:text-admin-danger' : 'text-admin-danger hover:text-green-500'}`}
                     title={user.status === 'Active' ? "Khoá Tài Khoản" : "Mở Khoá Tài Khoản"}
                   >
                     {user.status === 'Active' ? <Ban size={16} /> : <CheckCircle size={16} />}
                   </button>
-                  <button className="text-admin-text-muted hover:text-admin-text p-1">
+                  <button 
+                    onClick={() => handleDropdownToggle(user.id)}
+                    className="text-admin-text-muted hover:text-admin-text p-1 cursor-pointer bg-transparent border-none outline-none"
+                    title="Thao tác"
+                  >
                     <MoreVertical size={16} />
                   </button>
+
+                  {openDropdownUserId === user.id && (
+                    <div className="absolute right-0 mt-2 w-48 bg-[#181b21] border border-slate-700 rounded-lg shadow-xl z-50 overflow-hidden text-left animate-scale-in">
+                      <div className="py-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpenDropdownUserId(null);
+                            navigate(`/video-management?search=${encodeURIComponent(user.email)}`);
+                          }}
+                          className="w-full px-4 py-2 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 cursor-pointer transition-colors bg-transparent border-none outline-none"
+                        >
+                          <History size={14} />
+                          Xem lịch sử tác vụ
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpenDropdownUserId(null);
+                            alert(`Yêu cầu đặt lại mật khẩu cho tài khoản: ${user.email}`);
+                          }}
+                          className="w-full px-4 py-2 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 cursor-pointer transition-colors bg-transparent border-none outline-none"
+                        >
+                          <Key size={14} />
+                          Đặt lại mật khẩu
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpenDropdownUserId(null);
+                            alert(`Chức năng thay đổi vai trò cho tài khoản ${user.name} đang được phát triển.`);
+                          }}
+                          className="w-full px-4 py-2 text-xs text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-2 cursor-pointer transition-colors bg-transparent border-none outline-none"
+                        >
+                          <Shield size={14} />
+                          Thay đổi vai trò
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpenDropdownUserId(null);
+                            setUserToDelete(user);
+                          }}
+                          className="w-full px-4 py-2 text-xs text-red-500 hover:bg-red-500/10 flex items-center gap-2 cursor-pointer transition-colors border-t border-slate-800 bg-transparent border-none outline-none"
+                        >
+                          <Trash2 size={14} />
+                          Xóa người dùng
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}
@@ -258,6 +321,38 @@ const UserTable = () => {
             setUsers(prev => prev.map(u => u.id === userId ? { ...u, credits: newCredits } : u));
           }}
         />
+      )}
+
+      {/* Custom Delete Confirmation Modal */}
+      {userToDelete && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
+          <div className="bg-[#181b21] border border-slate-700 p-6 rounded-xl shadow-2xl max-w-md w-full mx-4 animate-scale-in text-left">
+            <h3 className="text-lg font-bold text-white mb-4 tracking-wide uppercase">XÁC NHẬN XÓA TÀI KHOẢN</h3>
+            <p className="text-slate-300 mb-6 text-sm leading-relaxed">
+              Bạn có chắc chắn muốn xóa tài khoản của người dùng <span className="font-semibold text-red-400">{userToDelete.name}</span> ({userToDelete.email}) khỏi hệ thống không? Hành động này không thể hoàn tác.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setUserToDelete(null)}
+                className="px-4 py-2 bg-transparent hover:bg-slate-800 text-slate-300 border border-slate-700 font-medium rounded-lg transition-colors cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  alert(`Đã yêu cầu xóa tài khoản ${userToDelete.email} thành công.`);
+                  setUsers(prev => prev.filter(u => u.id !== userToDelete.id));
+                  setUserToDelete(null);
+                }}
+                className="bg-red-500 hover:bg-red-600 text-white font-medium px-4 py-2 rounded-lg transition-colors cursor-pointer flex items-center justify-center"
+              >
+                Xác nhận xóa
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

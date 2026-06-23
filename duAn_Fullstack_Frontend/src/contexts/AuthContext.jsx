@@ -29,7 +29,7 @@ export const AuthProvider = ({ children }) => {
         try {
           // Decode sơ bộ thông tin từ payload để hiển thị nhanh
           const payload = JSON.parse(atob(token.split('.')[1]));
-          setUser({ id: payload.id, email: payload.email, role: payload.role, name: payload.email.split('@')[0] });
+          setUser({ id: payload.id, email: payload.email, role: payload.role, name: payload.email.split('@')[0], banned_until: payload?.banned_until || null });
           setIsAuthenticated(true);
 
           // Nạp token vào cấu hình header của Axios trước khi gọi API để tránh lỗi 401 khi F5
@@ -45,7 +45,9 @@ export const AuthProvider = ({ children }) => {
             email: userData?.email || payload.email,
             role: userData?.role || payload.role,
             avatar: userData?.avatar || userData?.data?.avatar || userData?.user?.avatar || profile?.avatar || profile?.data?.avatar || profile?.user?.avatar || '',
-            credits: userData?.credits !== undefined ? userData.credits : 0
+            credits: userData?.credits !== undefined ? Number(userData.credits) : 0,
+            current_package: userData?.current_package || payload?.current_package || 'free',
+            banned_until: userData?.banned_until || payload?.banned_until || null
           });
           setIsAuthenticated(true);
         } catch (e) {
@@ -63,12 +65,12 @@ export const AuthProvider = ({ children }) => {
           const res = await axiosClient.post('/auth/refresh-token', { refreshToken, refresh_token: refreshToken });
           const newAccessToken = res.access_token || res.accessToken;
           const payload = JSON.parse(atob(newAccessToken.split('.')[1]));
-          setUser({ id: payload.id, email: payload.email, role: payload.role, name: payload.email.split('@')[0] });
+          setUser({ id: payload.id, email: payload.email, role: payload.role, name: payload.email.split('@')[0], banned_until: payload?.banned_until || null });
           setIsAuthenticated(true);
           
           // Nạp token vào cấu hình header của Axios trước khi gọi API để tránh lỗi 401 khi F5
           axiosClient.defaults.headers.common['Authorization'] = `Bearer ${newAccessToken}`;
-
+ 
           const profile = await axiosClient.get('/user/profile');
           const userData = profile?.user || profile?.data || profile;
           setUser({
@@ -77,7 +79,9 @@ export const AuthProvider = ({ children }) => {
             email: userData?.email || payload.email,
             role: userData?.role || payload.role,
             avatar: userData?.avatar || userData?.data?.avatar || userData?.user?.avatar || profile?.avatar || profile?.data?.avatar || profile?.user?.avatar || '',
-            credits: userData?.credits !== undefined ? userData.credits : 0
+            credits: userData?.credits !== undefined ? Number(userData.credits) : 0,
+            current_package: userData?.current_package || payload?.current_package || 'free',
+            banned_until: userData?.banned_until || payload?.banned_until || null
           });
           setIsAuthenticated(true);
         } catch (e) {
@@ -124,7 +128,12 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('admin_refresh_token', data.refresh_token);
       localStorage.setItem('refresh_token', data.refresh_token);
     }
-    setUser(data.user);
+    setUser(data.user ? {
+      ...data.user,
+      credits: data.user.credits !== undefined ? Number(data.user.credits) : 0,
+      current_package: data.user.current_package || 'free',
+      banned_until: data.user.banned_until || null
+    } : null);
     setIsAuthenticated(true);
 
     // Bước C: Điều hướng người dùng vào trang /dashboard bằng navigate
@@ -147,7 +156,12 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('admin_refresh_token', data.refresh_token);
       localStorage.setItem('refresh_token', data.refresh_token);
     }
-    setUser(data.user);
+    setUser(data.user ? {
+      ...data.user,
+      credits: data.user.credits !== undefined ? Number(data.user.credits) : 0,
+      current_package: data.user.current_package || 'free',
+      banned_until: data.user.banned_until || null
+    } : null);
     setIsAuthenticated(true);
 
     navigate('/dashboard');
@@ -197,15 +211,40 @@ export const AuthProvider = ({ children }) => {
     navigate('/login');
   };
 
+  const updateUserProfile = async () => {
+    try {
+      const profile = await axiosClient.get('/user/profile');
+      const userData = profile?.user || profile?.data || profile;
+      setUser((prevUser) => {
+        if (!prevUser) return null;
+        return {
+          ...prevUser,
+          credits: userData?.credits !== undefined ? Number(userData.credits) : prevUser.credits,
+          current_package: userData?.current_package || prevUser.current_package || 'free',
+          banned_until: userData?.banned_until || null,
+          avatar: userData?.avatar || prevUser.avatar || ''
+        };
+      });
+    } catch (err) {
+      console.error('[AUTH CONTEXT] Failed to update user profile:', err.message);
+    }
+  };
+
   const updateUserState = (newUserData) => {
     setUser((prevUser) => {
       if (!prevUser) return null;
-      return { ...prevUser, ...newUserData };
+      return {
+        ...prevUser,
+        ...newUserData,
+        credits: newUserData.credits !== undefined ? Number(newUserData.credits) : prevUser.credits,
+        current_package: newUserData.current_package || prevUser.current_package || 'free',
+        banned_until: newUserData.banned_until !== undefined ? newUserData.banned_until : prevUser.banned_until
+      };
     });
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, loading, login, loginWithGoogleToken, logout, updateUserState, verify2FALogin }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, loading, login, loginWithGoogleToken, logout, updateUserState, verify2FALogin, updateUserProfile }}>
       {!loading && children}
     </AuthContext.Provider>
   );

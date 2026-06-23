@@ -2,7 +2,30 @@ import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { Play, Rocket, Mic } from 'lucide-react';
 import { userService } from '../../../services/user.service';
+import axiosClient from '../../../services/axiosClient';
 import { useAuth } from '../../../hooks/useAuth';
+
+// ─── Helper: Resolve đúng DELETE endpoint dựa theo type của job ───────────────
+// Backend có 4 bảng riêng biệt:
+//   • ImageJob          → xóa qua DELETE /api/image/:id
+//   • ImageAnalysis     → xóa qua DELETE /api/image-analyzer/:id
+//   • VideoJob          → xóa qua DELETE /api/video-jobs/:id
+//   • Job (Voice / TTS) → xóa qua DELETE /api/user/jobs/:id
+const resolveDeleteEndpoint = (job) => {
+  const t = (job?.type || '').toLowerCase();
+  if (t === 'image' || t === 'flux') {
+    return `/image/${job.id}`;
+  }
+  if (t === 'analysis' || t === 'vision' || t === 'mat_than') {
+    return `/image-analyzer/${job.id}`;
+  }
+  // Video items từ bảng video_jobs
+  if (t === 'video' || t === 'render_task') {
+    return `/video-jobs/${job.id}`;
+  }
+  // Voice, TTS, render_task cũ → bảng Job chung
+  return `/user/jobs/${job.id}`;
+};
 
 export default function useDashboard() {
   const context = useOutletContext();
@@ -165,7 +188,7 @@ export default function useDashboard() {
     }
 
     // Kiểm tra số dư credit của người dùng trước khi tạo TTS
-    if (credits < 2) {
+    if (credits < 5) {
       toast.error("Số dư tín dụng (credits) của bạn không đủ để thực hiện tác vụ này.");
       return;
     }
@@ -179,8 +202,17 @@ export default function useDashboard() {
         name: ttsPrompt.substring(0, 15) + '...',
         type: 'Voice',
         prompt: ttsPrompt,
-        meta_data: { lang: ttsLang, voice: ttsVoice, speed: ttsSpeed, pitch: ttsPitch, volume: ttsVolume }
+        text: ttsPrompt,
+        meta_data: {
+          voiceModel: ttsVoice,  // key chính Backend ưu tiên đọc (meta?.voiceModel)
+          voice: ttsVoice,       // key fallback để tương thích ngược
+          lang: ttsLang,
+          speed: ttsSpeed,
+          pitch: ttsPitch,
+          volume: ttsVolume
+        }
       });
+      console.log('[TTS GEN] Request sent — voice:', ttsVoice, '| lang:', ttsLang, '| speed:', ttsSpeed, '| pitch:', ttsPitch);
       if (updateUserState) {
         updateUserState({ credits: res.credits });
       }
@@ -213,13 +245,19 @@ export default function useDashboard() {
   // useEffect(() => { loadHistory(); }, [historyType]); // ĐÃ XÓA ĐỂ TRÁNH VÒNG LẶP
 
   // Xử lý xóa lịch sử trực tiếp (không qua modal xác nhận nếu được gọi trực tiếp)
-  const handleDeleteHistory = async (id) => {
+  // Tham số job có thể là object (có .type) hoặc id thuần — hỗ trợ cả hai
+  const handleDeleteHistory = async (jobOrId) => {
+    const isObject = typeof jobOrId === 'object' && jobOrId !== null;
+    const endpoint = isObject
+      ? resolveDeleteEndpoint(jobOrId)
+      : `/user/jobs/${jobOrId}`; // fallback nếu chỉ truyền id
+    const id = isObject ? jobOrId.id : jobOrId;
     try {
-      await userService.deleteJob(id);
+      await axiosClient.delete(endpoint);
       if (setHistoryList) {
         setHistoryList(prev => prev.filter(item => item.id !== id));
       }
-      toast.success("Xóa lịch sử thành công!");
+      toast.success('Xóa lịch sử thành công!');
     } catch (err) {
       console.error('[DELETE HISTORY] Failed:', err.message);
       toast.error(err.response?.data?.message || err.message || 'Không thể xoá lịch sử.');
@@ -231,25 +269,42 @@ export default function useDashboard() {
     setDeleteModalOpen(true);
   };
 
-  // Xác nhận xóa lịch sử từ Modal
+  // Xác nhận xóa lịch sử từ Global Modal Dialog
+  // FIX TRIỆT ĐỂ 404: Route tới đúng endpoint Backend dựa theo jobToDelete.type:
+  //   • image/flux        → DELETE /api/image/:id             (ImageJob table)
+  //   • vision/mat_than/analysis → DELETE /api/image-analyzer/:id (ImageAnalysis table)
+  //   • video/voice/tts   → DELETE /api/user/jobs/:id         (Job table)
   const confirmDeleteHistory = async () => {
     if (!jobToDelete) return;
+    const endpoint = resolveDeleteEndpoint(jobToDelete);
+    // Lưu callback trước khi reset state (tránh lost reference sau finally)
+    const onSuccessCallback = jobToDelete._onDeleteSuccess || null;
     try {
-      // Gọi API xóa thông qua client axios
-      await userService.deleteJob(jobToDelete.id);
-      
+      // Gọi đúng endpoint tương ứng với loại tác vụ
+      await axiosClient.delete(endpoint);
+
       // Cập nhật State trực tiếp ở Frontend để ẩn bản ghi đã xóa mà không cần reload trang
       if (setHistoryList) {
         setHistoryList(prev => prev.filter(item => item.id !== jobToDelete.id));
       }
-      
+
+      // Tải lại lịch sử từ server để đồng bộ dữ liệu mới nhất
+      if (typeof loadHistory === 'function') {
+        loadHistory();
+      }
+
       // Hiển thị thông báo thành công kèm tên tác vụ
       toast.success(`Đã xóa thành công: ${jobToDelete.title || 'tác vụ'}`);
+
+      // Gọi callback điều hướng sau xóa (nếu có) — dùng cho MatThanDetailView navigate(-1)
+      if (typeof onSuccessCallback === 'function') {
+        onSuccessCallback();
+      }
     } catch (err) {
-      // Ghi log lỗi để debug
-      console.error('[DELETE HISTORY] Failed:', err.message);
+      // Ghi log lỗi để debug — bao gồm endpoint đã gọi để dễ trace
+      console.error(`[DELETE HISTORY] Failed at ${endpoint}:`, err.message);
       // Hiển thị thông báo lỗi cho người dùng bằng Toast
-      toast.error(err.response?.data?.message || err.message || 'Không thể xoá lịch sử.');
+      toast.error(err.response?.data?.message || err.message || 'Không thể xoá tác vụ.');
     } finally {
       // Đóng modal và reset job được chọn xóa
       setDeleteModalOpen(false);

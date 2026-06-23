@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Image, Mic, Eye, Zap, Clock, Settings, X } from 'lucide-react';
+import { Image, Mic, Eye, Zap, Clock, Settings, X, Clapperboard, LogOut } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
 
 export default function Sidebar({ 
     currentMenu = 'video', 
@@ -10,11 +11,17 @@ export default function Sidebar({
     historyList = []
 }) {
     const navigate = useNavigate();
+    const { logout } = useAuth();
+
+    const handleLogout = () => {
+        logout();
+    };
 
     const menus = [
         { id: 'image-generator', label: 'Tạo Ảnh AI', icon: Image, path: '/dashboard/image-generator' },
         { id: 'tts', label: 'Tạo Giọng Nói', icon: Mic, path: '/dashboard/tts' },
         { id: 'image-analyzer', label: 'Mắt Thần AI', icon: Eye, path: '/dashboard/image-analyzer' },
+        { id: 'video-studio', label: 'Video AI Studio', icon: Clapperboard, path: '/dashboard/video-studio' },
         // Tạm ẩn Trợ lý viết bài Affiliate trên Sidebar
         // { id: 'affiliate', label: 'Trợ Lý Affiliate', icon: Zap, path: '/dashboard/affiliate' },
         { id: 'history', label: 'Lịch sử', icon: Clock, path: '/dashboard/history' },
@@ -69,8 +76,15 @@ export default function Sidebar({
 
             </div>
             
-            {/* Empty footer area */}
-            <div></div>
+            {/* Logout button at the bottom */}
+            <button
+                type="button"
+                onClick={handleLogout}
+                className="!p-4 flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-all duration-200 cursor-pointer mt-auto mx-2 border-none bg-transparent"
+            >
+                <LogOut size={14} />
+                <span className="text-xs font-bold">Đăng xuất</span>
+            </button>
         </aside>
     );
 }

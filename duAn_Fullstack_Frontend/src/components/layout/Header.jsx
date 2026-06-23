@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, Menu, AlertTriangle, Trash2, X, Check } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import axiosClient from '../../services/axiosClient';
+import socketService from '../../services/socketService';
 
 const formatTime = (dateString) => {
     if (!dateString) return 'vừa xong';
@@ -19,11 +20,24 @@ const formatTime = (dateString) => {
     return `${diffDay} ngày trước`;
 };
 
-export default function Header({ credits = 140, toggleSidebar, avatar, name, setPreviewJob, loadHistory }) {
+export default function Header({
+    credits = 140,
+    setCredits,
+    toggleSidebar,
+    avatar,
+    name,
+    setPreviewJob,
+    loadHistory,
+    unreadCount: externalUnreadCount,
+    setUnreadCount: externalSetUnreadCount
+}) {
     const navigate = useNavigate();
     const [isNotifyOpen, setIsNotifyOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
-    const [unreadCount, setUnreadCount] = useState(0);
+
+    const [localUnreadCount, setLocalUnreadCount] = useState(0);
+    const unreadCount = externalUnreadCount !== undefined ? externalUnreadCount : localUnreadCount;
+    const setUnreadCount = externalSetUnreadCount || setLocalUnreadCount;
     const [isNotifLoading, setIsNotifLoading] = useState(false);
 
     useEffect(() => {
@@ -128,6 +142,53 @@ export default function Header({ credits = 140, toggleSidebar, avatar, name, set
         };
     }, []);
 
+    useEffect(() => {
+        const socket = socketService.connectSocket();
+
+        const handlePipelineUpdate = (payload) => {
+            console.log('[REAL-TIME BALANCE RECEIVE] Nhận dữ liệu cập nhật ví:', payload);
+
+            // 1. 💡 NẢY SỐ VÍ TIỀN: Cập nhật ngay lập tức số dư Credits mới lên thanh trạng thái Header
+            if (payload.credits !== null && typeof setCredits === 'function') {
+                setCredits(payload.credits);
+            }
+
+            // 2. 🚨 NỔ SỐ CHUÔNG THÔNG BÁO USER: Thêm tin nhắn mới vào hộp thư thả xuống của User
+            if (payload.notification) {
+                const mockNotif = {
+                    id: payload.notification.id || Date.now(),
+                    title: payload.notification.title,
+                    message: payload.notification.message,
+                    type: payload.notification.title.includes('thành công') ? 'info' : 'error',
+                    is_read: false,
+                    createdAt: payload.notification.createdAt || new Date()
+                };
+
+                setNotifications(prev => {
+                    if (prev.some(n => n.message === mockNotif.message && Math.abs(new Date(n.createdAt) - new Date(mockNotif.createdAt)) < 5000)) {
+                        return prev;
+                    }
+                    return [mockNotif, ...prev].slice(0, 10);
+                });
+                
+                if (typeof setUnreadCount === 'function') {
+                    setUnreadCount(prevCount => prevCount + 1);
+                }
+
+                // Tải lại lịch sử
+                if (typeof loadHistory === 'function') {
+                    loadHistory();
+                }
+            }
+        };
+
+        socket.on('USER_PIPELINE_UPDATE', handlePipelineUpdate);
+
+        return () => {
+            socket.off('USER_PIPELINE_UPDATE', handlePipelineUpdate);
+        };
+    }, [setCredits, setUnreadCount, loadHistory]);
+
     const handleBellClick = async () => {
         const nextState = !isNotifyOpen;
         setIsNotifyOpen(nextState);
@@ -158,18 +219,20 @@ export default function Header({ credits = 140, toggleSidebar, avatar, name, set
         const isImage = job.type === 'Image' || job.type === 'image';
         return {
             id: job.id,
-            title: isAnalysis ? job.image_name : (isImage ? 'Tạo Ảnh AI' : job.name),
-            sub: isAnalysis ? job.prompt_output : job.prompt,
-            time: new Date(job.createdAt || job.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date(job.createdAt || job.created_at).toLocaleDateString('vi-VN'),
+            title: `Tác vụ #${job.id}`,
+            sub: job.prompt || 'Không có prompt',
+            time: job.createdAt,
             type: isVideo ? 'video' : isAnalysis ? 'analysis' : isImage ? 'image' : 'tts',
             status: job.status,
             progress: job.progress,
-            output_url: job.output_url,
+            output_url: job.videoUrl || job.output_url,
             image_path: job.image_path,
             image_name: job.image_name,
             prompt_output: job.prompt_output,
             createdAt: job.createdAt || job.created_at,
-            ratio: isImage
+            ratio: isVideo
+                ? (job.aspectRatio || job.ratio || '16:9')
+                : isImage
                 ? (job.aspectRatio === '9:16' || job.aspect_ratio === '9:16' ? '9:16 Dọc' :
                    job.aspectRatio === '16:9' || job.aspect_ratio === '16:9' ? '16:9 Ngang' : '1:1 Vuông')
                 : (job.meta_data?.aspectRatio === '916' ? '9:16 TikTok' : '16:9 Ngang'),
@@ -235,31 +298,7 @@ export default function Header({ credits = 140, toggleSidebar, avatar, name, set
         // Case 2: Video AI
         const isVideo = titleLower.includes('video') || messageLower.includes('video');
         if (isVideo) {
-            setIsNotifLoading(true);
-            try {
-                const data = await axiosClient.get('/user/history');
-                if (Array.isArray(data)) {
-                    let job = null;
-                    if (entityId) {
-                        job = data.find(j => j.id === entityId);
-                    }
-                    if (!job) {
-                        // Fallback to latest video job
-                        const videoJobs = data.filter(j => j.type === 'Video' || j.type === 'video' || j.type === 'render_task');
-                        if (videoJobs.length > 0) {
-                            videoJobs.sort((a, b) => new Date(b.createdAt || b.created_at) - new Date(a.createdAt || a.created_at));
-                            job = videoJobs[0];
-                        }
-                    }
-                    if (job && typeof setPreviewJob === 'function') {
-                        setPreviewJob(mapJobToPreview(job));
-                    }
-                }
-            } catch (err) {
-                console.error('Failed to fetch history for video preview:', err);
-            } finally {
-                setIsNotifLoading(false);
-            }
+            navigate('/dashboard/history');
             return;
         }
 
@@ -355,20 +394,16 @@ export default function Header({ credits = 140, toggleSidebar, avatar, name, set
                     <Menu size={18} />
                 </button>
                 
-                <div className="flex items-center gap-2 select-none">
-                    <span className="bg-[#3b82f6] !text-white !px-1.5 !py-0.5 !rounded-md !text-[12px] !sm:text-[11px] !font-black !tracking-wider !leading-none shrink-0">
-            AI
-          </span>
-                    <span className="text-sm font-black uppercase tracking-wider text-white whitespace-nowrap">
-                         Studio
-                    </span>
-                </div>
+                <Link to="/dashboard/image-generator" className="flex items-center gap-2 cursor-pointer select-none">
+                    <img src="/favicon.svg" alt="AI Studio Logo" className="w-7 h-7 object-contain" />
+                    <span className="text-white font-bold tracking-wider text-lg">STUDIO</span>
+                </Link>
             </div>
 
             {/* GÓC PHẢI: TIỀN TỆ + THÔNG BÁO + PROFILE */}
             <div className="flex items-center gap-2.5 sm:gap-4">
                 {/* Chỉ số Credits tài khoản */}
-                <div className="bg-transparent border border-[#f59e0b] px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full flex items-center gap-1.5 sm:gap-2">
+                <div className="bg-transparent !p-1 border border-[#f59e0b] px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full flex items-center gap-1.5 sm:gap-2">
                     <span className="w-4 h-4 rounded-full border border-[#f59e0b] text-[#f59e0b] flex items-center justify-center text-[10px] font-black font-sans leading-none">
                         $
                     </span>
@@ -380,7 +415,7 @@ export default function Header({ credits = 140, toggleSidebar, avatar, name, set
                 {/* Button Nạp */}
                 <button 
                     onClick={() => navigate('/dashboard/settings#billing-section')} 
-                    className="border border-zinc-800 bg-[#161616]/40 hover:bg-[#1c1c22] text-zinc-400 hover:text-white px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-semibold transition-all cursor-pointer border-solid"
+                    className="!p-1 border border-zinc-800 bg-[#161616]/40 hover:bg-[#1c1c22] text-zinc-400 hover:text-white px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-semibold transition-all cursor-pointer border-solid"
                 >
                     + Nạp
                 </button>

@@ -1,8 +1,367 @@
-const fs = require('fs');
-const path = require('path');
-const axios = require('axios');
-const { ImageAnalysis, SystemConfig, User } = require('../models');
+const fs     = require('fs');
+const path   = require('path');
+const sharp  = require('sharp');
 
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { ImageAnalysis, SystemConfig, User, AdminNotification } = require('../models');
+
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  HELPERS: Lấy API Keys động từ DB (bảng system_configs - Row Key-Value)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Đọc giá trị một key bất kỳ từ bảng system_configs.
+ * Fallback về biến ENV nếu DB không có hoặc lỗi.
+ */
+const getConfigValue = async (key, envFallback = null) => {
+  try {
+    const row = await SystemConfig.findByPk(key);
+    if (row && row.value && row.value.trim()) {
+      return row.value.trim();
+    }
+  } catch (err) {
+    console.warn(`[SYSTEM CONFIG] Không thể đọc key="${key}" từ DB:`, err.message);
+  }
+  return envFallback;
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  SUPER PROMPT — Song ngữ Anh-Việt (Gemini Native + OpenRouter Vision)
+//  Ép AI kết xuất 100% plain text, nghiêm cấm mọi ký tự Markdown
+// ═════════════════════════════════════════════════════════════════════════════
+const SUPER_PROMPT = `You are a professional E-commerce Fashion Analyzer specializing in apparel, resort wear, and beachwear. 
+
+CRITICAL MODERATION RULE:
+1. ALLOWED: You CAN analyze standard swimwear, bikinis, and beach outfits IF they are presented in a normal fashion or vacation context (e.g., on a beach, by a pool) and DO NOT expose explicit sexual body parts.
+2. FORBIDDEN (NSFW): If the image contains actual nudity, exposed genitals, fully exposed female breasts/nipples, or explicit pornographic/sexual poses, you MUST IMMEDIATELY STOP your analysis.
+
+If the image falls under category 2 (FORBIDDEN), you must immediately refuse by outputting exactly this single phrase: "CRITICAL_ERROR_SAFETY_VIOLATION". Do not output any other text or explanations.
+
+You are also an elite Product Image Analysis Expert, Senior Product Analyst, and Top Video Ad Scriptwriter specialized in TikTok Affiliate marketing and AI Video Engineering (Fal.ai, Runway, Sora).
+Analyze the attached clothing product image carefully to extract every detail of style, material, and branding, then generate a highly professional, high-converting marketing script.
+
+STRICT OUTPUT STRUCTURE (MUST BE 100% CLEAN PLAIN TEXT):
+
+1. PHÂN TÍCH SẢN PHẨM VÀ CHẤT LIỆU
+(Viết bằng Tiếng Việt. Liệt kê chính xác tên thương hiệu nếu có logo xuất hiện trên ảnh, bảng màu sắc, chất liệu vải chi tiết như cotton nỉ bông, khaki thô, lụa, jean denim, độ dày dặn, độ co giãn. Phân tích sâu về kiểu dáng và form dáng của sản phẩm như oversize, regular, slimfit, các chi tiết cúc áo, đường kim mũi chỉ, khóa kéo, cổ áo và phong cách cốt lõi mà trang phục này hướng tới).
+
+2. PROMPT SINH VIDEO CHO AI BẰNG TIẾNG ANH (CONSOLIDATED AI VIDEO PROMPT)
+(CRITICAL: Viết một đoạn văn dài, giàu tính mô tả kỹ thuật từ 120-180 từ HOÀN TOÀN BẰNG TIẾNG ANH. TUYỆT ĐỐI KHÔNG trộn từ giải thích Tiếng Việt vào mục này để người dùng có thể copy-paste dùng ngay 100%. Bắt buộc phải chèn trực tiếp các mốc thời gian [0-3s], [3-6s], [6-9s], [9-12s] vào ngay đầu mỗi câu mô tả phân cảnh tương ứng để ép AI tạo video chạy đúng timeline. 
+Cấu trúc kịch bản lồng ghép trong prompt Tiếng Anh phải tuân thủ:
+- [0-3s]: Cảnh mở đầu, góc quay cinematic 4K toàn cảnh sản phẩm trải phẳng không nếp nhăn (premium flat lay) trên nền sàn gỗ luxury hoặc thảm/cát sạch sẽ, ánh sáng studio dịu nhẹ.
+- [3-6s]: Cảnh quay macro cận cảnh di chuyển mượt mà tập trung vào chi tiết đắt giá nhất (logo nhãn hiệu, đường may nẹp cúc, kết cấu thớ vải).
+- [6-9s]: Cảnh camera lia máy mượt mà (smooth panning), kết hợp hiệu ứng vật lý vải 3D (3D clothing physics) thể hiện độ co giãn, mềm mại của chất liệu dưới tác động ngoại cảnh như gió thổi nhẹ.
+- [9-12s]: Cảnh kết thúc tĩnh lặng điện ảnh, làm nổi bật toàn bộ trang phục ở vị trí trung tâm khung hình với hiệu ứng mờ hậu cảnh bokeh chuyên nghiệp).
+
+3. TỪ KHÓA PHỦ ĐỊNH SONG NGỮ (NEGATIVE PROMPT)
+(Cung cấp danh sách các từ khóa phủ định chặn lỗi bằng Tiếng Anh kèm giải nghĩa Tiếng Việt trong ngoặc đơn để người dùng dễ kiểm soát: text errors (lỗi chữ), garbled logo (logo méo), deformed clothing (áo biến dạng), low quality (chất lượng thấp), blurry (mờ), extra limbs (thừa chi), distorted proportions (tỉ lệ méo)).
+
+⚠️ STYLISTIC RULES (STRICTLY ENFORCED):
+1. Never use asterisks (* or **) anywhere. Do not use them for bolding, titles, emphasis, or bullet points.
+2. Never use hashtags (#, ##, ###) for headers or section titles.
+3. Never use dashes (-) or bullet points for lists. Use normal numbers (1., 2., 3.) or write in continuous, fluent sentences.
+4. Section titles must be in ALL CAPS. Use exactly double newlines (\\n\\n) to separate sections and main headers cleanly.
+5. Output must be 100% clean, raw plain text, perfectly formatted without any markdown symbols, ready for the user to copy-paste directly into third-party apps like CapCut, Fal.ai, or Runway without any formatting clean-up.`;
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  HELPER: Phát hiện lỗi Quota / Rate-Limit từ Gemini API
+//  Trả về true khi lỗi là 429 / RESOURCE_EXHAUSTED → trigger Fal fallback
+//  Trả về false khi lỗi khác (key sai, mạng, nội dung bị chặn...) → throw
+// ═════════════════════════════════════════════════════════════════════════════
+const isGeminiQuotaError = (err) => {
+  const msg    = (err.message || '').toUpperCase();
+  const status = err.status || err.httpStatus || err.code || 0;
+  return (
+    status === 429 ||
+    String(status) === '429' ||
+    msg.includes('429') ||
+    msg.includes('RESOURCE_EXHAUSTED') ||
+    msg.includes('QUOTA') ||
+    msg.includes('RATE_LIMIT') ||
+    msg.includes('TOO_MANY_REQUESTS')
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  TẦNG 1: GOOGLE GEMINI 2.0 FLASH — Model ưu tiên, phân tích ảnh bằng Vision
+//  Ảnh gửi dưới dạng base64 inlineData — không cần upload CDN
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Phân tích ảnh sản phẩm bằng Gemini 2.0 Flash Vision.
+ * Ảnh được nén bằng Sharp rồi encode base64 gửi thẳng — tiết kiệm bandwidth.
+ * @param {string} geminiKey  - API Key đọc từ DB (gemini_api_key)
+ * @param {Buffer} imageBuffer - Buffer ảnh gốc đọc từ disk
+ * @returns {Promise<string>}  - Văn bản phân tích sạch từ Gemini
+ */
+const analyzeWithGemini = async (geminiKey, imageBuffer) => {
+  // ─ Bước 1: Nén ảnh bằng Sharp → buffer tối ưu ───────────────────────────
+  const optimizedBuffer = await sharp(imageBuffer)
+    .resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 80 })
+    .toBuffer();
+
+  console.log(`[SHARP/GEMINI] Ảnh sau nén: ${(optimizedBuffer.length / 1024).toFixed(1)}KB → gửi base64 cho Gemini`);
+
+  // ─ Bước 2: Encode base64 và gọi Gemini Vision ────────────────────────────
+  const base64Image = optimizedBuffer.toString('base64');
+
+  const genAI = new GoogleGenerativeAI(geminiKey);
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+  const result = await model.generateContent([
+    { text: SUPER_PROMPT },
+    { inlineData: { data: base64Image, mimeType: 'image/jpeg' } },
+  ]);
+
+  const text = result.response.text();
+  if (!text || !text.trim()) {
+    throw new Error('[Gemini] Trả về kết quả rỗng.');
+  }
+
+  // Tự động ghi sổ hóa đơn chi phí API Google Gemini
+  try {
+    const { ApiCost } = require('../models');
+    const usageMetadata = result.response.usageMetadata;
+    const promptTokenCount = usageMetadata ? usageMetadata.promptTokenCount : 0;
+    const candidatesTokenCount = usageMetadata ? usageMetadata.candidatesTokenCount : 0;
+    // Đơn giá gemini-2.0-flash: $0.075 / 1M input tokens, $0.3 / 1M output tokens
+    const calculatedCost = (promptTokenCount * 0.000000075) + (candidatesTokenCount * 0.0000003);
+    await ApiCost.create({
+      provider: 'Gemini',
+      cost: Number(calculatedCost.toFixed(8))
+    });
+    console.log(`[GEMINI] ✅ Ghi nhận chi phí Gemini: ${calculatedCost} USD cho ${promptTokenCount} input / ${candidatesTokenCount} output tokens`);
+  } catch (databaseError) {
+    console.error('[GEMINI] ⚠️ Lỗi khi ghi sổ ApiCost Gemini:', databaseError.message);
+  }
+
+  return text.trim();
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  HELPER: Phát hiện lỗi Quota / Rate-Limit từ OpenRouter API
+//  Trả về true khi lỗi 429 / RATE_LIMIT / hết credit → trigger OpenRouter fallback
+// ═════════════════════════════════════════════════════════════════════════════
+const isOpenRouterQuotaError = (err) => {
+  const msg    = (err.message || '').toUpperCase();
+  const status = err.status || err.httpStatus || err.code || 0;
+  return (
+    status === 429 ||
+    status === 404 ||              // Model bị xóa / không còn endpoint → fallback
+    status === 400 ||              // Invalid model ID → fallback thay vì crash
+    String(status) === '429' ||
+    String(status) === '404' ||
+    String(status) === '400' ||
+    msg.includes('429') ||
+    msg.includes('404') ||
+    msg.includes('400') ||
+    msg.includes('RATE_LIMIT') ||
+    msg.includes('QUOTA') ||
+    msg.includes('TOO_MANY_REQUESTS') ||
+    msg.includes('INSUFFICIENT_CREDITS') ||
+    msg.includes('NO_PROVIDER') ||
+    msg.includes('NO ENDPOINTS') ||
+    msg.includes('NOT FOUND') ||
+    msg.includes('NOT A VALID MODEL') ||
+    msg.includes('INVALID MODEL')
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  TẦNG 2: OPENROUTER VISION — Fallback thứ nhất khi Gemini hết quota
+//  Gọi qua /api/v1/chat/completions — Base64 inline, KHÔNG cần CDN upload
+//  Mặc định: google/gemini-2.0-flash-exp:free (pool quota KHÁC Gemini gốc)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Phân tích ảnh sản phẩm bằng OpenRouter Vision (Base64 inline).
+ * Không cần upload CDN — gửi ảnh nén thẳng qua body JSON giống Gemini native.
+ * Model mặc định: google/gemini-2.0-flash-exp:free — FREE, chất lượng cao.
+ * @param {string} openrouterKey  - API Key đọc từ DB (openrouter_api_key)
+ * @param {Buffer} imageBuffer    - Buffer ảnh gốc đọc từ disk
+ * @returns {Promise<string>}     - Văn bản phân tích sạch từ OpenRouter
+ */
+const analyzeWithOpenRouter = async (openrouterKey, imageBuffer, modelName = 'google/gemini-2.0-flash') => {
+  // ─ Bước 1: Nén ảnh bằng Sharp → buffer tối ưu ───────────────────────────
+  const optimizedBuffer = await sharp(imageBuffer)
+    .resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 80 })
+    .toBuffer();
+
+  console.log(`[SHARP/OPENROUTER] Ảnh sau nén: ${(optimizedBuffer.length / 1024).toFixed(1)}KB → gửi base64 cho OpenRouter Vision`);
+
+  // ─ Bước 2: Encode base64 và gọi OpenRouter Vision ────────────────────────
+  const base64Image = optimizedBuffer.toString('base64');
+
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${openrouterKey}`,
+      'Content-Type':  'application/json',
+      'HTTP-Referer':  'https://aistudio.vn',
+      'X-Title':       'Mat Than AI - Product Image Analyzer',
+    },
+    body: JSON.stringify({
+      model: modelName,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text',      text: SUPER_PROMPT },
+            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } },
+          ],
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    // Ném lỗi kèm HTTP status code để isOpenRouterQuotaError() phân loại được
+    const err = new Error(`[OpenRouter] HTTP ${response.status}: ${errText}`);
+    err.status = response.status;
+    throw err;
+  }
+
+  const data = await response.json();
+  const text = data.choices?.[0]?.message?.content;
+
+  if (!text || !text.trim()) {
+    throw new Error('[OpenRouter] Trả về kết quả rỗng.');
+  }
+
+  console.log(`[OPENROUTER] ✅ Phân tích hoàn tất — ${text.trim().length} ký tự (model: ${modelName} via OpenRouter)`);
+
+  // Tự động ghi sổ hóa đơn chi phí API OpenRouter
+  try {
+    const { ApiCost } = require('../models');
+    let openRouterCost = 0.00001000; // Giá trị chi phí mặc định tối thiểu làm dự phòng
+    if (data.usage) {
+      if (data.usage.total_cost !== undefined) {
+        openRouterCost = parseFloat(data.usage.total_cost);
+      } else if (data.usage.cost !== undefined) {
+        openRouterCost = parseFloat(data.usage.cost);
+      } else {
+        const totalTokens = data.usage.total_tokens || 0;
+        openRouterCost = totalTokens * 0.000002; // đơn giá dự phòng cấu hình ($0.002 / 1K tokens)
+      }
+    }
+    await ApiCost.create({
+      provider: 'OpenRouter',
+      cost: Number(openRouterCost.toFixed(8))
+    });
+    console.log(`[OPENROUTER] ✅ Ghi nhận chi phí OpenRouter: ${openRouterCost} USD`);
+  } catch (databaseError) {
+    console.error('[OPENROUTER] ⚠️ Lỗi khi ghi sổ ApiCost OpenRouter:', databaseError.message);
+  }
+
+  return text.trim();
+};
+
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  runAIAnalysis — Bộ điều phối 2 tầng AI
+//  Tầng 1: Gemini 2.0 Flash Native (nhanh, không tốn CDN bandwidth)
+//  Tầng 2: OpenRouter Vision (fallback khi Gemini báo 429 / hết quota)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Điều phối phân tích ảnh qua 2 tầng AI tuần tự.
+ * Gemini chạy trước, OpenRouter là fallback khi Gemini hết quota.
+ * Nếu cả 2 đều thất bại → throw lỗi lên caller.
+ * @returns {{ promptText, inputTokens, outputTokens, provider }}
+ */
+const runAIAnalysis = async (geminiKey, openrouterKey, imageBuffer, mimeType, analysisId) => {
+  // ╔══════════════════════════════════════════════════════════════════════════╗
+  // ║  TẦNG 1: Gemini 2.0 Flash Native — Model ưu tiên số 1                  ║
+  // ║  Base64 inline → không upload CDN, không tốn thêm chi phí              ║
+  // ╚══════════════════════════════════════════════════════════════════════════╝
+  if (geminiKey) {
+    try {
+      console.log(`[MAT THAN AI] 🤖 [Tầng 1 - Gemini 2.0 Flash] Đang phân tích ảnh #${analysisId}...`);
+      const promptText = await analyzeWithGemini(geminiKey, imageBuffer);
+      console.log(`[MAT THAN AI] ✅ [Gemini 2.0 Flash] Thành công — ${promptText.length} ký tự`);
+      return { promptText, inputTokens: null, outputTokens: null, provider: 'google/gemini-2.0-flash' };
+    } catch (geminiErr) {
+      if (isGeminiQuotaError(geminiErr)) {
+        // Quota / rate-limit → chuyển sang OpenRouter (Tầng 2)
+        console.warn(`[MAT THAN AI] ⚠️  [Gemini] Hết quota / rate-limit → Kích hoạt OpenRouter fallback (Tầng 2)...`);
+        console.warn(`[MAT THAN AI] Gemini error: ${geminiErr.message}`);
+      } else {
+        // Lỗi thật (key sai, bị chặn nội dung, network...) → throw ngay
+        console.error(`[MAT THAN AI] ❌ [Gemini] Lỗi không phải quota — throw thẳng.`);
+        console.error(`[MAT THAN AI] Gemini error: ${geminiErr.message}`);
+        throw geminiErr;
+      }
+    }
+  } else {
+    console.warn(`[MAT THAN AI] ⚠️  Không có gemini_api_key trong DB → bỏ qua Tầng 1, thử OpenRouter (Tầng 2).`);
+  }
+
+  // ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  TẦNG 2: OpenRouter Vision — Fallback thứ nhất (Sử dụng gói trả phí)   ║
+// ║  Dùng google/gemini-2.0-flash — Đã nạp tiền, cam kết không lỗi 404       ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+  if (openrouterKey) {
+    try {
+      console.log(`[MAT THAN AI] 🌐 [Tầng 2 - OpenRouter Vision] Đang phân tích ảnh #${analysisId}...`);
+
+      // google/gemini-3.1-flash-lite: model Google Vision mới nhất đang live trên OpenRouter
+      // Rẻ nhất ($0.00000025/token), hỗ trợ image+text, 1M context
+      const modelName = 'google/gemini-3.1-flash-lite';
+      const promptText = await analyzeWithOpenRouter(openrouterKey, imageBuffer, modelName);
+
+      console.log(`[MAT THAN AI] ✅ [OpenRouter Vision - Gemini 3.1 Flash Lite] Thành công — ${promptText.length} ký tự`);
+      return { promptText, inputTokens: null, outputTokens: null, provider: 'openrouter/google/gemini-3.1-flash-lite' };
+    } catch (openrouterErr) {
+      if (isOpenRouterQuotaError(openrouterErr)) {
+        console.warn(`[MAT THAN AI] ⚠️  [OpenRouter] Hết quota / rate-limit — không còn tầng fallback nào.`);
+        console.warn(`[MAT THAN AI] OpenRouter error: ${openrouterErr.message}`);
+      } else {
+        console.error(`[MAT THAN AI] ❌ [OpenRouter] Lỗi không phải quota — throw thẳng.`);
+        console.error(`[MAT THAN AI] OpenRouter error: ${openrouterErr.message}`);
+        throw openrouterErr;
+      }
+    }
+  } else {
+    console.warn(`[MAT THAN AI] ⚠️  Không có openrouter_api_key trong DB → bỏ qua Tầng 2.`);
+  }
+
+  // Cả 2 tầng (Gemini + OpenRouter) đều thất bại hoặc không có key
+  throw new Error(
+    '[MAT THAN AI] Cả 2 tầng AI (Gemini + OpenRouter) đều thất bại hoặc chưa được cấu hình. ' +
+    'Vui lòng kiểm tra gemini_api_key và openrouter_api_key trong trang Admin.'
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  HELPER: Dọn sạch file ảnh tạm sau khi xử lý xong (bảo vệ tài nguyên server)
+// ═════════════════════════════════════════════════════════════════════════════
+/**
+ * Xóa file ảnh tạm khỏi thư mục upload.
+ * Chạy trong finally block — không throw nếu xóa lỗi (file đã tự xóa, v.v.).
+ * @param {string} filePath - Đường dẫn tuyệt đối đến file cần xóa
+ */
+const cleanupUploadedFile = async (filePath) => {
+  if (!filePath) return;
+  try {
+    await fs.promises.unlink(filePath);
+    console.log(`[MAT THAN CLEANUP] 🗑️  Đã xóa file tạm: ${filePath}`);
+  } catch (unlinkErr) {
+    // Không crash server nếu file đã tự xóa hoặc không tồn tại
+    if (unlinkErr.code !== 'ENOENT') {
+      console.warn(`[MAT THAN CLEANUP] Không thể xóa file tạm "${filePath}": ${unlinkErr.message}`);
+    }
+  }
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  analyzeProductImage — POST /api/image-analyzer/analyze
+// ═════════════════════════════════════════════════════════════════════════════
 const analyzeProductImage = async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: 'Vui lòng cung cấp file ảnh sản phẩm (productImage).' });
@@ -13,207 +372,480 @@ const analyzeProductImage = async (req, res) => {
     return res.status(401).json({ success: false, message: 'Người dùng chưa đăng nhập hoặc token không hợp lệ.' });
   }
 
-  const user = await User.findByPk(userId);
-  if (!user || user.credits < 20) {
-    return res.status(400).json({ success: false, message: 'Tài khoản của bạn không đủ credit (Cần tối thiểu 20 credits) để kích hoạt Mắt Thần AI. Vui lòng nạp thêm!' });
+  // Đảm bảo cột banned_until tồn tại trong DB (chạy alter table phòng thủ)
+  try {
+    await User.sequelize.query('ALTER TABLE users ADD COLUMN banned_until DATETIME NULL');
+  } catch (err) {
+    // Cột đã tồn tại hoặc bỏ qua lỗi
   }
 
-  const originalName = req.file.originalname;
-  const fileSize = req.file.size;
-  const mimeType = req.file.mimetype;
+  const user = await User.findByPk(userId);
+
+  if (user && user.banned_until && new Date() < new Date(user.banned_until)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tài khoản của bạn đang trong thời gian bị hạn chế do gửi ảnh vi phạm.',
+        banned_until: user.banned_until ? new Date(user.banned_until).toISOString() : null,
+        mutedUntil: user.banned_until ? new Date(user.banned_until).toISOString() : null
+      });
+  }
+
+  if (!user || user.credits < 20) {
+    return res.status(400).json({
+      success: false,
+      message: 'Tài khoản của bạn không đủ credit (Cần tối thiểu 20 credits) để kích hoạt Mắt Thần AI. Vui lòng nạp thêm!',
+    });
+  }
+
+  const originalName      = req.file.originalname;
+  const fileSize          = req.file.size;
+  const mimeType          = req.file.mimetype;
   const imageRelativePath = `/uploads/images/${req.file.filename}`;
-  let analysisRecord = null;
+  let   analysisRecord    = null;
+
+  // Lưu đường dẫn file tạm ngay từ đầu để finally block có thể dọn dẹp
+  const imageFilePath = req.file.path;
 
   try {
-    // 1. Tạo bản ghi ban đầu chuẩn snake_case
+    // ── BƯỚC 1: Tạo bản ghi ban đầu trong DB ──────────────────────────────────
     analysisRecord = await ImageAnalysis.create({
-      user_id: userId,
+      user_id:    userId,
       image_name: originalName,
       image_path: imageRelativePath,
-      mime_type: mimeType,
-      file_size: fileSize,
-      status: 'processing'
+      mime_type:  mimeType,
+      file_size:  fileSize,
+      status:     'processing',
     });
 
-    // 2. Lấy OpenRouter API Key từ ENV
-    const openrouterApiKey = process.env.OPENROUTER_API_KEY;
-
-    console.log("👉 [OPENROUTER API KEY CHECK]:", openrouterApiKey ? openrouterApiKey.substring(0, 10) + "..." : "NO KEY");
-
-    if (!openrouterApiKey) {
-      throw new Error('OpenRouter API Key chưa được cấu hình trong OPENROUTER_API_KEY!');
-    }
-
-    // 3. Đọc ảnh chuyển Base64
-    const imageFilePath = req.file.path;
+    // ── BƯỚC 2: Đọc file ảnh vật lý → Buffer ──────────────────────────────────
     if (!fs.existsSync(imageFilePath)) {
       throw new Error('Không tìm thấy file ảnh vật lý trên máy chủ.');
     }
     const imageBuffer = fs.readFileSync(imageFilePath);
-    const base64Data = imageBuffer.toString('base64');
 
-    // 4. System Prompt với các quy tắc văn bản thuần túy không chứa markdown
-    const systemPrompt =
-      `Bạn là một Chuyên gia Phân tích Hình ảnh Sản phẩm và Biên kịch Kịch bản Quảng cáo Video hàng đầu.
-Hãy bóc tách hình ảnh sản phẩm được cung cấp để tạo ra một kịch bản/prompt quay video quảng cáo chi tiết bằng Tiếng Việt.
+    // ── BƯỚC 3: Đọc API Keys từ DB — 2 tầng AI tuần tự ─────────────────────
+    //   • gemini_api_key      → Tầng 1: Gemini 2.0 Flash Vision (ưu tiên cao nhất)
+    //   • openrouter_api_key  → Tầng 2: OpenRouter Vision (fallback, Base64 inline)
+    const [geminiKey, openrouterKey] = await Promise.all([
+      getConfigValue('gemini_api_key',     null),
+      getConfigValue('openrouter_api_key', null),
+    ]);
 
-Cấu trúc kịch bản phân tích gồm 3 phần chính:
-1. PHÂN TÍCH SẢN PHẨM VÀ CHẤT LIỆU
-2. KỊCH BẢN QUAY PHIM CHI TIẾT (Storyboard 3-4 phân cảnh góc quay Cinematic 4K, khung dọc 9:16, bối cảnh gọn gàng sàn gỗ/thảm, phong cách clean-lifestyle, nam tính nhẹ nhàng)
-3. PROMPT SINH VIDEO BẰNG TIẾNG ANH (60-80 từ) CHO RUNWAY/SORA
+    console.log(`[MAT THAN AI] 🔑 geminiKey     (DB): ${geminiKey     ? geminiKey.substring(0, 12)     + '...' : 'KHÔNG CÓ'}`);
+    console.log(`[MAT THAN AI] 🔑 openrouterKey (DB): ${openrouterKey ? openrouterKey.substring(0, 12) + '...' : 'KHÔNG CÓ'}`);
+    console.log(`[MAT THAN AI] 📡 Tầng 1: Gemini Native | Tầng 2: OpenRouter Vision (google/gemini-3.1-flash-lite)`);
+    console.log(`[MAT THAN AI] 📝 SUPER_PROMPT: ${SUPER_PROMPT.length} ký tự`);
 
-⚠️ QUY TẮC ĐỊNH DẠNG ĐẦU RA BẮT BUỘC (STRICT TEXT FORMATTING):
-1. TUYỆT ĐỐI KHÔNG SỬ DỤNG KÝ TỰ MARKDOWN:
-- Cấm tuyệt đối xuất hiện các ký tự * hoặc ** ở bất kỳ đâu trong văn bản (kể cả bôi đậm tiêu đề hay nhấn mạnh từ khóa).
-- Cấm tuyệt đối sử dụng các dấu #, ##, ### để phân cấp tiêu đề đoạn.
-- Cấm tuyệt đối dùng dấu gạch đầu dòng dạng - hoặc * cho các danh sách liệt kê.
+    // ── BƯỚC 4: GỌI AI — Điều phối tự động 2 tầng ────────────────────────────
+    //  Gemini → nếu 429/quota → OpenRouter → nếu lỗi → throw
+    //  Nếu cả 2 đều thất bại → throw lên catch toàn cục → status=failed.
+    let aiResult;
+    try {
+      aiResult = await runAIAnalysis(geminiKey, openrouterKey, imageBuffer, mimeType, analysisRecord.id);
+    } catch (aiErr) {
+      // ╔══════════════════════════════════════════════════════════════════════╗
+      // ║  CẢ 2 TẦNG AI ĐỀU THẤT BẠI → status=failed, HTTP 500              ║
+      // ║  KHÔNG đưa lỗi kỹ thuật vào hàng đợi pending của Admin             ║
+      // ╚══════════════════════════════════════════════════════════════════════╝
+      console.error(`[MAT THAN AI] 💀 Cả Gemini và OpenRouter đều thất bại hoàn toàn cho ảnh #${analysisRecord.id}.`);
+      console.error(`[MAT THAN AI] Chi tiết lỗi: ${aiErr.message}`);
 
-2. CƠ CHẾ THAY THẾ BẰNG VĂN BẢN THUẦN (PLAIN TEXT ONLY):
-- Thay vì viết ## 1. Phân tích Sản phẩm, hãy VIẾT HOA TOÀN BỘ TIÊU ĐỀ: 1. PHÂN TÍCH SẢN PHẨM VÀ CHẤT LIỆU.
-- Sử dụng hai dấu xuống dòng liên tiếp (\n\n) để phân tách rõ ràng, rành mạch giữa các đoạn văn và tiêu đề lớn.
-- Thay vì viết **Chất liệu:** Vải thun mỏng, hãy viết theo dạng văn bản thuần có dấu hai chấm bình thường: Chất liệu: Vải thun mỏng.
-- Thay vì dùng dấu chấm tròn bullet point rác, hãy sử dụng số thứ tự thuần túy (1., 2., 3.) hoặc viết thành các câu văn liền mạch.
+      await analysisRecord.update({
+        status:        'failed',
+        error_message: `[AI TOTAL FAILURE] Cả 2 tầng AI (Gemini + OpenRouter) đều thất bại. Không có kết quả.\n${aiErr.message}`,
+      }).catch(() => {});
 
-3. MỤC TIÊU ĐẦU RA: Nội dung trả về phải là một chuỗi ký tự sạch sẽ 100%, mượt mà, sẵn sàng để người dùng bấm nút "SAO CHÉP TOÀN BỘ KỊCH BẢN" và dán ăn ngay vào các ứng dụng khác như CapCut hay Facebook mà không cần chỉnh sửa bất kỳ cái gì.`;
+      const io = req.io;
+      if (io) {
+        // Báo lỗi real-time về đúng room user
+        const userRoom = `user_room_${userId}`;
+        io.to(userRoom).emit('image_analysis_result', {
+          itemId: analysisRecord.id,
+          status: 'failed',
+          resultData: {
+            id:            analysisRecord.id,
+            prompt_output: null,
+            input_tokens:  null,
+            output_tokens: null,
+            status:        'failed',
+            error_message: 'Hệ thống AI tạm thời không khả dụng. Vui lòng thử lại sau.',
+          },
+          message: 'Phan tich anh that bai. Vui long thu lai sau.',
+        });
+        console.log(`[SOCKET.IO] Emitted 'image_analysis_result' (ai-total-failed) -> ${userRoom}`);
+      }
 
-    // 5. Gọi OpenRouter API sử dụng Gemini Flash 1.5 qua chuẩn OpenAI Vision
-    const url = 'https://openrouter.ai/api/v1/chat/completions';
-    
-    const requestBody = {
-      model: 'google/gemini-flash-1.5',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: systemPrompt + '\n\nHãy phân tích hình ảnh này thật chi tiết.'
-            },
-            {
-              type: 'image_url',
-              image_url: {
-                url: `data:${mimeType};base64,${base64Data}`
-              }
-            }
-          ]
-        }
-      ]
-    };
-
-    console.log(`[MAT THAN AI] Đang bắn request tới OpenRouter API (google/gemini-flash-1.5)...`);
-    const response = await axios.post(url, requestBody, {
-      headers: {
-        'Authorization': `Bearer ${openrouterApiKey}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 60000
-    });
-
-    if (!response.data || !response.data.choices || response.data.choices.length === 0) {
-      throw new Error('Không nhận được kết quả hợp lệ từ OpenRouter API.');
+      return res.status(500).json({
+        success: false,
+        message: 'Hệ thống AI tạm thời không khả dụng. Vui lòng thử lại sau vài phút.',
+        error:   aiErr.message,
+      });
     }
 
-    const promptText = response.data.choices[0].message.content;
-    const inputTokensCount = response.data.usage?.prompt_tokens || null;
-    const outputTokensCount = response.data.usage?.completion_tokens || null;
+    // ── BƯỚC 5: Giải nén kết quả AI ───────────────────────────────────────────
+    const { promptText, inputTokens, outputTokens, provider } = aiResult;
 
+    // ── BƯỚC 5.5: KIỂM TRA TỪ CHỐI DỊCH VỤ BẢO MẬT (AI REFUSAL GATE) ──────────
+    // Đặt điều kiện bẫy nhận diện AI từ chối dịch vụ bảo mật
+    const isAiRefusal = promptText.includes('unable to fulfill') || 
+                        promptText.includes('safety guidelines') || 
+                        promptText.includes('prohibit') || 
+                        promptText.includes('violates') ||
+                        promptText.includes('CRITICAL_ERROR_SAFETY_VIOLATION');
+
+    if (isAiRefusal) {
+      console.warn(`[MAT THAN SECURITY] 🚨 AI từ chối phân tích (vi phạm chính sách an toàn/NSFW) từ ${provider}.`);
+
+      // Kích hoạt luồng hoàn trả 20 Credits cho người dùng ngay tại đây
+      // (Nếu lỡ trừ trước khi gọi API, ta cộng trả lại ngay lập tức để đồng bộ lại state hiển thị cho người dùng)
+      // user.credits = user.credits + 20;
+      // await user.save();
+
+      // Phạt khóa tính năng Mắt Thần của user này trong 15 phút để bảo vệ ví tiền của Admin
+      // 💡 SỬA CHUẨN: 15 phút = 15 * 60 * 1000 ms. Tuyệt đối không dùng 60 phút!
+      const BAN_DURATION = 15 * 60 * 1000; 
+      const bannedUntilDate = new Date(Date.now() + BAN_DURATION);
+
+      // Cập nhật xuống Database
+      if (user) {
+        await user.update({ banned_until: bannedUntilDate });
+        // Cập nhật thêm cột cũ mat_than_muted_until qua SQL phòng thủ
+        await User.sequelize.query(
+          'UPDATE users SET mat_than_muted_until = :bannedUntilDate WHERE id = :userId',
+          {
+            replacements: { bannedUntilDate, userId: user.id },
+            type: User.sequelize.QueryTypes.UPDATE
+          }
+        );
+        user.mat_than_muted_until = bannedUntilDate;
+        user.banned_until = bannedUntilDate;
+      }
+
+      // Đổi trạng thái lịch sử thành 'pending' (trạng thái tương ứng với VI_PHAM trong DB để chuyển sang trang duyệt Admin)
+      await analysisRecord.update({
+        status:        'pending',
+        prompt_output: promptText,      // Lưu lại văn bản phản hồi thô của AI
+        input_tokens:  inputTokens,
+        output_tokens: outputTokens,
+        error_message: '[MẮT THẦN SECURITY] Hình ảnh vi phạm bộ lọc an toàn của AI (CRITICAL_ERROR_SAFETY_VIOLATION).',
+      });
+
+      // Bắn socket về admin_room để Admin thấy real-time
+      const io = req.io;
+      if (io) {
+        const pendingRecord = await ImageAnalysis.findByPk(analysisRecord.id, {
+          include: [{ model: User, as: 'owner', attributes: ['id', 'name', 'email'] }],
+        }).catch(() => null);
+        if (pendingRecord) {
+          io.to('admin_room').emit('image_analysis:updated', pendingRecord.toJSON());
+        }
+      }
+
+      if (global.io || req.io) {
+        const ioInstance = req.io || global.io;
+
+        const notiTitle   = 'Phát hiện ảnh vi phạm 🚨';
+        const notiMessage = 'Hệ thống Mắt Thần vừa chặn một hình ảnh hở hang/NSFW vi phạm chính sách từ người dùng!';
+        const redirectUrl = '/admin/moderation';
+
+        // Lưu thông báo vĩnh viễn vào bảng admin_notifications
+        let savedNoti = null;
+        try {
+          savedNoti = await AdminNotification.create({
+            title:   notiTitle,
+            content: notiMessage,
+            type:    'moderation',
+            is_read: false,
+          });
+        } catch (notiErr) {
+          console.warn('[REAL-TIME] Không thể lưu AdminNotification vào DB:', notiErr.message);
+        }
+
+        // Nhánh A: Đẩy thông báo chuông lên Header Admin
+        ioInstance.to('admin_room').emit('NEW_ADMIN_NOTIFICATION', {
+          id:          savedNoti?.id || `MOD-${Date.now()}`,
+          title:       notiTitle,
+          message:     notiMessage,
+          type:        'moderation',
+          redirectUrl: redirectUrl,
+          isRead:      false,
+          createdAt:   new Date()
+        });
+
+        // Reload record với quan hệ owner để Grid có đầy đủ thông tin
+        const fullRecord = await ImageAnalysis.findByPk(analysisRecord.id, {
+          include: [{ model: User, as: 'owner', attributes: ['id', 'name', 'email', 'avatar'] }],
+        }).catch(() => null);
+
+        // Nhánh B: Đẩy object ảnh thô thẳng xuống Grid kiểm duyệt
+        ioInstance.to('admin_room').emit('NEW_MODERATION_ITEM', {
+          id:           analysisRecord.id,
+          image_name:   analysisRecord.image_name,
+          image_path:   analysisRecord.image_path,
+          mime_type:    analysisRecord.mime_type,
+          file_size:    analysisRecord.file_size,
+          status:       'pending',
+          error_message: '[MẮT THẦN SECURITY] Hình ảnh vi phạm bộ lọc an toàn của AI (CRITICAL_ERROR_SAFETY_VIOLATION).',
+          created_at:   analysisRecord.createdAt || new Date(),
+          user: fullRecord?.owner ? {
+            id:     fullRecord.owner.id,
+            name:   fullRecord.owner.name,
+            email:  fullRecord.owner.email,
+            avatar: fullRecord.owner.avatar,
+          } : null,
+        });
+
+        console.log(`[REAL-TIME PIPELINE] ✅ Phát sóng đôi NEW_ADMIN_NOTIFICATION + NEW_MODERATION_ITEM cho Log #${analysisRecord.id}`);
+      }
+
+      // Trả về trạng thái lỗi 400 Bad Request kèm thông báo cho Frontend hiển thị
+      return res.status(400).json({
+        success: false,
+        message: 'Hình ảnh không vượt qua bộ lọc an toàn của AI. Bạn không bị trừ Credits. Tính năng tạm khóa 15 phút để cảnh cáo.',
+        mutedUntil: bannedUntilDate ? new Date(bannedUntilDate).toISOString() : null,
+        banned_until: bannedUntilDate ? new Date(bannedUntilDate).toISOString() : null
+      });
+    }
+
+    // ── BƯỚC 6: KIỂM TRA CỜ AN TOÀN — Mắt Thần Security Gate ─────────────────
+    //  Nếu model AI gắn cờ nội dung nhạy cảm/phản động/hở hang trong output,
+    //  hoàn bộ chuỗi kết quả sẽ chứa mã hiệu: '⚠️ VI_PHAM_NHA_CAM ⚠️'
+    //  Hoặc chứa các từ khóa nhạy cảm / từ chối của AI: 'không chứa trang phục', 'khỏa thân', 'không thể thực hiện phân tích', 'vi phạm chính sách'
+    const unsafeKeywords = [
+      'không chứa trang phục',
+      'khỏa thân',
+      'không thể thực hiện phân tích',
+      'vi phạm chính sách'
+    ];
+    const hasUnsafeKeyword = unsafeKeywords.some(keyword => 
+      promptText.toLowerCase().includes(keyword.toLowerCase())
+    );
+
+    const isUnsafe = promptText.includes('⚠️ VI_PHAM_NHA_CAM ⚠️') || hasUnsafeKeyword;
+    console.log(`[MAT THAN SECURITY] 🔍 Kiểm tra cờ an toàn ảnh #${analysisRecord.id}: isUnsafe=${isUnsafe} (phát hiện từ khóa vi phạm: ${hasUnsafeKeyword})`);
+
+    // ╔══════════════════════════════════════════════════════════════════════════╗
+    // ║  TRƯỜNG HỢP 1: ẢNH NGHI VẤN NHẠY CẢM → Đẩy vào hàng đợi Admin       ║
+    // ╚══════════════════════════════════════════════════════════════════════════╝
+    if (isUnsafe) {
+      console.log(`[MAT THAN SECURITY] 🚨 Ảnh #${analysisRecord.id} bị gắn cờ VI PHẠM bởi ${provider} — status=pending, credit KHÔNG bị trừ.`);
+
+      await analysisRecord.update({
+        status:        'pending',
+        prompt_output: promptText,      // Lưu toàn bộ nội dung cảnh báo của AI
+        input_tokens:  inputTokens,
+        output_tokens: outputTokens,
+        error_message: '[MẮT THẦN SECURITY] Ảnh chứa nội dung nghi vấn nhạy cảm (khiêu dâm/hở hang/phản động). Chờ Admin duyệt tay.',
+      });
+
+      // Bắn socket về admin_room để Admin thấy real-time
+      const io = req.io;
+      if (io) {
+        const pendingRecord = await ImageAnalysis.findByPk(analysisRecord.id, {
+          include: [{ model: User, as: 'owner', attributes: ['id', 'name', 'email', 'avatar'] }],
+        }).catch(() => null);
+        if (pendingRecord) {
+          io.to('admin_room').emit('image_analysis:updated', pendingRecord.toJSON());
+          console.log(`[SOCKET.IO] Emitted 'image_analysis:updated' (unsafe-pending) -> admin_room | analysisId: ${analysisRecord.id}`);
+        }
+
+        // ── PHÁT SÓNG ĐÔI real-time: chuông Admin + Grid kiểm duyệt ─────────
+        const notiTitle   = 'Phát hiện ảnh nghi vấn 🚨';
+        const notiMessage = 'Hệ thống Mắt Thần vừa phát hiện hình ảnh nghi vấn nhạy cảm (khiêu dâm/hở hang/phản động). Cần Admin duyệt tay!';
+        const redirectUrl = '/admin/moderation';
+
+        // Lưu thông báo vào DB admin_notifications
+        let savedNoti = null;
+        try {
+          savedNoti = await AdminNotification.create({
+            title:   notiTitle,
+            content: notiMessage,
+            type:    'moderation',
+            is_read: false,
+          });
+        } catch (notiErr) {
+          console.warn('[REAL-TIME] Không thể lưu AdminNotification vào DB (isUnsafe):', notiErr.message);
+        }
+
+        // Nhánh A: Đẩy thông báo lên Quả chuông Header
+        io.to('admin_room').emit('NEW_ADMIN_NOTIFICATION', {
+          id:          savedNoti?.id || `MOD-${Date.now()}`,
+          title:       notiTitle,
+          message:     notiMessage,
+          type:        'moderation',
+          redirectUrl: redirectUrl,
+          isRead:      false,
+          createdAt:   new Date()
+        });
+
+        // Nhánh B: Đẩy object ảnh thô thẳng vào Grid kiểm duyệt
+        io.to('admin_room').emit('NEW_MODERATION_ITEM', {
+          id:            analysisRecord.id,
+          image_name:    analysisRecord.image_name,
+          image_path:    analysisRecord.image_path,
+          mime_type:     analysisRecord.mime_type,
+          file_size:     analysisRecord.file_size,
+          status:        'pending',
+          error_message: '[MẮT THẦN SECURITY] Ảnh chứa nội dung nghi vấn nhạy cảm. Chờ Admin duyệt tay.',
+          created_at:    analysisRecord.createdAt || new Date(),
+          user: pendingRecord?.owner ? {
+            id:     pendingRecord.owner.id,
+            name:   pendingRecord.owner.name,
+            email:  pendingRecord.owner.email,
+            avatar: pendingRecord.owner.avatar,
+          } : null,
+        });
+
+        console.log(`[REAL-TIME PIPELINE] ✅ Phát sóng đôi NEW_ADMIN_NOTIFICATION + NEW_MODERATION_ITEM (isUnsafe) cho Log #${analysisRecord.id}`);
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'Hình ảnh của bạn đang được đưa vào hàng đợi kiểm duyệt thủ công do nghi vấn chứa nội dung không phù hợp với tiêu chuẩn cộng đồng.',
+        data: { id: analysisRecord.id, status: 'pending' },
+      });
+    }
+
+    // ╔══════════════════════════════════════════════════════════════════════════╗
+    // ║  TRƯỜNG HỢP 2: ẢNH SẠCH AN TOÀN → Trừ credit + Lưu success            ║
+    // ╚══════════════════════════════════════════════════════════════════════════╝
+    console.log(`[MAT THAN SECURITY] ✅ Ảnh #${analysisRecord.id} AN TOÀN (phân tích bởi ${provider}) — tiến hành trừ 20 credits.`);
+
+    // ── BƯỚC 7: Trừ credits và cập nhật DB success ────────────────────────────
     await user.decrement('credits', { by: 20 });
 
-    // 6. Cập nhật DB thành công
     await analysisRecord.update({
-      status: 'success',
+      status:        'success',
       prompt_output: promptText,
-      input_tokens: inputTokensCount,
-      output_tokens: outputTokensCount
+      input_tokens:  inputTokens,
+      output_tokens: outputTokens,
     });
 
-    // Fetch full record with owner info để gửi via Socket.io
     const updatedRecord = await ImageAnalysis.findByPk(analysisRecord.id, {
-      include: [{
-        model: User,
-        as: 'owner',
-        attributes: ['id', 'name', 'email']
-      }]
-    });
+      include: [{ model: User, as: 'owner', attributes: ['id', 'name', 'email'] }],
+    }).catch(() => null);
 
-    // Emit real-time update via Socket.io
+    // ── BƯỚC 8: Emit Socket.io — Admin panel + đúng room User ──────────────────
     const io = req.io;
     if (io) {
-      io.emit('image_analysis:updated', updatedRecord.toJSON());
-      console.log(`[SOCKET.IO] Emitted 'image_analysis:updated' for analysis ID: ${analysisRecord.id}`);
+      // Broadcast cho Admin panel theo dõi tổng quan
+      if (updatedRecord) {
+        io.to('admin_room').emit('image_analysis:updated', updatedRecord.toJSON());
+      }
+
+      // Targeted event về đúng room User → Frontend tự cập nhật real-time
+      const userRoom = `user_room_${userId}`;
+      const socketPayload = {
+        itemId: analysisRecord.id,
+        status: 'success',
+        resultData: {
+          id:            analysisRecord.id,
+          prompt_output: promptText,
+          input_tokens:  inputTokens,
+          output_tokens: outputTokens,
+          status:        'success',
+          error_message: null,
+        },
+        message: 'Ket qua phan tich Mat Than (OpenRouter Vision) da san sang!',
+      };
+      io.to(userRoom).emit('image_analysis_result', socketPayload);
+      console.log(`[SOCKET.IO] Emitted 'image_analysis_result' (success) -> ${userRoom} | analysisId: ${analysisRecord.id}`);
     }
 
-    // Explicit notification insertion on success
+    // ── BƯỚC 9: Ghi thông báo hoàn tất cho User ───────────────────────────────
     try {
       const { Notification } = require('../models');
-      const notificationEmitter = require('../utils/notificationEmitter');
-
+      const notificationEmitter   = require('../utils/notificationEmitter');
       const mtSuccessNotif = await Notification.create({
-        userId: userId,
-        title: 'Mắt thần AI hoàn tất ✓',
-        message: 'Tác vụ phân tích hình ảnh bằng Mắt thần AI của bạn đã hoàn thành.',
-        type: 'info',
-        is_read: false
+        userId:  userId,
+        title:   'Mắt thần AI hoàn tất ✓',
+        message: `Tác vụ phân tích hình ảnh bằng Mắt thần AI của bạn đã hoàn thành (bởi ${provider}).`,
+        type:    'info',
+        is_read: false,
       });
-      // Bắn tín hiệu real-time về client của user qua SSE Gateway
       notificationEmitter.emit('send_notification', mtSuccessNotif);
-      console.log('[MAT THAN SUCCESS] Đã ghi DB và phát thông báo phân tích ảnh thành công.');
+      console.log(`[MAT THAN SUCCESS] Đã ghi DB và phát thông báo hoàn tất cho user #${userId}.`);
     } catch (notifErr) {
-      console.error('[MAT THAN SUCCESS] Explicit notification insert error:', notifErr.message);
+      console.error('[MAT THAN SUCCESS] Notification insert error:', notifErr.message);
     }
 
     return res.status(200).json({
       success: true,
-      message: 'Phân tích hình ảnh sản phẩm thành công! (Đã trừ 20 credits)',
+      message: `Phân tích hình ảnh sản phẩm thành công! (Đã trừ 20 credits — phân tích bởi ${provider})`,
       data: {
-        id: analysisRecord.id,
-        prompt_output: promptText,
-        input_tokens: inputTokensCount,
-        output_tokens: outputTokensCount,
-        current_credits: user.credits - 20
-      }
+        id:              analysisRecord.id,
+        prompt_output:   promptText,
+        input_tokens:    inputTokens,
+        output_tokens:   outputTokens,
+        current_credits: user.credits - 20,
+        ai_provider:     provider,
+      },
     });
 
   } catch (error) {
-    console.error('[MAT THAN AI ERROR]:', error.response?.data || error.message);
-    const errorDetail = error.response?.data ? JSON.stringify(error.response.data) : error.message;
-    
+    // ── Catch toàn cục: lỗi hệ thống nằm ngoài mọi fallback flow ─────────────
+    console.error('[MAT THAN AI ERROR] Lỗi hệ thống nằm ngoài mọi fallback flow:', error.message);
+
     if (analysisRecord) {
       await analysisRecord.update({
-        status: 'failed',
-        error_message: errorDetail
-      });
+        status:        'failed',
+        error_message: error.message,
+      }).catch(() => {});
 
-      // Fetch full record with owner info để gửi via Socket.io
       const failedRecord = await ImageAnalysis.findByPk(analysisRecord.id, {
-        include: [{
-          model: User,
-          as: 'owner',
-          attributes: ['id', 'name', 'email']
-        }]
-      });
+        include: [{ model: User, as: 'owner', attributes: ['id', 'name', 'email'] }],
+      }).catch(() => null);
 
-      // Emit real-time update via Socket.io
       const io = req.io;
       if (io) {
-        io.emit('image_analysis:updated', failedRecord.toJSON());
-        console.log(`[SOCKET.IO] Emitted 'image_analysis:updated' (FAILED) for analysis ID: ${analysisRecord.id}`);
+        if (failedRecord) {
+          io.to('admin_room').emit('image_analysis:updated', failedRecord.toJSON());
+        }
+
+        if (userId) {
+          const userRoom = `user_room_${userId}`;
+          io.to(userRoom).emit('image_analysis_result', {
+            itemId: analysisRecord.id,
+            status: 'failed',
+            resultData: {
+              id:            analysisRecord.id,
+              prompt_output: null,
+              input_tokens:  null,
+              output_tokens: null,
+              status:        'failed',
+              error_message: error.message,
+            },
+            message: 'Phan tich anh that bai. Vui long thu lai sau.',
+          });
+          console.log(`[SOCKET.IO] Emitted 'image_analysis_result' (system-error) -> user_room_${userId}`);
+        }
       }
 
-      // Bắn thông báo lỗi real-time về Admin Dashboard
       if (req.app && req.app.emitAdminNotification) {
-        const errorUser = await User.findByPk(userId, { attributes: ['id', 'name', 'email'] });
+        const errorUser = await User.findByPk(userId, { attributes: ['id', 'name', 'email'] }).catch(() => null);
         req.app.emitAdminNotification({
-          title: 'Lỗi Mắt Thần AI ✗',
-          content: `Phân tích ảnh "${originalName}" của "${errorUser?.name || 'User #' + userId}" thất bại: ${error.message}`,
-          type: 'error'
+          title:   'Loi Mat Than AI x',
+          content: `Phan tich anh "${originalName}" cua "${errorUser?.name || 'User #' + userId}" that bai: ${error.message}`,
+          type:    'error',
         });
       }
     }
-    return res.status(500).json({ success: false, message: 'Có lỗi xảy ra', error: error.message });
+
+    return res.status(500).json({ success: false, message: 'Có lỗi xảy ra khi phân tích ảnh.', error: error.message });
+
+  } finally {
+    // ── BƯỚC CUỐI: GIỮ LẠI FILE ẢNH VẬT LÝ PHỤC VỤ TRUY XUẤT TĨNH ────────────
+    // KHÔNG gọi cleanupUploadedFile tại đây — file phải tồn tại trong
+    // uploads/images/ để Express static có thể serve cho Frontend sau này.
+    // Việc xóa file vật lý khi DB đã lưu image_path trỏ vào file đó
+    // chính là nguyên nhân gốc rễ gây lỗi 404 trên tab Network.
+    console.log(`[MAT THAN] Đã giữ lại file ảnh vật lý phục vụ truy xuất tĩnh: ${imageFilePath}`);
   }
 };
 
+// ═════════════════════════════════════════════════════════════════════════════
+//  getAnalysisDetail — GET /api/image-analyzer/:id
+// ═════════════════════════════════════════════════════════════════════════════
 const getAnalysisDetail = async (req, res) => {
   try {
     const userId = req.user ? req.user.id : null;
@@ -221,9 +853,7 @@ const getAnalysisDetail = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Người dùng chưa đăng nhập hoặc token không hợp lệ.' });
     }
     const { id } = req.params;
-    const record = await ImageAnalysis.findOne({
-      where: { id, user_id: userId }
-    });
+    const record = await ImageAnalysis.findOne({ where: { id, user_id: userId } });
     if (!record) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy bản ghi phân tích ảnh.' });
     }
@@ -234,4 +864,63 @@ const getAnalysisDetail = async (req, res) => {
   }
 };
 
-module.exports = { analyzeProductImage, getAnalysisDetail };
+
+/**
+ * DELETE /api/image-analyzer/:id
+ * Xóa bản ghi phân tích ảnh (ImageAnalysis) của người dùng
+ */
+const deleteAnalysis = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Người dùng chưa đăng nhập hoặc token không hợp lệ.' });
+    }
+    const { id } = req.params;
+    const record = await ImageAnalysis.findOne({ where: { id, user_id: userId } });
+    if (!record) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy bản ghi phân tích ảnh.' });
+    }
+    await record.destroy();
+    return res.status(200).json({ success: true, message: 'Đã xóa bản ghi phân tích ảnh thành công.' });
+  } catch (error) {
+    console.error('[DELETE ANALYSIS ERROR]:', error.message);
+    return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi xóa bản ghi.', error: error.message });
+  }
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  getMatThanLogs — GET /api/image-analyzer/mat-than-logs
+//  Trả về tối đa 16 bản phân tích ảnh thành công gần nhất của user
+//  để hiển thị trong EyeSelectionModal ở Video AI Studio.
+//  Chỉ trả về các bản có status = 'success' và prompt_output != null
+// ═════════════════════════════════════════════════════════════════════════════
+const { Op } = require('sequelize');
+
+const getMatThanLogs = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Người dùng chưa đăng nhập hoặc token không hợp lệ.' });
+    }
+
+    const logs = await ImageAnalysis.findAll({
+      where: {
+        user_id: userId,
+        status: 'success',
+        prompt_output: {
+          [Op.not]: null,
+        },
+      },
+      order: [['created_at', 'DESC']],
+      limit: 16,
+      attributes: ['id', 'image_name', 'image_path', 'prompt_output', 'created_at', 'updated_at'],
+    });
+
+    return res.status(200).json({ success: true, logs });
+  } catch (error) {
+    console.error('[GET MAT THAN LOGS ERROR]:', error.message);
+    return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi tải lịch sử Mắt Thần AI.', error: error.message });
+  }
+};
+
+module.exports = { analyzeProductImage, getAnalysisDetail, deleteAnalysis, getMatThanLogs };

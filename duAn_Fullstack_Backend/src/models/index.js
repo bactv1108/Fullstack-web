@@ -54,6 +54,18 @@ db.ImageJob.belongsTo(db.User, { foreignKey: 'userId', as: 'owner' });
 db.User.hasMany(db.VideoJob, { foreignKey: 'userId', as: 'videoJobs' });
 db.VideoJob.belongsTo(db.User, { foreignKey: 'userId', as: 'owner' });
 
+// VideoJob ↔ ImageAnalysis (Mắt Thần)
+// Một analysis có thể sinh ra nhiều VideoJob; mỗi VideoJob tuỳ chọn thuộc về 1 analysis
+db.ImageAnalysis.hasMany(db.VideoJob, {
+  foreignKey: { name: 'analysisId', field: 'analysis_id' },
+  as: 'videoJobs',
+});
+db.VideoJob.belongsTo(db.ImageAnalysis, {
+  foreignKey: { name: 'analysisId', field: 'analysis_id' },
+  as: 'analysis',
+  constraints: false,   // Không ép FK constraint cứng — analysis_id là tuỳ chọn (NULL)
+});
+
 db.User.hasMany(db.ImageAnalysis, { foreignKey: 'user_id', as: 'imageAnalyses' });
 db.ImageAnalysis.belongsTo(db.User, { foreignKey: 'user_id', as: 'owner' });
 

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import io from 'socket.io-client';
 import { ArrowUpRight, X, Search } from 'lucide-react';
 import axiosAdminClient from '../../services/axiosAdminClient';
@@ -14,6 +15,34 @@ const BillingView = () => {
   const [activeSearch, setActiveSearch] = useState('');
   const [activeTab, setActiveTab] = useState('all'); // 'all' | 'thu' | 'ban'
   const [socket, setSocket] = useState(null);
+  
+  const [searchParams, setSearchParams] = useSearchParams();
+  const searchCode = searchParams.get('search');
+
+  // Automatically trigger search when searchCode is detected on mount or param change
+  useEffect(() => {
+    if (searchCode) {
+      setSearchTerm(searchCode);
+      setActiveSearch(searchCode);
+      setCurrentPage(1);
+    }
+  }, [searchCode]);
+
+  // Handle automatic popup of approval modal for matched transaction
+  useEffect(() => {
+    if (searchCode && transactions.length > 0) {
+      const targetTransaction = transactions.find(t => t.id === searchCode);
+      if (targetTransaction) {
+        if (targetTransaction.status === 'pending') {
+          handleApproveClick(targetTransaction.id);
+        }
+      }
+      // Remove search param from URL to avoid repeating modal popup on refresh
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('search');
+      setSearchParams(newParams);
+    }
+  }, [searchCode, transactions]);
   
   // Custom dialog state
   const [dialog, setDialog] = useState({ 

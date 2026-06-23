@@ -67,6 +67,21 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING(255),
       allowNull: true,
     },
+    verification_token_expires: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'verification_token_expires',
+    },
+    reset_password_token: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      field: 'reset_password_token',
+    },
+    reset_password_expires: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'reset_password_expires',
+    },
     google_id: {
       type: DataTypes.STRING(255),
       allowNull: true,
@@ -87,6 +102,19 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING(10),
       allowNull: true,
       defaultValue: 'dark',
+    },
+    current_package: {
+      type: DataTypes.STRING(50),
+      allowNull: false,
+      defaultValue: 'free',
+      field: 'current_package',
+      comment: 'Gói cước hiện tại: free | basic | premium',
+    },
+    banned_until: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'banned_until',
+      comment: 'Mốc thời gian bị khóa tính năng do gửi ảnh vi phạm chính sách',
     },
   }, {
     tableName: 'users',

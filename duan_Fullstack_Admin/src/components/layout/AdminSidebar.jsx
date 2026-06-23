@@ -1,6 +1,6 @@
 import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, CreditCard, Key, ShieldAlert, Users, X, Eye } from 'lucide-react';
+import { NavLink, useNavigate, Link } from 'react-router-dom';
+import { LayoutDashboard, CreditCard, Key, ShieldAlert, Users, X, Eye, Video } from 'lucide-react';
 
 const AdminSidebar = ({ isOpen, setIsOpen }) => {
   const navigate = useNavigate();
@@ -10,6 +10,7 @@ const AdminSidebar = ({ isOpen, setIsOpen }) => {
     { name: 'Tài nguyên API', path: '/api-resources', icon: <Key size={20} /> },
     { name: 'Kiểm duyệt', path: '/moderation', icon: <ShieldAlert size={20} /> },
     { name: 'Lịch sử Mắt Thần', path: '/image-analyses', icon: <Eye size={20} /> },
+    { name: 'Lịch sử Video AI', path: '/video-management', icon: <Video size={20} /> },
     { name: 'Người dùng', path: '/users', icon: <Users size={20} /> },
   ];
 
@@ -25,13 +26,10 @@ const AdminSidebar = ({ isOpen, setIsOpen }) => {
       }`}
     >
       <div className="p-6 flex items-center justify-between">
-        <div 
-          onClick={handleLogoClick}
-          className="flex items-center gap-2 cursor-pointer hover:opacity-90 transition-opacity"
-        >
-          <span className="bg-admin-primary text-white p-1.5 rounded-md text-xs font-black">AI</span>
-          <span className="text-base font-bold text-slate-900 dark:text-white tracking-wide">Studio Admin</span>
-        </div>
+        <Link to="/dashboard" className="flex items-center gap-2 cursor-pointer select-none">
+          <img src="/favicon.svg" alt="AI Studio Admin Logo" className="w-7 h-7 object-contain" />
+          <span className="text-slate-900 dark:text-white font-bold tracking-wider text-lg">STUDIO ADMIN</span>
+        </Link>
         
         {/* Close button inside sidebar */}
         <button 
@@ -48,13 +46,13 @@ const AdminSidebar = ({ isOpen, setIsOpen }) => {
             key={tab.path}
             to={tab.path}
             onClick={() => setIsOpen(false)}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                  isActive 
-                    ? 'bg-admin-primary text-white font-medium shadow-md shadow-blue-900/20' 
-                    : 'text-slate-500 dark:text-admin-text-muted hover:bg-slate-100 dark:hover:bg-admin-card hover:text-slate-700 dark:hover:text-white'
-                }`
-              }
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                isActive 
+                  ? 'bg-admin-primary text-white font-medium shadow-md shadow-blue-900/20' 
+                  : 'text-slate-500 dark:text-admin-text-muted hover:bg-slate-100 dark:hover:bg-admin-card hover:text-slate-700 dark:hover:text-white'
+              }`
+            }
           >
             {tab.icon}
             {tab.name}

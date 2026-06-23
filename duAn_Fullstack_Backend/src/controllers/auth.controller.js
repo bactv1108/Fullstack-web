@@ -73,16 +73,8 @@ const parseCookies = (cookieHeader) => {
   return list;
 };
 
-// ── Nodemailer Transporter ──────────────────────────────────────────
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-  port: Number(process.env.EMAIL_PORT) || 465,
-  secure: process.env.EMAIL_SECURE === 'true',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+// Tái sử dụng dịch vụ gửi email từ email.service
+const { sendVerificationEmail, sendForgotPasswordEmail } = require('../services/email.service');
 
 // ── Google OAuth (existing) ─────────────────────────────────────────
 const oauth2Client = new google.auth.OAuth2(
@@ -207,56 +199,58 @@ const googleCallback = async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════
 
 // ── REGISTER ────────────────────────────────────────────────────────
-const register = async (req, res) => {
-  const { name, email, password } = req.body;
+const register = async (request, response) => {
+  const { name, email, password } = request.body;
   console.log(`[AUTH] POST /register — email: ${email}`);
 
   // ── Validation ──
   if (!name || !email || !password) {
     console.log('[AUTH] Validation failed: Missing required fields');
-    return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin (tên, email, mật khẩu).' });
+    return response.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin (tên, email, mật khẩu).' });
   }
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) {
     console.log(`[AUTH] Validation failed: Invalid email format — ${email}`);
-    return res.status(400).json({ message: 'Email không đúng định dạng.' });
+    return response.status(400).json({ message: 'Email không đúng định dạng.' });
   }
 
   if (password.length < 8) {
     console.log('[AUTH] Validation failed: Password too short');
-    return res.status(400).json({ message: 'Mật khẩu phải có ít nhất 8 ký tự.' });
+    return response.status(400).json({ message: 'Mật khẩu phải có ít nhất 8 ký tự.' });
   }
 
   try {
     // Check for existing email using standard Sequelize ORM
-    const existing = await User.findOne({
+    const existingUser = await User.findOne({
       where: { email },
       attributes: ['id']
     });
-    if (existing) {
+    if (existingUser) {
       console.log(`[AUTH] Validation failed: Email already exists — ${email}`);
-      return res.status(409).json({ message: 'Email này đã được đăng ký.' });
+      return response.status(409).json({ message: 'Email này đã được đăng ký.' });
     }
 
     // Hash password
-    const password_hash = await bcrypt.hash(password, 12);
+    const passwordHash = await bcrypt.hash(password, 12);
 
-    // Generate verification token
-    const verification_token = crypto.randomBytes(32).toString('hex');
+    // Generate verification token and expiration date
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 giờ kể từ thời điểm hiện tại
 
     // Sử dụng sequelize.transaction() để bọc cả hai câu lệnh chèn người dùng mới và chèn giao dịch hệ thống tặng
-    await sequelize.transaction(async (t) => {
+    await sequelize.transaction(async (databaseTransaction) => {
       // 1. Khởi tạo User mới với 60 Credits
       const newUser = await User.create({
         name,
         email,
-        password_hash,
+        password_hash: passwordHash,
         is_verified: false,
-        verification_token,
+        verification_token: verificationToken,
+        verification_token_expires: verificationTokenExpires,
         credits: 60,
         credits_balance: 60
-      }, { transaction: t });
+      }, { transaction: databaseTransaction });
 
       // Sinh mã giao dịch tự động dạng TRX- kết hợp chuỗi ngẫu nhiên
       const transactionId = 'TRX-' + Date.now().toString().slice(-6) + Math.floor(100 + Math.random() * 900);
@@ -270,66 +264,79 @@ const register = async (req, res) => {
         credits_added: 60,
         status: 'success', // Trạng thái "Thành công" theo cấu hình
         type: 'Hệ thống tặng' // Phân loại giao dịch hiển thị trên UI
-      }, { transaction: t });
+      }, { transaction: databaseTransaction });
     });
 
-    // Send verification email
-    const verifyUrl = `http://localhost:3000/api/auth/verify-email?token=${verification_token}`;
+    // Xây dựng đường dẫn liên kết kích hoạt tài khoản có cấu trúc tường minh truyền lên Frontend
+    const activationUrl = `http://localhost:5173/verify-email?token=${verificationToken}`;
 
-    await queueService.enqueue('send_email', {
-      to: email,
-      subject: 'Xác thực tài khoản của bạn',
-      html: `
-        <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:32px;background:#18181b;border-radius:16px;color:#e4e4e7;">
-          <h2 style="color:#f59e0b;margin-top:0;">Xin chào ${name},</h2>
-          <p>Cảm ơn bạn đã đăng ký. Vui lòng bấm nút bên dưới để xác thực email:</p>
-          <a href="${verifyUrl}" style="display:inline-block;padding:12px 28px;background:#f59e0b;color:#0f0f13;font-weight:bold;text-decoration:none;border-radius:8px;margin:16px 0;">
-            Xác thực Email
-          </a>
-          <p style="font-size:13px;color:#71717a;margin-top:20px;">Nếu bạn không đăng ký tài khoản, hãy bỏ qua email này.</p>
-        </div>
-      `,
-    });
+    // Gọi hàm dịch vụ gửi thư trực tiếp và bất đồng bộ trong một khối lệnh try-catch riêng biệt để phòng thủ tuyệt đối
+    // Lỗi từ email không bao giờ được phép chặn tiến trình phản hồi đăng ký thành công về giao diện Frontend
+    sendVerificationEmail(email, activationUrl, name)
+      .then((sendVerificationEmailResult) => {
+        console.log(`[EMAIL SUCCESS] Đã gửi thư xác thực thành công tới địa chỉ: ${email}`);
+      })
+      .catch((emailVerificationError) => {
+        console.error('[EMAIL ERROR] Gặp lỗi nghiêm trọng khi kích hoạt tiến trình gửi email xác thực:', emailVerificationError.message);
+      });
 
-    return res.status(201).json({ message: 'Đăng ký thành công! Vui lòng kiểm tra email để xác thực tài khoản.' });
+    return response.status(201).json({ message: 'Đăng ký thành công! Vui lòng kiểm tra email để xác thực tài khoản.' });
 
-  } catch (error) {
-    console.error('[AUTH] Register error:', error.message);
-    return res.status(500).json({ message: 'Lỗi hệ thống. Vui lòng thử lại sau.' });
+  } catch (registrationError) {
+    console.error('[AUTH] Register error:', registrationError.message);
+    return response.status(500).json({ message: 'Lỗi hệ thống. Vui lòng thử lại sau.' });
   }
 };
 
 // ── VERIFY EMAIL ────────────────────────────────────────────────────
-const verifyEmail = async (req, res) => {
-  const { token } = req.query;
+const verifyEmail = async (request, response) => {
+  const { token } = request.query;
   console.log(`[AUTH] GET /verify-email — token: ${token ? token.substring(0, 12) + '...' : 'MISSING'}`);
 
   if (!token) {
     console.log('[AUTH] Validation failed: Missing verification token');
-    return res.status(400).json({ message: 'Token xác thực không hợp lệ.' });
+    return response.status(400).json({ message: 'Token xác thực không hợp lệ.' });
   }
 
   try {
-    const [rows] = await db.execute('SELECT id, is_verified FROM users WHERE verification_token = ?', [token]);
+    const [databaseQueryResultRows] = await db.execute(
+      'SELECT id, is_verified, verification_token_expires FROM users WHERE verification_token = ?',
+      [token]
+    );
 
-    if (rows.length === 0) {
+    if (databaseQueryResultRows.length === 0) {
       console.log('[AUTH] Validation failed: Token not found in database');
-      return res.status(400).json({ message: 'Token xác thực không hợp lệ hoặc đã hết hạn.' });
+      return response.status(400).json({ message: 'Token xác thực không hợp lệ hoặc đã hết hạn.' });
     }
 
-    if (rows[0].is_verified === 1) {
-      return res.redirect('http://localhost:5173/login?verified=already');
+    const matchedUser = databaseQueryResultRows[0];
+
+    // Kiểm tra thời hạn hiệu lực của mã xác thực
+    if (matchedUser.verification_token_expires) {
+      const tokenExpirationDate = new Date(matchedUser.verification_token_expires);
+      const currentDate = new Date();
+      if (currentDate > tokenExpirationDate) {
+        console.log('[AUTH] Validation failed: Verification token has expired');
+        return response.status(400).json({ message: 'Mã xác thực đã hết hạn hiệu lực. Vui lòng yêu cầu gửi lại mã mới.' });
+      }
     }
 
-    // Mark as verified
-    await db.execute('UPDATE users SET is_verified = 1 WHERE id = ?', [rows[0].id]);
+    if (matchedUser.is_verified === 1) {
+      return response.status(200).json({ message: 'Tài khoản đã được xác thực trước đó.', status: 'already_verified' });
+    }
 
-    // Redirect to frontend login page with success flag
-    return res.redirect('http://localhost:5173/login?verified=true');
+    // Cập nhật trạng thái người dùng thành đã xác thực và xóa bỏ token xác thực
+    await db.execute(
+      'UPDATE users SET is_verified = 1, verification_token = NULL, verification_token_expires = NULL WHERE id = ?',
+      [matchedUser.id]
+    );
 
-  } catch (error) {
-    console.error('[AUTH] Verify email error:', error.message);
-    return res.status(500).json({ message: 'Lỗi hệ thống khi xác thực email.' });
+    console.log(`[AUTH] User ID ${matchedUser.id} verified successfully.`);
+    return response.status(200).json({ message: 'Xác thực tài khoản thành công! Bạn có thể đăng nhập ngay.', status: 'success' });
+
+  } catch (emailVerificationProcessError) {
+    console.error('[AUTH] Verify email error:', emailVerificationProcessError.message);
+    return response.status(500).json({ message: 'Lỗi hệ thống trong quá trình xác thực email.' });
   }
 };
 
@@ -468,165 +475,178 @@ const refreshToken = async (req, res) => {
 
 
 // ── RESEND VERIFICATION ─────────────────────────────────────────────
-const resendVerification = async (req, res) => {
-  const { email } = req.body;
+const resendVerification = async (request, response) => {
+  const { email } = request.body;
   console.log(`[AUTH] POST /resend-verification — email: ${email}`);
 
   if (!email) {
     console.log('[AUTH] Validation failed: Missing email');
-    return res.status(400).json({ message: 'Vui lòng nhập email.' });
+    return response.status(400).json({ message: 'Vui lòng nhập email.' });
   }
 
   try {
-    const [rows] = await db.execute('SELECT id, name, is_verified FROM users WHERE email = ?', [email]);
+    const [databaseQueryResultRows] = await db.execute(
+      'SELECT id, name, is_verified FROM users WHERE email = ?',
+      [email]
+    );
 
-    if (rows.length === 0) {
+    if (databaseQueryResultRows.length === 0) {
       // Don't reveal whether email exists for security
-      return res.status(200).json({ message: 'Nếu email tồn tại, chúng tôi đã gửi lại link xác thực.' });
+      return response.status(200).json({ message: 'Nếu email tồn tại, chúng tôi đã gửi lại link xác thực.' });
     }
 
-    const user = rows[0];
+    const matchedUser = databaseQueryResultRows[0];
 
-    if (user.is_verified === 1) {
-      return res.status(200).json({ message: 'Tài khoản đã được xác thực. Bạn có thể đăng nhập.' });
+    if (matchedUser.is_verified === 1) {
+      return response.status(200).json({ message: 'Tài khoản đã được xác thực. Bạn có thể đăng nhập.' });
     }
 
-    // Generate new token
-    const verification_token = crypto.randomBytes(32).toString('hex');
-    await db.execute('UPDATE users SET verification_token = ? WHERE id = ?', [verification_token, user.id]);
+    // Generate new token and expiration date
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 giờ kể từ thời điểm hiện tại
 
-    const verifyUrl = `http://localhost:3000/api/auth/verify-email?token=${verification_token}`;
+    await db.execute(
+      'UPDATE users SET verification_token = ?, verification_token_expires = ? WHERE id = ?',
+      [verificationToken, verificationTokenExpires, matchedUser.id]
+    );
 
-    await queueService.enqueue('send_email', {
-      to: email,
-      subject: 'Xác thực tài khoản của bạn (gửi lại)',
-      html: `
-        <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:32px;background:#18181b;border-radius:16px;color:#e4e4e7;">
-          <h2 style="color:#f59e0b;margin-top:0;">Xin chào ${user.name},</h2>
-          <p>Bạn đã yêu cầu gửi lại link xác thực. Vui lòng bấm nút bên dưới:</p>
-          <a href="${verifyUrl}" style="display:inline-block;padding:12px 28px;background:#f59e0b;color:#0f0f13;font-weight:bold;text-decoration:none;border-radius:8px;margin:16px 0;">
-            Xác thực Email
-          </a>
-        </div>
-      `,
-    });
+    // Xây dựng đường dẫn liên kết kích hoạt tài khoản có cấu trúc tường minh truyền lên Frontend
+    const activationUrl = `http://localhost:5173/verify-email?token=${verificationToken}`;
 
-    return res.status(200).json({ message: 'Đã gửi lại email xác thực. Vui lòng kiểm tra hộp thư.' });
+    // Gọi hàm dịch vụ gửi thư trực tiếp và bất đồng bộ trong một khối lệnh try-catch riêng biệt để phòng thủ tuyệt đối
+    sendVerificationEmail(email, activationUrl, matchedUser.name)
+      .then((sendVerificationEmailResult) => {
+        console.log(`[EMAIL SUCCESS resend] Đã gửi lại thư xác thực thành công tới địa chỉ: ${email}`);
+      })
+      .catch((emailVerificationError) => {
+        console.error('[EMAIL ERROR resend] Gặp lỗi nghiêm trọng khi kích hoạt tiến trình gửi email xác thực lại:', emailVerificationError.message);
+      });
 
-  } catch (error) {
-    console.error('[AUTH] Resend verification error:', error.message);
-    return res.status(500).json({ message: 'Lỗi hệ thống. Vui lòng thử lại sau.' });
+    return response.status(200).json({ message: 'Đã gửi lại email xác thực. Vui lòng kiểm tra hộp thư.' });
+
+  } catch (resendVerificationProcessError) {
+    console.error('[AUTH] Resend verification error:', resendVerificationProcessError.message);
+    return response.status(500).json({ message: 'Lỗi hệ thống. Vui lòng thử lại sau.' });
   }
 };
 
 // ── FORGOT PASSWORD ─────────────────────────────────────────────────
-const forgotPassword = async (req, res) => {
-  const { email } = req.body;
+const forgotPassword = async (request, response) => {
+  const { email } = request.body;
   console.log(`[AUTH] POST /forgot-password — email: ${email}`);
 
   if (!email) {
     console.log('[AUTH] Validation failed: Missing email');
-    return res.status(400).json({ message: 'Vui lòng nhập email.' });
+    return response.status(400).json({ message: 'Vui lòng nhập email.' });
   }
 
   try {
-    const [rows] = await db.execute('SELECT id, name FROM users WHERE email = ?', [email]);
-
-    if (rows.length === 0) {
-      // Don't reveal whether email exists
-      return res.status(200).json({ message: 'Nếu email tồn tại, chúng tôi đã gửi link đặt lại mật khẩu.' });
-    }
-
-    const user = rows[0];
-    const reset_token = crypto.randomBytes(32).toString('hex');
-    const reset_token_expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-
-    await db.execute(
-        'UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?',
-        [reset_token, reset_token_expires, user.id]
-    );
-
-    const resetUrl = `http://localhost:5173/reset-password?token=${reset_token}`;
-
-    await queueService.enqueue('send_email', {
-      to: email,
-      subject: 'Đặt lại mật khẩu',
-      html: `
-        <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:32px;background:#18181b;border-radius:16px;color:#e4e4e7;">
-          <h2 style="color:#f59e0b;margin-top:0;">Xin chào ${user.name},</h2>
-          <p>Bạn đã yêu cầu đặt lại mật khẩu. Bấm nút bên dưới để tiếp tục:</p>
-          <a href="${resetUrl}" style="display:inline-block;padding:12px 28px;background:#f59e0b;color:#0f0f13;font-weight:bold;text-decoration:none;border-radius:8px;margin:16px 0;">
-            Đặt lại mật khẩu
-          </a>
-          <p style="font-size:13px;color:#71717a;margin-top:20px;">Link có hiệu lực trong 1 giờ. Nếu bạn không yêu cầu, hãy bỏ qua email này.</p>
-        </div>
-      `,
+    // Tìm kiếm người dùng trong cơ sở dữ liệu dựa trên địa chỉ email
+    const matchedUser = await User.findOne({
+      where: { email }
     });
 
-    return res.status(200).json({ message: 'Đã gửi link đặt lại mật khẩu đến email của bạn.' });
+    if (!matchedUser) {
+      console.log(`[AUTH] Forgot password validation failed: Email not found — ${email}`);
+      return response.status(404).json({ message: 'Địa chỉ email không tồn tại trên hệ thống.' });
+    }
 
-  } catch (error) {
-    console.error('[AUTH] Forgot password error:', error.message);
-    return res.status(500).json({ message: 'Lỗi hệ thống. Vui lòng thử lại sau.' });
+    // Sinh mã ngẫu nhiên khôi phục mật khẩu dài 32 ký tự dạng chuỗi thập lục phân
+    const resetPasswordToken = crypto.randomBytes(32).toString('hex');
+    const resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 giờ kể từ thời điểm hiện tại
+
+    // Lưu mã xác thực khôi phục mật khẩu và thời gian hết hạn vào bản ghi người dùng
+    matchedUser.reset_password_token = resetPasswordToken;
+    matchedUser.reset_password_expires = resetPasswordExpires;
+    await matchedUser.save();
+
+    // Xây dựng đường dẫn liên kết đặt lại mật khẩu trỏ thẳng về giao diện ứng dụng khách Frontend
+    const resetUrl = `http://localhost:5173/reset-password?token=${resetPasswordToken}`;
+
+    // Gọi hàm gửi email đặt lại mật khẩu ngầm bất đồng bộ không chặn luồng phản hồi của Frontend
+    sendForgotPasswordEmail(email, resetUrl, matchedUser.name)
+      .then((sendForgotPasswordEmailResult) => {
+        console.log(`[EMAIL SUCCESS forgot] Đã gửi email đặt lại mật khẩu thành công tới địa chỉ: ${email}`);
+      })
+      .catch((emailForgotPasswordError) => {
+        console.error('[EMAIL ERROR forgot] Gặp lỗi nghiêm trọng khi kích hoạt tiến trình gửi email đặt lại mật khẩu:', emailForgotPasswordError.message);
+      });
+
+    return response.status(200).json({ success: true, message: 'Liên kết đặt lại mật khẩu đã được gửi đi thành công.' });
+
+  } catch (forgotPasswordProcessError) {
+    console.error('[AUTH] Forgot password error:', forgotPasswordProcessError.message);
+    return response.status(500).json({ message: 'Lỗi hệ thống. Vui lòng thử lại sau.' });
   }
 };
 
 // ── RESET PASSWORD (TÍCH HỢP MỚI ĐỂ ĐÓNG HÒM LOGIC) ─────────────────────
-const resetPassword = async (req, res) => {
-  const { token, password } = req.body;
+const resetPassword = async (request, response) => {
+  console.log('[DEBUG RESET] Toàn bộ dữ liệu Body nhận được:', request.body);
+  console.log('[DEBUG RESET] Toàn bộ dữ liệu Query nhận được:', request.query);
+
+  const token = request.body.token || request.query.token;
+  const newPassword = request.body.newPassword || request.body.password;
+
+  console.log('[DEBUG RESET] Token sau khi trích xuất:', token);
   console.log(`[AUTH] POST /reset-password — token: ${token ? token.substring(0, 12) + '...' : 'MISSING'}`);
 
-  if (!token || !password) {
-    return res.status(400).json({ message: 'Thiếu thông tin mã xác thực (Token) hoặc mật khẩu mới.' });
+  if (!token) {
+    return response.status(400).json({ success: false, message: 'Mã xác thực đặt lại mật khẩu không hợp lệ.' });
   }
 
-  if (password.length < 8) {
-    return res.status(400).json({ message: 'Mật khẩu mới phải có ít nhất 8 ký tự.' });
+  if (!newPassword) {
+    return response.status(400).json({ success: false, message: 'Thiếu thông tin mật khẩu mới.' });
+  }
+
+  if (newPassword.length < 8) {
+    return response.status(400).json({ success: false, message: 'Mật khẩu mới phải có ít nhất 8 ký tự.' });
   }
 
   try {
-    // Tìm user có token trùng khớp
-    const [rows] = await db.execute(
-        'SELECT id, password_hash, reset_token_expires FROM users WHERE reset_token = ?',
-        [token]
-    );
+    // Bước 1: Tìm kiếm tài khoản duy nhất chỉ dựa trên chuỗi Token (Sequelize ORM)
+    const userRecord = await User.findOne({
+      where: { reset_password_token: token }
+    });
 
-    if (rows.length === 0) {
-      return res.status(400).json({ message: 'Mã xác thực không hợp lệ hoặc đã từng được sử dụng.' });
+    if (!userRecord) {
+      console.log('[AUTH] Reset password validation failed: Token not found in database');
+      return response.status(400).json({ success: false, message: 'Mã xác thực đặt lại mật khẩu không hợp lệ.' });
     }
 
-    const user = rows[0];
+    // Bước 2: Thẩm định thời gian hết hạn bằng dấu thời gian số nguyên (Bẻ gãy lỗi lệch múi giờ)
+    const expirationTimestamp = new Date(userRecord.reset_password_expires).getTime();
+    const currentTimestamp = Date.now();
 
-    // Kiểm tra thời hạn hiệu lực (1 giờ)
-    const now = new Date();
-    const expires = new Date(user.reset_token_expires);
-    if (now > expires) {
-      return res.status(400).json({ message: 'Mã xác thực đặt lại mật khẩu đã hết hạn hiệu lực.' });
+    if (currentTimestamp > expirationTimestamp) {
+      console.log('[AUTH] Reset password validation failed: Token expired');
+      return response.status(400).json({ success: false, message: 'Mã xác thực đặt lại mật khẩu đã hết hạn hiệu lực.' });
     }
 
     // Kiểm tra xem mật khẩu mới có trùng mật khẩu cũ không
-    if (user.password_hash) {
-      const isSamePassword = await bcrypt.compare(password, user.password_hash);
+    if (userRecord.password_hash) {
+      const isSamePassword = await bcrypt.compare(newPassword, userRecord.password_hash);
       if (isSamePassword) {
-        return res.status(400).json({ message: 'Mật khẩu mới không được trùng với mật khẩu cũ.' });
+        return response.status(400).json({ success: false, message: 'Mật khẩu mới không được trùng với mật khẩu cũ.' });
       }
     }
 
-    // Băm mật khẩu mới bằng thư viện bcrypt gốc chuẩn 12 vòng băm
-    const password_hash = await bcrypt.hash(password, 12);
+    // Bước 3: Cập nhật mật khẩu mới và dọn dẹp bộ nhớ đệm
+    const newHashedPassword = await bcrypt.hash(newPassword, 12);
+    
+    userRecord.password_hash = newHashedPassword;
+    userRecord.reset_password_token = null;
+    userRecord.reset_password_expires = null;
+    await userRecord.save();
 
-    // Lưu đè dữ liệu mới vào cơ sở dữ liệu và dọn dẹp token
-    await db.execute(
-        'UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expires = NULL WHERE id = ?',
-        [password_hash, user.id]
-    );
+    console.log(`[AUTH] User ID ${userRecord.id} reset password successfully.`);
 
-    // TRẢ VỀ JSON CHUẨN ĐỂ FRONTEND KHÔNG BỊ "UNEXPECTED END OF JSON"
-    return res.status(200).json({ message: 'Cập nhật mật khẩu mới vào cơ sở dữ liệu thành công!' });
+    // Phản hồi kết quả về Frontend
+    return response.status(200).json({ success: true, message: 'Mật khẩu của bạn đã được cập nhật thành công. Vui lòng đăng nhập lại.' });
 
-  } catch (error) {
-    console.error('[AUTH] Reset password error:', error.message);
-    return res.status(500).json({ message: 'Lỗi hệ thống từ server. Vui lòng thử lại sau.' });
+  } catch (resetPasswordProcessError) {
+    console.error('[AUTH] Reset password error:', resetPasswordProcessError.message);
+    return response.status(500).json({ success: false, message: 'Lỗi hệ thống từ server. Vui lòng thử lại sau.' });
   }
 };
 

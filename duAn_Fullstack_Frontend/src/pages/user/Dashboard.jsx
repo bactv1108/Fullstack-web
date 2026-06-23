@@ -3,6 +3,17 @@ import { Outlet } from 'react-router-dom';
 import useDashboard from './dashboard/useDashboard';
 import Toast from '../../components/ui/Toast';
 
+// ─── Helper: Trả về tên loại tác vụ dạng tiếng Việt để hiển thị trong Dialog ─
+// Đồng bộ với resolveDeleteEndpoint trong useDashboard.js
+const getJobTypeName = (type) => {
+  const t = (type || '').toLowerCase();
+  if (t === 'image' || t === 'flux')                             return 'hình ảnh';
+  if (t === 'voice' || t === 'tts' || t === 'audio')            return 'âm thanh';
+  if (t === 'video' || t === 'render_task')                      return 'video';
+  if (t === 'vision' || t === 'mat_than' || t === 'analysis')   return 'kết quả phân tích Mắt Thần AI';
+  return 'tác vụ'; // fallback chung
+};
+
 export default function Dashboard() {
   const dashboardState = useDashboard();
   const {
@@ -30,7 +41,7 @@ export default function Dashboard() {
           <div className="bg-[#18181c] border border-zinc-800 rounded-2xl overflow-hidden max-w-2xl w-full shadow-2xl relative text-left">
             <div className="flex justify-between items-center px-5 py-4 border-b border-zinc-800/80">
               <h3 className="text-sm font-bold text-zinc-200">Xem thử Video AI (Tác vụ #{activeJobId})</h3>
-              <button 
+              <button
                 type="button"
                 onClick={() => {
                   setActiveMediaType(null);
@@ -42,10 +53,10 @@ export default function Dashboard() {
               </button>
             </div>
             <div className="aspect-video bg-black flex items-center justify-center">
-              <video 
-                src={activeVideoUrl} 
-                controls 
-                autoPlay 
+              <video
+                src={activeVideoUrl}
+                controls
+                autoPlay
                 className="w-full h-full object-contain"
               />
             </div>
@@ -56,15 +67,38 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Delete Confirmation Modal Dialog */}
+      {/* ══════════════════════════════════════════════════════════════════════
+          Global Delete Confirmation Modal Dialog
+          Được kích hoạt bởi triggerDeleteHistory(job) từ mọi view con:
+            • ImageView   → type: 'image'
+            • TtsView     → type: 'Voice' / 'tts'
+            • HistoryView → type: lấy từ item.type
+            • MatThanDetailView → type: 'analysis' / 'vision'
+      ══════════════════════════════════════════════════════════════════════ */}
       {deleteModalOpen && jobToDelete && (
         <div className="fixed inset-0 z-[1000] bg-black/85 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in select-none">
           <div className="!p-8 bg-[#18181c] border border-zinc-800 rounded-2xl overflow-hidden max-w-md w-full shadow-2xl relative text-left">
             <div className="p-6 flex flex-col gap-4">
+
+              {/* Tiêu đề */}
               <h3 className="text-sm font-black text-white uppercase tracking-wider">Xác nhận xóa tác vụ</h3>
+
+              {/* Nội dung — hiển thị ID tác vụ thay vì prompt (tránh tràn chữ) */}
               <p className="text-xs text-zinc-300 leading-relaxed">
-                Bạn có thực sự muốn xóa {jobToDelete.type === 'Video' || jobToDelete.type === 'video' || jobToDelete.type === 'render_task' ? 'video' : 'âm thanh'} <strong className="text-[#f59e0b]">"{jobToDelete.title}"</strong> không? Hành động này không thể hoàn tác.
+                Bạn có thực sự muốn xóa{' '}
+                <strong className="text-[#f59e0b]">Tác vụ #{jobToDelete?.id || jobToDelete?.idJob || ''}</strong>{' '}
+                không? Hành động này không thể hoàn tác.
               </p>
+
+              {/* Badge loại + ID nhỏ để debug */}
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[9px] font-mono uppercase tracking-wider border border-zinc-700/50">
+                  {jobToDelete.type || 'unknown'}
+                </span>
+                <span className="text-[9px] text-zinc-600 font-mono">ID #{jobToDelete.id}</span>
+              </div>
+
+              {/* Nút hành động */}
               <div className="flex gap-3 justify-end mt-4">
                 <button
                   type="button"
@@ -81,17 +115,18 @@ export default function Dashboard() {
                   Xác nhận xóa
                 </button>
               </div>
+
             </div>
           </div>
         </div>
       )}
 
       {/* Unified Global Toast Notification */}
-      <Toast 
-        show={toastState.show} 
-        message={toastState.message} 
-        type={toastState.type} 
-        onClose={closeToast} 
+      <Toast
+        show={toastState.show}
+        message={toastState.message}
+        type={toastState.type}
+        onClose={closeToast}
       />
     </div>
   );

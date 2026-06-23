@@ -1,8 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { Mic, Image, Plus, X, Save, Edit3, Trash2 } from 'lucide-react';
+import { AdminAuthContext } from '../../contexts/AdminAuthContext';
 
 const AssetManager = () => {
+  // Luôn ưu tiên lấy token từ AdminAuthContext, fallback sang localStorage
+  const { isAuthenticated } = useContext(AdminAuthContext);
+
+  /**
+   * Lấy Admin JWT token.
+   * Ưu tiên: admin_access_token (key chuẩn của hệ thống Admin)
+   * KHÔNG dùng 'token' vì đó là key của user thường (Frontend)
+   */
+  const getAdminToken = () => {
+    const token = localStorage.getItem('admin_access_token');
+    if (!token) {
+      console.warn('[ASSET MANAGER] ⚠️ Không tìm thấy admin_access_token trong localStorage!');
+    }
+    return token;
+  };
+
   const [assets, setAssets] = useState([]);
+  const [assetToXoa, setAssetToXoa] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -20,18 +38,22 @@ const AssetManager = () => {
   const [editIdentifier, setEditIdentifier] = useState('');
   const [editStatus, setEditStatus] = useState('active');
 
-  // 1. FORCE ABSOLUTE BACKEND URL TARGET (http://localhost:3000) for GET
+  // GET danh sách assets — không cần auth (route public), nhưng vẫn gửi token nếu có
   const fetchAssets = async () => {
     try {
-      const token = localStorage.getItem('token') || localStorage.getItem('admin_access_token');
+      const token = getAdminToken();
       const headers = {};
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
       }
-      
-      const response = await fetch('http://localhost:3000/api/assets', {
-        headers
-      });
+
+      const response = await fetch('http://localhost:3000/api/assets', { headers });
+
+      if (!response.ok) {
+        console.error(`[ASSET MANAGER] GET /api/assets thất bại: ${response.status} ${response.statusText}`);
+        return;
+      }
+
       const data = await response.json();
       if (data.success) {
         setAssets(data.assets);
@@ -54,71 +76,100 @@ const AssetManager = () => {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('token') || localStorage.getItem('admin_access_token');
-      
-      // 2. STRICT CONTENT-TYPE HEADERS & BODY STRINGIFICATION ENFORCEMENT
-      const headers = {
-        'Content-Type': 'application/json'
-      };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+      // FIX: Luôn dùng admin_access_token, KHÔNG dùng 'token' của user thường
+      const token = getAdminToken();
+
+      if (!token) {
+        alert('❌ Lỗi xác thực: Không tìm thấy token Admin. Vui lòng đăng xuất và đăng nhập lại.');
+        setLoading(false);
+        return;
       }
 
-      // 1. FORCE ABSOLUTE BACKEND URL TARGET (http://localhost:3000) for POST
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      };
+
       const response = await fetch('http://localhost:3000/api/assets', {
         method: 'POST',
         headers,
         body: JSON.stringify({ name, type, status, identifier })
       });
-      
+
+      // Kiểm tra HTTP status code trước khi parse JSON
+      if (response.status === 401) {
+        alert('❌ Lỗi 401 Unauthorized: Token Admin không hợp lệ hoặc đã hết hạn. Vui lòng đăng xuất và đăng nhập lại.');
+        setLoading(false);
+        return;
+      }
+      if (response.status === 403) {
+        alert('❌ Lỗi 403 Forbidden: Tài khoản của bạn không có quyền Admin để thực hiện thao tác này.');
+        setLoading(false);
+        return;
+      }
+
       const data = await response.json();
       if (data.success) {
         setIsModalOpen(false);
-        // 3. RE-FETCH STATE UPDATING: Trigger fetchAssets immediately to re-render the admin table grid seamlessly
+        // Làm mới danh sách ngay sau khi thêm thành công
         fetchAssets();
-        // Clear form states
+        // Reset form
         setName('');
         setType('voice');
         setIdentifier('');
         setStatus('active');
       } else {
-        alert(data.message || 'Thêm asset thất bại.');
+        alert(`❌ Thêm asset thất bại: ${data.message || 'Lỗi không xác định từ server.'}`);
       }
     } catch (err) {
-      console.error('[ASSET MANAGER] Create failed:', err.message);
-      alert(err.message || 'Lỗi kết nối đến server.');
+      console.error('[ASSET MANAGER] Create failed:', err);
+      alert(`❌ Lỗi kết nối đến server: ${err.message || 'Vui lòng kiểm tra kết nối mạng.'}`);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async (assetId) => {
-    if (!window.confirm('Bạn có chắc chắn muốn xóa tài nguyên này không?')) {
-      return;
-    }
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('token') || localStorage.getItem('admin_access_token');
-      const headers = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+      // FIX: Luôn dùng admin_access_token
+      const token = getAdminToken();
+
+      if (!token) {
+        alert('❌ Lỗi xác thực: Không tìm thấy token Admin. Vui lòng đăng xuất và đăng nhập lại.');
+        setLoading(false);
+        return;
       }
 
       const response = await fetch(`http://localhost:3000/api/assets/${assetId}`, {
         method: 'DELETE',
-        headers
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       });
+
+      if (response.status === 401) {
+        alert('❌ Lỗi 401 Unauthorized: Token Admin không hợp lệ hoặc đã hết hạn.');
+        setLoading(false);
+        return;
+      }
+      if (response.status === 403) {
+        alert('❌ Lỗi 403 Forbidden: Bạn không có quyền xóa tài nguyên này.');
+        setLoading(false);
+        return;
+      }
 
       const data = await response.json();
       if (data.success) {
         fetchAssets();
+        setAssetToXoa(null);
       } else {
-        alert(data.message || 'Xóa asset thất bại.');
+        alert(`❌ Xóa asset thất bại: ${data.message || 'Lỗi không xác định.'}`);
       }
     } catch (err) {
-      console.error('[ASSET MANAGER] Delete failed:', err.message);
-      alert(err.message || 'Lỗi kết nối đến server.');
+      console.error('[ASSET MANAGER] Delete failed:', err);
+      alert(`❌ Lỗi kết nối đến server: ${err.message || 'Vui lòng kiểm tra kết nối mạng.'}`);
     } finally {
       setLoading(false);
     }
@@ -142,17 +193,21 @@ const AssetManager = () => {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('token') || localStorage.getItem('admin_access_token');
-      const headers = {
-        'Content-Type': 'application/json'
-      };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+      // FIX: Luôn dùng admin_access_token
+      const token = getAdminToken();
+
+      if (!token) {
+        alert('❌ Lỗi xác thực: Không tìm thấy token Admin. Vui lòng đăng xuất và đăng nhập lại.');
+        setLoading(false);
+        return;
       }
 
       const response = await fetch(`http://localhost:3000/api/assets/${editingAssetId}`, {
         method: 'PUT',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           name: editName,
           type: editType,
@@ -161,16 +216,27 @@ const AssetManager = () => {
         })
       });
 
+      if (response.status === 401) {
+        alert('❌ Lỗi 401 Unauthorized: Token Admin không hợp lệ hoặc đã hết hạn.');
+        setLoading(false);
+        return;
+      }
+      if (response.status === 403) {
+        alert('❌ Lỗi 403 Forbidden: Bạn không có quyền chỉnh sửa tài nguyên này.');
+        setLoading(false);
+        return;
+      }
+
       const data = await response.json();
       if (data.success) {
         setIsEditModalOpen(false);
         fetchAssets();
       } else {
-        alert(data.message || 'Cập nhật asset thất bại.');
+        alert(`❌ Cập nhật asset thất bại: ${data.message || 'Lỗi không xác định.'}`);
       }
     } catch (err) {
-      console.error('[ASSET MANAGER] Update failed:', err.message);
-      alert(err.message || 'Lỗi kết nối đến server.');
+      console.error('[ASSET MANAGER] Update failed:', err);
+      alert(`❌ Lỗi kết nối đến server: ${err.message || 'Vui lòng kiểm tra kết nối mạng.'}`);
     } finally {
       setLoading(false);
     }
@@ -223,7 +289,7 @@ const AssetManager = () => {
                   <Edit3 size={16} />
                 </button>
                 <button 
-                  onClick={() => handleDelete(asset.id)}
+                  onClick={() => setAssetToXoa(asset)}
                   className="p-2 hover:text-red-400 text-admin-text-muted hover:bg-admin-bg rounded transition-colors cursor-pointer bg-transparent border-none"
                   title="Xóa"
                   disabled={loading}
@@ -418,6 +484,36 @@ const AssetManager = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Confirmation Modal */}
+      {assetToXoa && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center animate-fade-in">
+          <div className="bg-[#181b21] border border-slate-700 p-6 rounded-xl shadow-2xl max-w-md w-full mx-4 animate-scale-in text-left">
+            <h3 className="text-lg font-bold text-white mb-4 tracking-wide uppercase">XÁC NHẬN XÓA TÀI NGUYÊN</h3>
+            <p className="text-slate-300 mb-6 text-sm leading-relaxed">
+              Bạn có chắc chắn muốn xóa tài nguyên <span className="font-semibold text-red-400">{assetToXoa.name}</span> này không? Hành động này không thể hoàn tác.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setAssetToXoa(null)}
+                className="px-4 py-2 bg-transparent hover:bg-slate-800 text-slate-300 border border-slate-700 font-medium rounded-lg transition-colors cursor-pointer"
+                disabled={loading}
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDelete(assetToXoa.id)}
+                className="bg-red-500 hover:bg-red-600 text-white font-medium px-4 py-2 rounded-lg transition-colors cursor-pointer flex items-center justify-center"
+                disabled={loading}
+              >
+                {loading ? 'Đang xóa...' : 'Xác nhận xóa'}
+              </button>
+            </div>
           </div>
         </div>
       )}
