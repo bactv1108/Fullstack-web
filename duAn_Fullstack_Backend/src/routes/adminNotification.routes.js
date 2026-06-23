@@ -24,6 +24,9 @@ router.get('/notifications/unread-count', adminNotificationController.getUnreadC
 // PUT    /api/v1/auth/notifications/read-all    — Đánh dấu đọc tất cả
 router.put('/notifications/read-all', adminNotificationController.markAllAsRead);
 
+// PUT    /api/v1/auth/notifications/mark-as-read — Đánh dấu đọc tất cả (đồng bộ với frontend)
+router.put('/notifications/mark-as-read', adminNotificationController.markAllAsRead);
+
 // PUT    /api/v1/auth/notifications/:id/read    — Đánh dấu 1 thông báo đã đọc
 router.put('/notifications/:id/read', adminNotificationController.markAsRead);
 

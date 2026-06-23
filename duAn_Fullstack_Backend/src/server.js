@@ -127,12 +127,32 @@ app.io = io;
 global.io = io;
 
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176'], // Frontend & Admin URLs
+  origin: [
+    // ── Local Development ─────────────────────────────────────────
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:5175',
+    'http://localhost:5176',
+    // ── Production Domains ────────────────────────────────────────
+    'https://matthanai.cloud',
+    'https://www.matthanai.cloud',
+    'https://admin.matthanai.cloud',
+  ],
   credentials: true
 }));
 // ĐẶT NGAY DƯỚI DÒNG app.use(cors(...)) TRONG FILE server.js
 app.use((req, res, next) => {
-  const allowedOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176'];
+  const allowedOrigins = [
+    // ── Local Development ─────────────────────────────────────────
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:5175',
+    'http://localhost:5176',
+    // ── Production Domains ────────────────────────────────────────
+    'https://matthanai.cloud',
+    'https://www.matthanai.cloud',
+    'https://admin.matthanai.cloud',
+  ];
   const origin = req.headers.origin;
 
   if (allowedOrigins.includes(origin)) {
@@ -536,8 +556,10 @@ const fixImageAnalysesEnum = async () => {
 
     // BƯỚC 1: Sync schema như bình thường sau khi ENUM đã ổn định
     // NOTE: Không drop bảng — dữ liệu cần được bảo toàn.
-    // alter: true — tự động thêm cột mới (model_name, current_package) mà không mất dữ liệu cũ
-    await db.sequelize.sync({ force: false, alter: true });
+    // ⚠️  alter: FALSE — tắt auto-alter để Sequelize KHÔNG tự đẻ thêm index/FK thừa
+    //     mỗi lần nodemon restart (nguyên nhân gây lỗi "Too many keys, max 64 allowed").
+    //     Khi cần thêm cột mới, hãy dùng migration thủ công hoặc script SQL riêng.
+    await db.sequelize.sync({ force: false, alter: false });
     console.log('Database synced successfully.');
 
     try {
@@ -639,6 +661,18 @@ const fixImageAnalysesEnum = async () => {
       console.log(`📡 WebSocket sẵn sàng kết nối`);
       // Khởi động Ngrok auto-tunnel sau khi server local đã sẵn sàng
       await startAutotunnel(PORT);
+    }).on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`\n❌ [EADDRINUSE] Cổng ${PORT} đang bị chiếm bởi tiến trình khác!`);
+        console.error(`   👉 Chạy lệnh sau để giải phóng cổng (Windows):\n`);
+        console.error(`      netstat -ano | findstr :${PORT}   (tìm PID)`);
+        console.error(`      taskkill /PID <PID> /F             (kill tiến trình)\n`);
+        console.error(`   Hoặc kill toàn bộ node: taskkill /f /im node.exe\n`);
+        process.exit(1);
+      } else {
+        console.error('Server error:', err);
+        process.exit(1);
+      }
     });
   } catch (err) {
     console.error('Failed to sync database:', err.message);
@@ -647,6 +681,18 @@ const fixImageAnalysesEnum = async () => {
       console.log(`Server is running on port ${PORT} (Database sync failed)`);
       // Vẫn khởi động tunnel dù DB sync lỗi
       await startAutotunnel(PORT);
+    }).on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`\n❌ [EADDRINUSE] Cổng ${PORT} đang bị chiếm bởi tiến trình khác!`);
+        console.error(`   👉 Chạy lệnh sau để giải phóng cổng (Windows):\n`);
+        console.error(`      netstat -ano | findstr :${PORT}   (tìm PID)`);
+        console.error(`      taskkill /PID <PID> /F             (kill tiến trình)\n`);
+        console.error(`   Hoặc kill toàn bộ node: taskkill /f /im node.exe\n`);
+        process.exit(1);
+      } else {
+        console.error('Server error:', err);
+        process.exit(1);
+      }
     });
   }
 })();

@@ -165,8 +165,18 @@ const AdminHeader = ({ toggleSidebar }) => {
   }, [isNotifOpen]);
 
   // ─── Handlers ──────────────────────────────────────────────────────
-  const handleOpenNotif = () => {
-    setIsNotifOpen(!isNotifOpen);
+  const handleOpenNotif = async () => {
+    const nextState = !isNotifOpen;
+    setIsNotifOpen(nextState);
+    if (nextState && unreadCount > 0) {
+      try {
+        setUnreadCount(0);
+        setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+        await axiosAdminClient.put('../v1/auth/notifications/mark-as-read');
+      } catch (err) {
+        console.error('[ADMIN HEADER] Lỗi đánh dấu đọc tất cả khi mở menu:', err.message || err);
+      }
+    }
   };
 
   const handleMarkAsRead = async (notifId) => {
