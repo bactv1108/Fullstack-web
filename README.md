@@ -121,7 +121,7 @@ Giao diện quản trị viên hoạt động tại: http://localhost:5174
 
 Tài khoản đăng nhập (Email): :alice@example.com
 
-Mật khẩu (Password): Tranbac2003@
+Mật khẩu (Password): ********
 
 Quyền hạn (Role): user
 
@@ -131,7 +131,7 @@ Phân hệ truy cập: Hệ thống Quản trị (http://localhost:5174)
 
 Tài khoản đăng nhập (Email): admin@system.com
 
-Mật khẩu (Password): Tranbac2003@
+Mật khẩu (Password): ********
 
 Quyền hạn (Role): admin
 
