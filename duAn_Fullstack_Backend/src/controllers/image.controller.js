@@ -265,6 +265,13 @@ const generateImage = async (req, res) => {
   const selectedRatio = validRatios.includes(aspectRatio) ? aspectRatio : '1:1';
 
   try {
+    // Thêm dòng log debug phòng thủ theo yêu cầu
+    const dbUser = await User.findByPk(userId);
+    if (req.user) {
+      req.user.credits = dbUser ? dbUser.credits : 0;
+    }
+    console.log(`[DEBUG CREDITS] User ID: ${req.user?.id} | Credits trong DB: ${req.user?.credits}`);
+
     // ── BƯỚC 2: Trừ Credits Atomic — chống Race Condition ─────────────────
     const [affectedRows] = await User.update(
       { credits: sequelize.literal('credits - 2') },
@@ -285,6 +292,10 @@ const generateImage = async (req, res) => {
     const user = await User.findByPk(userId);
     if (!user) {
       return res.status(404).json({ error: 'Không tìm thấy thông tin người dùng.' });
+    }
+
+    if (global.io) {
+      global.io.emit('NEW_TRANSACTION', { type: 'consume', amount: 2, userId: user.id });
     }
 
     // ── BƯỚC 3: Ghi log Transaction chi phí ──────────────────────────────
@@ -310,6 +321,12 @@ const generateImage = async (req, res) => {
       progress:     0,
       credits_used: 2,
     });
+
+    // Phát socket update tới admin_room để Admin tự động cập nhật
+    if (global.io) {
+      global.io.to('admin_room').emit('image_job:created', job.toJSON());
+      global.io.to('admin_room').emit('UPDATE_IMAGE_JOB', job.toJSON());
+    }
 
     // ── BƯỚC 5: Trả 200 OK ngay cho Frontend ─────────────────────────────
     res.status(200).json({
@@ -358,6 +375,11 @@ async function _runFalWorker({ job, user, prompt, selectedRatio, appRef, quantit
     job.status   = 'Rendering';
     job.progress = 10;
     await job.save();
+    
+    if (global.io) {
+      global.io.to('admin_room').emit('image_job:updated', job.toJSON());
+      global.io.to('admin_room').emit('UPDATE_IMAGE_JOB', job.toJSON());
+    }
     console.log(`[IMAGE WORKER] [JobID:${job.id}] Trạng thái → Rendering`);
 
     // ── B: GIÁP HAI LỚP — Dịch & tối ưu prompt ───────────────────────────
@@ -470,6 +492,11 @@ async function _runFalWorker({ job, user, prompt, selectedRatio, appRef, quantit
       job.progress = 0;
       await job.save();
 
+      if (global.io) {
+        global.io.to('admin_room').emit('image_job:updated', job.toJSON());
+        global.io.to('admin_room').emit('UPDATE_IMAGE_JOB', job.toJSON());
+      }
+
       // Cập nhật log ảnh lỗi vi phạm chính sách trong ImageAnalysis (nếu có)
       try {
         const { ImageAnalysis } = require('../models');
@@ -576,6 +603,19 @@ async function _runFalWorker({ job, user, prompt, selectedRatio, appRef, quantit
     job.progress   = 100;
     job.output_url = outputUrl;
     await job.save();
+
+    if (global.io) {
+      global.io.to('admin_room').emit('image_job:updated', job.toJSON());
+      global.io.to('admin_room').emit('UPDATE_IMAGE_JOB', job.toJSON());
+      
+      const updatedUser = await User.findByPk(user.id);
+      global.io.to(`user_room_${user.id}`).emit('USER_JOB_STATUS', {
+        status: 'success',
+        type: 'image',
+        message: 'Tạo ảnh thành công!',
+        newBalance: updatedUser ? updatedUser.credits : null
+      });
+    }
     console.log(`[IMAGE WORKER] [JobID:${job.id}] ✅ Trạng thái → Completed`);
 
     // ── J: Tạo Notification thành công & Emit SSE ──────────────────────────
@@ -617,6 +657,11 @@ async function _runFalWorker({ job, user, prompt, selectedRatio, appRef, quantit
       job.status   = 'Failed';
       job.progress = 0;
       await job.save();
+
+      if (global.io) {
+        global.io.to('admin_room').emit('image_job:updated', job.toJSON());
+        global.io.to('admin_room').emit('UPDATE_IMAGE_JOB', job.toJSON());
+      }
       console.log(`[IMAGE WORKER] [JobID:${job.id}] Trạng thái → Failed`);
     } catch (saveErr) {
       console.error(`[IMAGE WORKER] [JobID:${job.id}] ⚠️ Không thể lưu trạng thái Failed:`, saveErr.message);
@@ -647,6 +692,16 @@ async function _runFalWorker({ job, user, prompt, selectedRatio, appRef, quantit
       });
     } catch (txErr) {
       console.error(`[IMAGE WORKER] [JobID:${job.id}] ⚠️ Ghi Transaction hoàn phí thất bại:`, txErr.message);
+    }
+
+    if (global.io) {
+      const updatedUser = await User.findByPk(user.id);
+      global.io.to(`user_room_${user.id}`).emit('USER_JOB_STATUS', {
+        status: 'failed',
+        type: 'image',
+        message: 'Tạo ảnh thất bại, đã hoàn lại credit.',
+        newBalance: updatedUser ? updatedUser.credits : null
+      });
     }
 
     // 4. Notification thất bại & Emit SSE

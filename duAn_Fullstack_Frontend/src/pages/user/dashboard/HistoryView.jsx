@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useSearchParams, useOutletContext } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation, useOutletContext } from 'react-router-dom';
 import {
   LayoutGrid, Download, Trash2, Mic, ChevronLeft, ChevronRight,
   Image as ImageIcon, CheckCircle2, XCircle, Loader2,
@@ -180,6 +180,7 @@ export default function HistoryView() {
   } = dashboardState;
 
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
 
   const { user } = useAuth();
@@ -302,6 +303,63 @@ export default function HistoryView() {
 
   // Reset về trang 1 khi đổi tab hoặc search
   useEffect(() => { setImgPage(1); setAnalysisPage(1); setVideoPage(1); setAudioPage(1); }, [historyType, historySearch]);
+
+  // 1. Tự động chuyển đổi tab bộ lọc khi có targetTab từ thông báo
+  useEffect(() => {
+    if (location.state?.targetTab && typeof setHistoryType === 'function') {
+      const matchedTab = location.state.targetTab === 'mat_than' ? 'analysis' : location.state.targetTab;
+      setHistoryType(matchedTab);
+    }
+  }, [location.state, setHistoryType]);
+
+  // 2. Tự động bung popup chi tiết / trình phát của phân hệ tương ứng
+  useEffect(() => {
+    if (filteredHistory && filteredHistory.length > 0 && location.state?.openJobId) {
+      const searchId = Number(String(location.state.openJobId).replace(/\D/g, ''));
+      console.log("[DEBUG HISTORY REDIRECT]: Target ID:", searchId, "Sample Item:", filteredHistory[0]);
+
+      // Tìm trong mảng history theo nhiều trường ID liên kết
+      const target = filteredHistory.find(item => 
+        Number(item.job_id) === searchId || Number(item.jobId) === searchId || Number(item.id) === searchId
+      );
+
+      if (target) {
+        const type = (target.type || '').toLowerCase();
+        
+        if (type === 'image') {
+          // Bật Modal xem chi tiết ảnh local
+          setSelectedJob(target);
+          setIsDetailOpen(true);
+        } else if (type === 'video' || type === 'render_task') {
+          // Bật trình phát video
+          if (typeof setPreviewJob === 'function') {
+            setPreviewJob({
+              id: target.id,
+              title: `Tác vụ #${target.id}`,
+              prompt: target.prompt,
+              sub: target.prompt || 'Video Ads',
+              type: 'video',
+              status: target.status,
+              output_url: target.videoUrl || target.output_url,
+              videoUrl: target.videoUrl || target.output_url,
+              ratio: target.aspectRatio || target.ratio || '16:9',
+              createdAt: target.createdAt
+            });
+          }
+        } else if (type === 'audio' || type === 'tts') {
+          // Bật bộ phát audio
+          if (typeof setPreviewJob === 'function') {
+            setPreviewJob(target);
+          }
+        } else if (type === 'analysis' || type === 'vision' || type === 'mat_than') {
+          // Điều hướng trang chi tiết kịch bản mắt thần (không có modal local)
+          navigate(`/dashboard/mat-than/detail/${target.id}`);
+        }
+        
+        window.history.replaceState({}, document.title);
+      }
+    }
+  }, [filteredHistory, location.state, setPreviewJob, navigate]);
 
   // Slice dữ liệu theo trang
   const pagedImages   = images.slice((imgPage - 1) * CARDS_PER_PAGE_IMG, imgPage * CARDS_PER_PAGE_IMG);

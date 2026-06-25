@@ -30,8 +30,8 @@ const CreditStats = () => {
         </h2>
       </div>
 
-      <div className="flex-1 w-full h-[300px] min-h-[250px]">
-        <ResponsiveContainer width="100%" height="100%" debounce={100}>
+      <div className="flex-1 w-full min-h-[250px]" style={{ minWidth: 0 }}>
+        <ResponsiveContainer width="100%" height={300}>
           <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="colorUsed" x1="0" y1="0" x2="0" y2="1">

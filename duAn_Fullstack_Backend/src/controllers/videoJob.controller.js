@@ -248,6 +248,10 @@ const generateVideo = async (req, res) => {
     // Tru credits truoc khi tao job (su dung bien requiredCost dong)
     await User.decrement({ credits: requiredCost }, { where: { id: userId } });
 
+    if (global.io) {
+      global.io.emit('NEW_TRANSACTION', { type: 'consume', amount: requiredCost, userId: userId });
+    }
+
     const resolvedDuration = isPremiumModel ? (parseInt(duration, 10) || 5) : 5;
 
     const job = await VideoJob.create({
@@ -268,6 +272,8 @@ const generateVideo = async (req, res) => {
         success: true,
         job: job
       });
+      global.io.to('admin_room').emit('UPDATE_VIDEO_JOB', { id: job.id, status: job.status, progress: 0 });
+      global.io.to('admin_room').emit('video_job:created', job.toJSON());
     }
 
     res.status(201).json({
@@ -494,6 +500,14 @@ const processJobResult = async (req, userId, jobId, status, modelName, duration,
           createdAt: new Date()
         }
       });
+      
+      io.to(`user_room_${userId}`).emit('USER_JOB_STATUS', {
+        status: status, // 'success' hoặc 'failed'
+        type: 'video',
+        message: status === 'success' ? 'Tạo video thành công!' : 'Tạo video thất bại, đã hoàn lại credit.',
+        newBalance: updatedUser ? updatedUser.credits : null
+      });
+
       console.log(`[USER REAL-TIME CALIBRATION] Đã đồng bộ số dư và thông báo về máy User #${userId}`);
     }
   } catch (err) {
@@ -614,6 +628,11 @@ async function _dispatchFalJob(req, job, userId) {
       thirdPartyTaskId: requestId,
       status          : 'processing',
     });
+
+    if (global.io) {
+      global.io.to('admin_room').emit('UPDATE_VIDEO_JOB', { id: job.id, status: 'processing', progress: 10 });
+      global.io.to('admin_room').emit('video_job:updated', job.toJSON());
+    }
     emitStatusUpdate(req, userId, job.id, `Fal.ai da nhan yeu cau - request_id: ${requestId}`);
     console.log(`[VIDEO CTRL] Job #${job.id} -> Fal.ai request_id: ${requestId}`);
 
@@ -641,6 +660,10 @@ async function _dispatchFalJob(req, job, userId) {
         errorLog: falError.message,
       });
       console.log(`[FAL AI ERROR] Da cap nhat DB: job #${job.id} -> status='failed', errorLog ghi nhan.`);
+      if (global.io) {
+        global.io.to('admin_room').emit('UPDATE_VIDEO_JOB', { id: job.id, status: 'failed', progress: 0 });
+        global.io.to('admin_room').emit('video_job:updated', job.toJSON());
+      }
     } catch (dbUpdateError) {
       console.error('[FAL AI ERROR] Khong the cap nhat DB sau khi Fal.ai that bai:', dbUpdateError.message);
     }
@@ -664,7 +687,7 @@ async function _dispatchFalJob(req, job, userId) {
 }
 
 async function _pollFalStatus(req, job, statusUrl, resultUrl, userId, attempts = 0) {
-  const io = req.app?.io || req.io;
+  const io = req.app?.io || req.io || global.io;
   try {
     if (!statusUrl) {
       throw new Error("Tham số statusUrl bị trống, không thể quét trạng thái.");
@@ -736,6 +759,11 @@ async function _pollFalStatus(req, job, statusUrl, resultUrl, userId, attempts =
         // Đổi trạng thái luồng sang thất bại để kích hoạt cơ chế HOÀN TIỀN (Refund) cho User
         await job.update({ status: 'failed', errorLog: `Lỗi Fal.ai ẩn: ${errorDetail}` });
         
+        if (io) {
+          io.to('admin_room').emit('UPDATE_VIDEO_JOB', { id: job.id, status: 'failed', progress: 0 });
+          io.to('admin_room').emit('video_job:updated', job.toJSON());
+        }
+
         await processJobResult(req, userId, job.id, 'failed', job.modelName, job.duration, `Lỗi Fal.ai: ${errorDetail}`);
 
         if (io) {
@@ -750,6 +778,11 @@ async function _pollFalStatus(req, job, statusUrl, resultUrl, userId, attempts =
 
       console.log(`[VIDEO SERVICE] 🎉 THÀNH CÔNG THU THẬP VIDEO! URL: ${videoUrl}`);
       await job.update({ status: 'success', videoUrl: videoUrl });
+
+      if (io) {
+        io.to('admin_room').emit('UPDATE_VIDEO_JOB', { id: job.id, status: 'success', progress: 100 });
+        io.to('admin_room').emit('video_job:updated', job.toJSON());
+      }
 
       // Tự động ghi sổ hóa đơn chi phí API Fal.ai
       try {
@@ -785,6 +818,11 @@ async function _pollFalStatus(req, job, statusUrl, resultUrl, userId, attempts =
     if (data.status === 'FAILED') {
       console.error(`[VIDEO SERVICE] Tác vụ #${job.id} bị Fal.ai báo render thất bại.`);
       await job.update({ status: 'failed', errorLog: 'Render video thất bại trên server Fal.ai.' });
+
+      if (io) {
+        io.to('admin_room').emit('UPDATE_VIDEO_JOB', { id: job.id, status: 'failed', progress: 0 });
+        io.to('admin_room').emit('video_job:updated', job.toJSON());
+      }
       
       await processJobResult(req, userId, job.id, 'failed', job.modelName, job.duration, 'Render video thất bại trên server Fal.ai.');
 
@@ -810,6 +848,11 @@ async function _pollFalStatus(req, job, statusUrl, resultUrl, userId, attempts =
       try {
         await job.update({ status: 'failed', errorLog: `Quá giới hạn 50 lần quét trạng thái: ${err.message}` });
         
+        if (io) {
+          io.to('admin_room').emit('UPDATE_VIDEO_JOB', { id: job.id, status: 'failed', progress: 0 });
+          io.to('admin_room').emit('video_job:updated', job.toJSON());
+        }
+
         await processJobResult(req, userId, job.id, 'failed', job.modelName, job.duration, `Quá giới hạn 50 lần quét trạng thái: ${err.message}`);
 
         if (io) {
@@ -918,7 +961,7 @@ const handleWebhook = async (req, res) => {
       status === 'failed';
 
     // Lay Socket.io instance tu app (duoc gan trong server.js middleware)
-    const io = req.app?.io || req.io;
+    const io = req.app?.io || req.io || global.io;
 
     // =========================================================================
     // BUOC 4: XU LY THEO TRANG THAI
@@ -967,6 +1010,9 @@ const handleWebhook = async (req, res) => {
               message: `Tạo video AI thất bại: ${typeof errorDetail === 'object' ? JSON.stringify(errorDetail) : errorDetail}`,
             });
             console.log(`[WEBHOOK VIDEO] Đã emit 'video_failed' -> room: ${failRoom}`);
+
+            io.to('admin_room').emit('UPDATE_VIDEO_JOB', { id: failedJobRecord.id, status: 'failed', progress: 0 });
+            io.to('admin_room').emit('video_job:updated', failedJobRecord.toJSON());
           }
         }
         return;
@@ -1035,6 +1081,9 @@ const handleWebhook = async (req, res) => {
             message : 'Video Ads da duoc det thanh cong tu Fal.ai!',
           });
           console.log(`[WEBHOOK VIDEO] Da emit 'video_status_update' + 'video_finished' -> room: ${userRoom}`);
+
+          io.to('admin_room').emit('UPDATE_VIDEO_JOB', { id: jobRecord.id, status: 'success', progress: 100 });
+          io.to('admin_room').emit('video_job:updated', jobRecord.toJSON());
         } else {
           console.warn('[WEBHOOK VIDEO] Khong tim thay io instance - bo qua emit socket.');
         }
@@ -1089,6 +1138,9 @@ const handleWebhook = async (req, res) => {
             message: `Tao video that bai: ${errorReason}`,
           });
           console.log(`[WEBHOOK VIDEO] Da emit 'video_failed' -> room: ${failRoom}`);
+
+          io.to('admin_room').emit('UPDATE_VIDEO_JOB', { id: failedJobRecord.id, status: 'failed', progress: 0 });
+          io.to('admin_room').emit('video_job:updated', failedJobRecord.toJSON());
         }
       }
 
@@ -1113,6 +1165,14 @@ const handleWebhook = async (req, res) => {
             message: `Fal.ai cap nhat trang thai: ${status}`,
           });
           console.log(`[WEBHOOK VIDEO] Da emit 'video_status_update' (${status}) -> room: ${midRoom}`);
+
+          let progressVal = 10;
+          let mappedStatus = 'processing';
+          if (status === 'IN_QUEUE' || status === 'queueing' || status === 'queued') {
+            progressVal = 0;
+            mappedStatus = 'queueing';
+          }
+          io.to('admin_room').emit('UPDATE_VIDEO_JOB', { id: midJobRecord.id, status: mappedStatus, progress: progressVal });
         }
       }
     }
@@ -1184,6 +1244,10 @@ const extendVideo = async (req, res) => {
     await user.update({ credits: user.credits - CREDITS_EXTEND });
     console.log(`[VIDEO CTRL] User #${userId} khau tru ${CREDITS_EXTEND} Credits -> con: ${user.credits - CREDITS_EXTEND}`);
 
+    if (global.io) {
+      global.io.emit('NEW_TRANSACTION', { type: 'consume', amount: CREDITS_EXTEND, userId: userId });
+    }
+
     const extendWebhookUrl = getWebhookUrl();
     const falKeyForExtend  = await getFalApiKey();
 
@@ -1229,6 +1293,12 @@ const extendVideo = async (req, res) => {
         status          : 'processing',
       });
       console.log(`[VIDEO CTRL] Extend job tao -> Job #${newJob.id} | requestId: ${requestId}`);
+
+      const ioInstance = req.app?.io || req.io || global.io;
+      if (ioInstance) {
+        ioInstance.to('admin_room').emit('UPDATE_VIDEO_JOB', { id: newJob.id, status: 'processing', progress: 10 });
+        ioInstance.to('admin_room').emit('video_job:created', newJob.toJSON());
+      }
       if (!extendWebhookUrl && requestId) {
         const basePath = MODEL_BASE_PATHS[job.modelName] || 'fal-ai/kling-video';
         const statusUrl = `https://queue.fal.run/${basePath}/requests/${requestId}/status`;

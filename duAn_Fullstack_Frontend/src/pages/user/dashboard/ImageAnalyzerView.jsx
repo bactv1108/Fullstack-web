@@ -22,7 +22,7 @@ export default function ImageAnalyzerView() {
   // States quản lý thời gian khóa cục bộ
   const [isBanned, setIsBanned] = useState(false);
   const [countdownText, setCountdownText] = useState('15:00');
-  const [muteErrorMessage, setMuteErrorMessage] = useState('');
+  const [muteErrorMessage, setMuteErrorMessage] = useState('Phân tích thất bại! Hình ảnh bạn tải lên đã vi phạm Tiêu chuẩn cộng đồng của hệ thống. Vì lý do bảo mật, tính năng Mắt Thần AI của bạn sẽ tạm thời bị đóng băng trong vòng 15 phút. Cảm ơn bạn đã sử dụng dịch vụ!');
 
   // ── Blacklist từ khóa cấm — nạp từ API khi component mount ───────────────────────
   const [blacklist, setBlacklist] = useState([]);
@@ -312,6 +312,33 @@ export default function ImageAnalyzerView() {
       // Bóc tách dữ liệu từ response wrapper linh hoạt
       const responseData = res.success ? res.data : (res.data || res);
 
+      // ── Nhánh rà soát: Ảnh rơi vào hàng đợi kiểm duyệt (Gate 2 - HTTP 200 OK) ──
+      const isResponseSuccess = res?.success === true || res?.data?.success === true;
+      const isResponsePending = res?.data?.status === 'pending' || res?.data?.data?.status === 'pending' || responseData?.status === 'pending';
+
+      if (isResponseSuccess && isResponsePending) {
+        const analysisId = responseData?.id || res?.data?.id || res?.data?.data?.id;
+        setPendingAnalysisId(analysisId);
+        if (typeof setMuteErrorMessage === 'function') {
+          setMuteErrorMessage(
+            res.message || 
+            res.data?.message || 
+            'Hình ảnh của bạn đang được đưa vào hàng đợi kiểm duyệt thủ công do nghi vấn chứa nội dung không phù hợp với tiêu chuẩn cộng đồng.'
+          );
+        }
+        if (typeof setIsBanned === 'function') {
+          setIsBanned(true);
+        }
+        setAnalyzing(false);
+        if (typeof updateUserState === 'function') {
+          updateUserState({ banned_until: new Date(Date.now() + 15 * 60 * 1000).toISOString() });
+        }
+        if (toast?.info) {
+          toast.info('⏳ Ảnh đang chờ Admin kiểm duyệt. Tài khoản tạm khóa 15 phút.');
+        }
+        return;
+      }
+
       // ── LUỒNG 1: AI trả kết quả ngay lập tức (safetyVerdict = 'safe') ─────
       if (responseData && responseData.prompt_output) {
         setResult(responseData);
@@ -343,24 +370,35 @@ export default function ImageAnalyzerView() {
       throw new Error(res.message || 'Không nhận được dữ liệu kịch bản hợp lệ.');
 
     } catch (error) {
-      console.error('[IMAGE ANALYZER VIEW ERROR]', error);
+      console.log("[DEBUG CATCH]:", error.response?.data);
+      
+      const serverData = error.response?.data;
+      const serverMessage = serverData?.message || "";
+      const bannedTime = serverData?.banned_until || serverData?.mutedUntil;
 
-      // Nếu Backend trả về mã lỗi cấm hoặc thông tin mutedUntil / banned_until, cập nhật global state
-      const bannedUntil = error.response?.data?.banned_until || error.response?.data?.mutedUntil;
-      if (bannedUntil || error.response?.status === 403 || (error.response?.status === 400 && error.response?.data?.message?.includes('khóa'))) {
-        const finalBanTime = bannedUntil || new Date(Date.now() + 15 * 60 * 1000).toISOString();
-        setMuteErrorMessage(error.response?.data?.message || 'Tài khoản của bạn đang bị hạn chế do gửi ảnh vi phạm.');
-        setAnalyzing(false);
-        if (typeof updateUserState === 'function') {
-          updateUserState({ banned_until: finalBanTime });
+      // CÂU LỆNH ÉP BUỘC: Nếu phát hiện lỗi 400/500 kèm từ khóa vi phạm HOẶC có bannedTime
+      if (bannedTime || error.response?.status === 400 || serverMessage.includes('hạn chế') || serverMessage.includes('vi phạm') || serverData?.code === 'CRITICAL_ERROR_SAFETY_VIOLATION') {
+        
+        const finalBanTime = bannedTime || new Date(Date.now() + 15 * 60 * 1000).toISOString();
+        
+        if (typeof setIsBanned === 'function') setIsBanned(true);
+        if (typeof setMuteErrorMessage === 'function') {
+          // Ép cứng chuỗi thông báo chuẩn ngữ nghĩa vào màn hình đóng băng
+          setMuteErrorMessage("Phân tích thất bại! Hình ảnh bạn tải lên đã vi phạm Tiêu chuẩn cộng đồng của hệ thống. Vì lý do bảo mật, tính năng Mắt Thần AI của bạn sẽ tạm thời bị đóng băng trong vòng 15 phút. Cảm ơn bạn đã sử dụng dịch vụ!");
         }
-        if (toast?.error) toast.error('⚠️ Tài khoản bị tạm khóa tính năng do gửi ảnh vi phạm!');
-        return;
+        
+        if (typeof setAnalyzing === 'function') setAnalyzing(false);
+        if (typeof setErrorMsg === 'function') setErrorMsg(null); // Triệt tiêu hoàn toàn thanh lỗi đỏ rác
+        if (typeof updateUserState === 'function') updateUserState({ banned_until: finalBanTime });
+        
+        return; // Ngắt luồng, thoát ra ngay lập tức
       }
 
-      const errMsg = error.response?.data?.message || error.response?.data?.error || error.message || 'Lỗi kết nối API Mắt Thần.';
-      setErrorMsg(errMsg);
-      setAnalyzing(false);
+      // Đối với lỗi mạng hoặc hệ thống thông thường không liên quan vi phạm chính sách
+      if (typeof setAnalyzing === 'function') setAnalyzing(false);
+      if (typeof setErrorMsg === 'function') {
+        setErrorMsg(error.response?.data?.message || "Có lỗi xảy ra khi phân tích ảnh.");
+      }
       if (toast?.error) toast.error('❌ Phân tích hình ảnh thất bại!');
     }
   };
@@ -508,7 +546,7 @@ export default function ImageAnalyzerView() {
                   <div className="flex flex-col gap-2">
                     <p className="text-sm font-bold text-red-400 uppercase tracking-wider">Tài khoản bị tạm khóa tính năng</p>
                     <p className="text-xs text-zinc-350 max-w-xs leading-relaxed mx-auto">
-                      {muteErrorMessage || 'Tài khoản của bạn đang bị giới hạn do vi phạm chính sách nội dung.'}
+                      {muteErrorMessage || 'Phân tích thất bại! Hình ảnh bạn tải lên đã vi phạm Tiêu chuẩn cộng đồng của hệ thống. Vì lý do bảo mật, tính năng Mắt Thần AI của bạn sẽ tạm thời bị đóng băng trong vòng 15 phút. Cảm ơn bạn đã sử dụng dịch vụ!'}
                     </p>
                   </div>
                   <div className="flex flex-col gap-1">

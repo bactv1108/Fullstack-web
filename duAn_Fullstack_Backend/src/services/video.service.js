@@ -92,28 +92,7 @@ class VideoService {
       throw new Error('Fal.ai khong tra ve request_id sau khi queue.submit.');
     }
 
-    // ── Ghi nhận hóa đơn chi phí (ApiCost) ──
-    try {
-      const { ApiCost } = require('../models');
-      let estimatedUsdCost = 0.05; // Mặc định cho Wan v2.2 Turbo
 
-      if (modelName === 'kling_v2_5_standard') {
-        // Kling v2.5 Standard 10s tốn tài nguyên hơn 5s
-        estimatedUsdCost = Number(duration) === 10 ? 0.20 : 0.10;
-      } else if (modelName === 'kling_v1_6') {
-        estimatedUsdCost = 0.15;
-      }
-
-      await ApiCost.create({
-        provider: 'Fal',
-        cost: estimatedUsdCost,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      });
-      console.log(`[API LOG COST] Đã lưu vết chi phí: Fal | $${estimatedUsdCost} cho Job #${jobId}`);
-    } catch (databaseError) {
-      console.error('[VIDEO SERVICE] ⚠️ Lỗi khi ghi nhận ApiCost Fal.ai:', databaseError.message);
-    }
 
     // Tra ve falEndpoint cung voi requestId de controller build URL polling chinh xac
     // Tranh loi 404 do dung basePath rut gon thay vi full endpoint path

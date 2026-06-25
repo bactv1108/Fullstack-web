@@ -2,8 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ShieldCheck, ShieldOff, Copy, CheckCircle, X, Loader2, Smartphone } from 'lucide-react';
 import axios from 'axios';
 
-const API_AUTH_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:3000/api/admin')
-  .replace(/\/admin\/?$/, '/auth');
+const API_AUTH_BASE = (() => {
+  const rawUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/admin';
+  let cleanUrl = rawUrl.replace(/\/+$/, '').replace(/\/admin\/?$/, '').replace(/\/auth\/?$/, '');
+  if (!cleanUrl.endsWith('/api') && !cleanUrl.includes('/api/')) {
+    cleanUrl = `${cleanUrl}/api`;
+  }
+  return `${cleanUrl}/auth`;
+})();
 
 /**
  * TwoFactorModal

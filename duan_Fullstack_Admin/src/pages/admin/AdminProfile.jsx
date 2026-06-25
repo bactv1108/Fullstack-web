@@ -54,12 +54,12 @@ export default function AdminProfile() {
   // Scroll-to-Top State & Effect
   const [showScrollTop, setShowScrollTop] = useState(false);
 
-  // ── URL cấu hình ──────────────────────────────────────────────
-  // VITE_API_URL = http://localhost:3000/api/admin
-  // BASE_API    = http://localhost:3000/api  (strip /admin suffix)
-  // SERVER_ROOT = http://localhost:3000
   const rawApi = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
-  const BASE_API = rawApi.replace(/\/admin\/?$/, '');        // http://localhost:3000/api
+  let cleanApi = rawApi.replace(/\/+$/, '');
+  if (!cleanApi.endsWith('/api') && !cleanApi.includes('/api/')) {
+    cleanApi = `${cleanApi}/api`;
+  }
+  const BASE_API = cleanApi.replace(/\/admin\/?$/, '');        // http://localhost:3000/api
   const SERVER_ROOT = BASE_API.replace(/\/api\/?$/, '');     // http://localhost:3000
   // alias cho các API cũ giữ nguyên
   const apiBase = BASE_API;

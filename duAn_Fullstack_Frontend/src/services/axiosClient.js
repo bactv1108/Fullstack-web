@@ -1,11 +1,16 @@
 import axios from 'axios';
 
 // Đường dẫn API cơ sở của Backend
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const getBaseURL = () => {
+  const rawUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+  return rawUrl.replace(/\/+$/, '').endsWith('/api') ? rawUrl : `${rawUrl.replace(/\/+$/, '')}/api`;
+};
+const baseURL = getBaseURL();
 
 // Tạo instance axiosClient dùng cho toàn bộ ứng dụng
 const axiosClient = axios.create({
   baseURL,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },

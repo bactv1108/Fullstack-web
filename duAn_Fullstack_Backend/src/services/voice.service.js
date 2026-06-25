@@ -187,6 +187,18 @@ class VoiceService {
           throw new Error(`Lỗi kết xuất âm thanh: Giọng nói "${voiceName}" không phản hồi dữ liệu âm thanh sau ${maxAttempts} lần thử. Vui lòng thử giọng khác hoặc thử lại sau.`);
         }
 
+        // Tự động ghi sổ hóa đơn chi phí API Edge TTS (Free)
+        try {
+          const { ApiCost } = require('../models');
+          await ApiCost.create({
+            provider: 'OpenAI',
+            cost: 0.00000000
+          });
+          console.log(`[VOICE SERVICE] ✅ Ghi nhận chi phí Edge TTS (Free): OpenAI | $0.00`);
+        } catch (databaseError) {
+          console.error('[VOICE SERVICE] ⚠️ Lỗi khi ghi sổ ApiCost Edge TTS:', databaseError.message);
+        }
+
         // Hoàn tất job: ghi file compat + cập nhật DB + bắn thông báo realtime
         return this._finalizeJob(jobId, absoluteFilePath, relativeFilePath, outputUrl, dirPath);
       });

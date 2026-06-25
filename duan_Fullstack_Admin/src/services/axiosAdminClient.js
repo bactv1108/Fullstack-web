@@ -1,7 +1,17 @@
 import axios from 'axios';
 
+const getBaseURL = () => {
+  const rawUrl = import.meta.env.VITE_API_URL || 'https://api.matthanai.cloud';
+  let base = rawUrl.replace(/\/+$/, '');
+  if (!base.endsWith('/api') && !base.includes('/api/')) {
+    base = `${base}/api`;
+  }
+  return base.endsWith('/admin') ? base : `${base}/admin`;
+};
+
 const axiosAdminClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api/admin',
+  baseURL: getBaseURL(),
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -77,7 +87,7 @@ axiosAdminClient.interceptors.response.use(
       }
 
       try {
-        const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/admin';
+        const baseURL = getBaseURL();
         const refreshURL = baseURL.replace(/\/admin\/?$/, '/auth/refresh');
 
         const response = await axios.post(refreshURL, { refresh_token: refreshToken });

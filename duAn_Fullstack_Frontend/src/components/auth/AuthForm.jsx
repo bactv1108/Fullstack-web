@@ -239,7 +239,9 @@ const AuthForm = () => {
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = 'http://localhost:3000/api/auth/google';
+    const rawUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+    const apiBase = rawUrl.replace(/\/+$/, '').endsWith('/api') ? rawUrl : `${rawUrl.replace(/\/+$/, '')}/api`;
+    window.location.href = `${apiBase}/auth/google`;
   };
 
   const switchMode = (newMode) => {

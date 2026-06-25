@@ -1,7 +1,11 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { useNavigate, useOutletContext } from 'react-router-dom';
+import { useNavigate, useLocation, useOutletContext } from 'react-router-dom';
 import { Mic, Volume2, VolumeX, RefreshCw, Play, Pause, Download, Trash2 } from 'lucide-react';
 import axiosClient from '../../../services/axiosClient';
+
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || 
+  (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '') : '') || 
+  'http://localhost:3000';
 
 export default function TtsView() {
   const dashboardState = useOutletContext();
@@ -47,6 +51,7 @@ export default function TtsView() {
     setAudioDuration
   } = dashboardState;
   const navigate = useNavigate();
+  const location = useLocation();
   const ttsTextareaRef = useRef(null);
   const audioRef = useRef(null);
   const [playingVoiceId, setPlayingVoiceId] = useState(null);
@@ -73,6 +78,54 @@ export default function TtsView() {
     };
   }, []);
 
+  // Auto-play audio job from navigation state (notification click)
+  useEffect(() => {
+    if (historyList && historyList.length > 0 && location.state?.openJobId) {
+      const searchId = Number(String(location.state.openJobId).replace(/\D/g, ''));
+      console.log("[DEBUG AUDIO]: Target ID:", searchId, "Sample Item:", historyList[0]);
+
+      const target = historyList.find(item => 
+        Number(item.job_id) === searchId || Number(item.jobId) === searchId || Number(item.id) === searchId
+      );
+      if (target && target.status === 'Completed') {
+        const targetUrl = `${BASE_URL}/uploads/voices/AI_Studio_Voice_ID_${target.id}.mp3`;
+        setActiveAudioUrl(targetUrl);
+        setActiveJobId(target.id);
+        setTimeout(() => {
+          if (audioRef.current) {
+            audioRef.current.src = targetUrl;
+            audioRef.current.play().catch(err => console.error(err));
+          }
+        }, 100);
+        if (typeof setPreviewJob === 'function') {
+          setPreviewJob({
+            id: target.id,
+            title: `Tác vụ #${target.id}`,
+            sub: target.prompt || 'Không có prompt',
+            time: target.createdAt,
+            type: 'tts',
+            status: target.status,
+            progress: target.progress,
+            output_url: targetUrl,
+            createdAt: target.createdAt,
+            ratio: target.aspectRatio || target.ratio,
+            lang: target.meta_data?.lang === 'vi' ? 'Tiếng Việt' : 'Tiếng Anh',
+            voice: target.meta_data?.voice || 'Mặc định',
+            duration: '10 giây'
+          });
+        }
+        window.history.replaceState({}, document.title);
+      }
+    }
+  }, [historyList, location.state, setActiveAudioUrl, setActiveJobId, setPreviewJob]);
+
+  const getVoicePreviewUrl = (voiceId, fallbackUrl) => {
+    if (fallbackUrl && fallbackUrl.startsWith('http') && !fallbackUrl.includes('samplelib.com')) {
+      return fallbackUrl;
+    }
+    return `${BASE_URL}/api/static/audio/previews/${voiceId}.mp3`;
+  };
+
   const handlePlayPreview = (e, previewUrl, voiceId) => {
     e.stopPropagation();
 
@@ -95,7 +148,7 @@ export default function TtsView() {
     }
 
     if (!absoluteUrl || typeof absoluteUrl !== 'string' || !absoluteUrl.startsWith('http')) {
-      absoluteUrl = "https://samplelib.com/samples/sample-speech-1m.mp3";
+      absoluteUrl = getVoicePreviewUrl(voiceId || "vi-VN-NamMinhNeural");
     }
 
     console.log("[TTS VIEW] Playing preview voice ID:", voiceId, "via URL:", absoluteUrl);
@@ -136,19 +189,19 @@ export default function TtsView() {
   };
 
   const initialPremiumVoices = [
-    { id: "vi-VN-NamMinhNeural",  identifier: "vi-VN-NamMinhNeural",  name: "Nam Minh (Nam Việt Nam)",             gender: "Male",   preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
-    { id: "vi-VN-HoaiMyNeural",   identifier: "vi-VN-HoaiMyNeural",   name: "Hoài My (Nữ Việt Nam)",              gender: "Female", preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
-    { id: "en-US-JennyNeural",    identifier: "en-US-JennyNeural",    name: "Jenny (Nữ - English US)",            gender: "Female", preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
-    { id: "en-US-GuyNeural",      identifier: "en-US-GuyNeural",      name: "Guy (Nam - English US)",              gender: "Male",   preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
-    { id: "ja-JP-NanamiNeural",   identifier: "ja-JP-NanamiNeural",   name: "Nanami (Nữ - Japanese)",             gender: "Female", preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
+    { id: "vi-VN-NamMinhNeural",  identifier: "vi-VN-NamMinhNeural",  name: "Nam Minh (Nam Việt Nam)",             gender: "Male",   preview_url: getVoicePreviewUrl("vi-VN-NamMinhNeural") },
+    { id: "vi-VN-HoaiMyNeural",   identifier: "vi-VN-HoaiMyNeural",   name: "Hoài My (Nữ Việt Nam)",              gender: "Female", preview_url: getVoicePreviewUrl("vi-VN-HoaiMyNeural") },
+    { id: "en-US-JennyNeural",    identifier: "en-US-JennyNeural",    name: "Jenny (Nữ - English US)",            gender: "Female", preview_url: getVoicePreviewUrl("en-US-JennyNeural") },
+    { id: "en-US-GuyNeural",      identifier: "en-US-GuyNeural",      name: "Guy (Nam - English US)",              gender: "Male",   preview_url: getVoicePreviewUrl("en-US-GuyNeural") },
+    { id: "ja-JP-NanamiNeural",   identifier: "ja-JP-NanamiNeural",   name: "Nanami (Nữ - Japanese)",             gender: "Female", preview_url: getVoicePreviewUrl("ja-JP-NanamiNeural") },
     { id: "pNInz6obpgmA5QCmsfUR", identifier: "pNInz6obpgmA5QCmsfUR", name: "Adam (Nam Trầm - Cuốn hút)",           gender: "Male",   tags: ["Narration", "Lifestyle"], preview_url: "https://storage.googleapis.com/eleven-public-prod/premade/voices/pNInz6obpgDQGcFmaJgB/38a69695-2ca9-4b9e-b9ec-f07ced494a58.mp3" },
     { id: "21m00Tcm4TlvDq8ikWAM", identifier: "21m00Tcm4TlvDq8ikWAM", name: "Rachel (Nữ Ấm áp - Quốc dân)",         gender: "Female", tags: ["Review", "Story"], preview_url: "https://storage.googleapis.com/eleven-public-prod/premade/voices/21m00Tcm4TlvDq8ikWAM/df6788f9-5c96-470d-8312-aab3b3d8f50a.mp3" },
-    { id: "ErXwobaYiN019PkySvjV",  identifier: "ErXwobaYiN019PkySvjV",  name: "Antoni (Nam Đọc Sắc nét - Pro)",       gender: "Male",   tags: ["Technology", "Ads"],  preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
-    { id: "EXAVITQu4vr4xnSDxMaL", identifier: "EXAVITQu4vr4xnSDxMaL", name: "Bella (Nữ Nhẹ nhàng - Sâu lắng)",      gender: "Female", tags: ["Podcast", "Vlog"],   preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
-    { id: "jBpfYwDxm6atqNs9Q7gH",  identifier: "jBpfYwDxm6atqNs9Q7gH",  name: "Gigi (Nữ Năng động - TikTok trend)",  gender: "Female", tags: ["Animation", "Promo"], preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
-    { id: "TxGEqn7nU7vIuJ7DgnCc",  identifier: "TxGEqn7nU7vIuJ7DgnCc",  name: "Josh (Nam Trầm dày - Thương hiệu)",    gender: "Male",   tags: ["Commercial"],        preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
-    { id: "MF3mGyEYCl7XYWbms88w",  identifier: "MF3mGyEYCl7XYWbms88w",  name: "Elli (Nữ Trong trẻẻ - Tin tức)",       gender: "Female", tags: ["News", "Tutorial"],   preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" },
-    { id: "IKne3meq5aSn9XLyUdCD",  identifier: "IKne3meq5aSn9XLyUdCD",  name: "Arnold (Nam Mạnh mẽ - Động lực)",      gender: "Male",   tags: ["Motivation"],        preview_url: "https://samplelib.com/samples/sample-speech-1m.mp3" }
+    { id: "ErXwobaYiN019PkySvjV",  identifier: "ErXwobaYiN019PkySvjV",  name: "Antoni (Nam Đọc Sắc nét - Pro)",       gender: "Male",   tags: ["Technology", "Ads"],  preview_url: getVoicePreviewUrl("ErXwobaYiN019PkySvjV") },
+    { id: "EXAVITQu4vr4xnSDxMaL", identifier: "EXAVITQu4vr4xnSDxMaL", name: "Bella (Nữ Nhẹ nhàng - Sâu lắng)",      gender: "Female", tags: ["Podcast", "Vlog"],   preview_url: getVoicePreviewUrl("EXAVITQu4vr4xnSDxMaL") },
+    { id: "jBpfYwDxm6atqNs9Q7gH",  identifier: "jBpfYwDxm6atqNs9Q7gH",  name: "Gigi (Nữ Năng động - TikTok trend)",  gender: "Female", tags: ["Animation", "Promo"], preview_url: getVoicePreviewUrl("jBpfYwDxm6atqNs9Q7gH") },
+    { id: "TxGEqn7nU7vIuJ7DgnCc",  identifier: "TxGEqn7nU7vIuJ7DgnCc",  name: "Josh (Nam Trầm dày - Thương hiệu)",    gender: "Male",   tags: ["Commercial"],        preview_url: getVoicePreviewUrl("TxGEqn7nU7vIuJ7DgnCc") },
+    { id: "MF3mGyEYCl7XYWbms88w",  identifier: "MF3mGyEYCl7XYWbms88w",  name: "Elli (Nữ Trong trẻẻ - Tin tức)",       gender: "Female", tags: ["News", "Tutorial"],   preview_url: getVoicePreviewUrl("MF3mGyEYCl7XYWbms88w") },
+    { id: "IKne3meq5aSn9XLyUdCD",  identifier: "IKne3meq5aSn9XLyUdCD",  name: "Arnold (Nam Mạnh mẽ - Động lực)",      gender: "Male",   tags: ["Motivation"],        preview_url: getVoicePreviewUrl("IKne3meq5aSn9XLyUdCD") }
   ];
 
   const [voices, setVoices] = useState(initialPremiumVoices);
@@ -330,7 +383,7 @@ export default function TtsView() {
     } else {
       let currentUrl = activeAudioUrl;
       if (currentUrl && currentUrl.includes('storage.googleapis.com') && activeJobId) {
-        currentUrl = `http://localhost:3000/uploads/voices/AI_Studio_Voice_ID_${activeJobId}.mp3`;
+        currentUrl = `${BASE_URL}/uploads/voices/AI_Studio_Voice_ID_${activeJobId}.mp3`;
         setActiveAudioUrl(currentUrl);
       }
 
@@ -343,7 +396,7 @@ export default function TtsView() {
         const completedJobs = historyList.filter(item => (item.type === 'tts' || item.type === 'Voice') && item.status === 'Completed');
         if (completedJobs.length > 0) {
           const job = completedJobs[0];
-          const targetUrl = `http://localhost:3000/uploads/voices/AI_Studio_Voice_ID_${job.id}.mp3`;
+          const targetUrl = `${BASE_URL}/uploads/voices/AI_Studio_Voice_ID_${job.id}.mp3`;
           setActiveAudioUrl(targetUrl);
           setActiveJobId(job.id);
           setTimeout(() => {
@@ -507,7 +560,7 @@ export default function TtsView() {
                   <span className="truncate">🎙️ {displayVoices.find(v => v.identifier === ttsVoice || v.id === ttsVoice)?.name || "Chọn giọng độc quyền"}</span>
                   {(() => {
                     const activeVoice = displayVoices.find(v => v.identifier === ttsVoice || v.id === ttsVoice);
-                    if (activeVoice?.preview_url) {
+                    if (activeVoice && (activeVoice.identifier || activeVoice.id)) {
                       return (
                         <button
                           type="button"
@@ -559,7 +612,7 @@ export default function TtsView() {
                         }`}
                       >
                         <span className="truncate">🎙️ {voice.name}</span>
-                        {voice.preview_url ? (
+                        {(voice?.identifier || voice?.id) ? (
                           <button
                             type="button"
                             onClick={(e) => handlePlayPreview(e, voice.preview_url, voice.identifier || voice.id)}
@@ -700,7 +753,7 @@ export default function TtsView() {
               ref={audioRef}
               src={
                 activeAudioUrl && activeAudioUrl.includes('storage.googleapis.com') && activeJobId
-                  ? `http://localhost:3000/uploads/voices/AI_Studio_Voice_ID_${activeJobId}.mp3`
+                  ? `${BASE_URL}/uploads/voices/AI_Studio_Voice_ID_${activeJobId}.mp3`
                   : (activeAudioUrl || undefined)
               }
               crossOrigin="anonymous"
@@ -833,7 +886,7 @@ export default function TtsView() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          const targetUrl = `http://localhost:3000/uploads/voices/AI_Studio_Voice_ID_${item.id}.mp3`;
+                          const targetUrl = `${BASE_URL}/uploads/voices/AI_Studio_Voice_ID_${item.id}.mp3`;
                           
                           if (activeJobId === item.id) {
                             if (ttsPlaying) {

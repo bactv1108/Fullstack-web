@@ -8,7 +8,7 @@ const UAParser = require('ua-parser-js');
 const db = require('../config/db');
 const queueService = require('../services/queue.service');
 const authService = require('../services/auth.service');
-const { User, Transaction, UserSession, sequelize } = require('../models');
+const { User, Transaction, UserSession, Package, sequelize } = require('../models');
 require('dotenv').config();
 
 // ── Helper: Ghi nhận phiên đăng nhập vào bảng user_sessions ──────────────────
@@ -80,7 +80,7 @@ const { sendVerificationEmail, sendForgotPasswordEmail } = require('../services/
 const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_REDIRECT_URI
+    process.env.GOOGLE_CALLBACK_URL || process.env.GOOGLE_REDIRECT_URI
 );
 
 const googleAuth = (req, res) => {
@@ -140,6 +140,20 @@ const googleCallback = async (req, res) => {
       }
       await user.save();
     } else {
+      // 1. Truy vấn cấu hình gói FREE từ Database
+      const freePackage = await Package.findOne({ where: { id: 'free' } });
+
+      // 2. Chốt chặn nghiêm ngặt: Nếu DB chưa cấu hình gói FREE, báo lỗi hệ thống ngay lập tức
+      if (!freePackage) {
+        console.error("[CRITICAL ERROR]: Gói cước 'free' chưa được cấu hình trong Database!");
+        return res.status(500).json({
+          success: false,
+          message: "Lỗi hệ thống: Cấu hình gói mặc định không tồn tại. Vui lòng liên hệ Admin!"
+        });
+      }
+
+      const defaultFreeCredits = freePackage.credits;
+
       // INSERT using sequelize.transaction() to guarantee atomic registration gifts
       user = await sequelize.transaction(async (t) => {
         const newUser = await User.create({
@@ -149,8 +163,8 @@ const googleCallback = async (req, res) => {
           avatar,
           refresh_token: refresh_token || null,
           is_verified: true,
-          credits: 60,
-          credits_balance: 60
+          credits: defaultFreeCredits,
+          credits_balance: defaultFreeCredits
         }, { transaction: t });
 
         // Sinh mã giao dịch tự động dạng TRX- kết hợp chuỗi ngẫu nhiên
@@ -160,9 +174,9 @@ const googleCallback = async (req, res) => {
         await Transaction.create({
           id: transactionId,
           userId: newUser.id,
-          package_name: 'Gói Free',
+          package_name: freePackage.name || 'Gói Free',
           amount: 0,
-          credits_added: 60,
+          credits_added: defaultFreeCredits,
           status: 'success', // Trạng thái "Thành công" theo cấu hình
           type: 'Hệ thống tặng' // Phân loại giao dịch hiển thị trên UI
         }, { transaction: t });
@@ -185,7 +199,7 @@ const googleCallback = async (req, res) => {
     res.cookie('refresh_token', systemTokens.refresh_token, authService.getCookieOptions());
 
     // Redirect back to frontend with both access token and refresh token
-    const frontendRedirectUrl = `http://localhost:5173/auth/google/callback?token=${systemTokens.access_token}&refresh_token=${systemTokens.refresh_token}`;
+    const frontendRedirectUrl = `${process.env.FRONTEND_URL}/auth/google/callback?token=${systemTokens.access_token}&refresh_token=${systemTokens.refresh_token}`;
     res.redirect(frontendRedirectUrl);
 
   } catch (error) {
@@ -238,9 +252,23 @@ const register = async (request, response) => {
     const verificationToken = crypto.randomBytes(32).toString('hex');
     const verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 giờ kể từ thời điểm hiện tại
 
+    // 1. Truy vấn cấu hình gói FREE từ Database
+    const freePackage = await Package.findOne({ where: { id: 'free' } });
+
+    // 2. Chốt chặn nghiêm ngặt: Nếu DB chưa cấu hình gói FREE, báo lỗi hệ thống ngay lập tức
+    if (!freePackage) {
+      console.error("[CRITICAL ERROR]: Gói cước 'free' chưa được cấu hình trong Database!");
+      return response.status(500).json({
+        success: false,
+        message: "Lỗi hệ thống: Cấu hình gói mặc định không tồn tại. Vui lòng liên hệ Admin!"
+      });
+    }
+
+    const defaultFreeCredits = freePackage.credits;
+
     // Sử dụng sequelize.transaction() để bọc cả hai câu lệnh chèn người dùng mới và chèn giao dịch hệ thống tặng
     await sequelize.transaction(async (databaseTransaction) => {
-      // 1. Khởi tạo User mới với 60 Credits
+      // 1. Khởi tạo User mới với số credits động
       const newUser = await User.create({
         name,
         email,
@@ -248,8 +276,8 @@ const register = async (request, response) => {
         is_verified: false,
         verification_token: verificationToken,
         verification_token_expires: verificationTokenExpires,
-        credits: 60,
-        credits_balance: 60
+        credits: defaultFreeCredits,
+        credits_balance: defaultFreeCredits
       }, { transaction: databaseTransaction });
 
       // Sinh mã giao dịch tự động dạng TRX- kết hợp chuỗi ngẫu nhiên
@@ -259,16 +287,16 @@ const register = async (request, response) => {
       await Transaction.create({
         id: transactionId,
         userId: newUser.id,
-        package_name: 'Gói Free',
+        package_name: freePackage.name || 'Gói Free',
         amount: 0,
-        credits_added: 60,
+        credits_added: defaultFreeCredits,
         status: 'success', // Trạng thái "Thành công" theo cấu hình
         type: 'Hệ thống tặng' // Phân loại giao dịch hiển thị trên UI
       }, { transaction: databaseTransaction });
     });
 
     // Xây dựng đường dẫn liên kết kích hoạt tài khoản có cấu trúc tường minh truyền lên Frontend
-    const activationUrl = `http://localhost:5173/verify-email?token=${verificationToken}`;
+    const activationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
 
     // Gọi hàm dịch vụ gửi thư trực tiếp và bất đồng bộ trong một khối lệnh try-catch riêng biệt để phòng thủ tuyệt đối
     // Lỗi từ email không bao giờ được phép chặn tiến trình phản hồi đăng ký thành công về giao diện Frontend
@@ -304,18 +332,22 @@ const verifyEmail = async (request, response) => {
       [token]
     );
 
+    console.log('[DEBUG VERIFY] Token client gửi lên:', token);
+
     if (databaseQueryResultRows.length === 0) {
+      console.log('[DEBUG VERIFY] MySQL không tìm thấy user nào khớp với token này');
       console.log('[AUTH] Validation failed: Token not found in database');
       return response.status(400).json({ message: 'Token xác thực không hợp lệ hoặc đã hết hạn.' });
     }
 
     const matchedUser = databaseQueryResultRows[0];
+    console.log('[DEBUG VERIFY] Khớp user. Giờ hết hạn trong DB:', matchedUser.verification_token_expires, 'Giờ hiện tại của Server:', new Date());
 
-    // Kiểm tra thời hạn hiệu lực của mã xác thực
+    // Kiểm tra thời hạn hiệu lực của mã xác thực bằng Epoch time (timestamp số) để tránh lệch múi giờ
     if (matchedUser.verification_token_expires) {
-      const tokenExpirationDate = new Date(matchedUser.verification_token_expires);
-      const currentDate = new Date();
-      if (currentDate > tokenExpirationDate) {
+      const tokenExpirationTimestamp = new Date(matchedUser.verification_token_expires).getTime();
+      const currentTimestamp = Date.now();
+      if (currentTimestamp > tokenExpirationTimestamp) {
         console.log('[AUTH] Validation failed: Verification token has expired');
         return response.status(400).json({ message: 'Mã xác thực đã hết hạn hiệu lực. Vui lòng yêu cầu gửi lại mã mới.' });
       }
@@ -334,8 +366,8 @@ const verifyEmail = async (request, response) => {
     console.log(`[AUTH] User ID ${matchedUser.id} verified successfully.`);
     return response.status(200).json({ message: 'Xác thực tài khoản thành công! Bạn có thể đăng nhập ngay.', status: 'success' });
 
-  } catch (emailVerificationProcessError) {
-    console.error('[AUTH] Verify email error:', emailVerificationProcessError.message);
+  } catch (error) {
+    console.error('[AUTH] Verify Email Error:', error);
     return response.status(500).json({ message: 'Lỗi hệ thống trong quá trình xác thực email.' });
   }
 };
@@ -511,7 +543,7 @@ const resendVerification = async (request, response) => {
     );
 
     // Xây dựng đường dẫn liên kết kích hoạt tài khoản có cấu trúc tường minh truyền lên Frontend
-    const activationUrl = `http://localhost:5173/verify-email?token=${verificationToken}`;
+    const activationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
 
     // Gọi hàm dịch vụ gửi thư trực tiếp và bất đồng bộ trong một khối lệnh try-catch riêng biệt để phòng thủ tuyệt đối
     sendVerificationEmail(email, activationUrl, matchedUser.name)
@@ -561,7 +593,7 @@ const forgotPassword = async (request, response) => {
     await matchedUser.save();
 
     // Xây dựng đường dẫn liên kết đặt lại mật khẩu trỏ thẳng về giao diện ứng dụng khách Frontend
-    const resetUrl = `http://localhost:5173/reset-password?token=${resetPasswordToken}`;
+    const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetPasswordToken}`;
 
     // Gọi hàm gửi email đặt lại mật khẩu ngầm bất đồng bộ không chặn luồng phản hồi của Frontend
     sendForgotPasswordEmail(email, resetUrl, matchedUser.name)
@@ -650,12 +682,23 @@ const resetPassword = async (request, response) => {
   }
 };
 
+const logout = async (request, response) => {
+  try {
+    response.clearCookie('refresh_token', authService.getCookieOptions());
+    return response.status(200).json({ success: true, message: 'Đăng xuất thành công.' });
+  } catch (error) {
+    console.error('[AUTH] Logout error:', error.message);
+    return response.status(500).json({ success: false, message: 'Lỗi hệ thống khi đăng xuất.' });
+  }
+};
+
 module.exports = {
   googleAuth,
   googleCallback,
   register,
   verifyEmail,
   login,
+  logout,
   refreshToken,
   resendVerification,
   forgotPassword,

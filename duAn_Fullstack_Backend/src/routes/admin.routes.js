@@ -56,6 +56,7 @@ router.get('/system/costs', adminController.getApiCosts);
 router.get('/system/credits', adminController.getCreditStats);
 router.get('/image-analyses', adminController.getImageAnalyses);
 router.get('/video-jobs', adminController.getVideoJobs);
+router.get('/image-jobs', adminController.getImageJobs);
 router.get('/credit-statistics', adminController.getCreditStatistics);
 router.get('/detailed-logs', adminController.getDetailedApiLogs);
 router.get('/admin/detailed-logs', adminController.getDetailedApiLogs);

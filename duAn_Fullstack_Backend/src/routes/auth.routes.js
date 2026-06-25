@@ -12,6 +12,7 @@ router.get('/google/callback', authController.googleCallback);
 // Traditional Auth
 router.post('/register', authLimiter, authController.register);
 router.post('/login', authLimiter, authController.login);
+router.post('/logout', authController.logout);
 router.post('/refresh', authController.refreshToken);
 router.post('/refresh-token', authController.refreshToken);
 router.get('/refresh', authController.refreshToken);

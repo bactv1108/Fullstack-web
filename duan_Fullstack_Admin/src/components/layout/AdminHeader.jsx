@@ -217,19 +217,47 @@ const AdminHeader = ({ toggleSidebar }) => {
         await handleMarkAsRead(item.id);
       }
 
-      if (item.redirectUrl) {
+      const titleLower = (item.title || '').toLowerCase();
+      const contentOriginal = item.content || item.message || '';
+      const contentLower = contentOriginal.toLowerCase();
+      const type = item.type || 'system';
+
+      // 3 TRƯỜNG HỢP ƯU TIÊN HÀNG ĐẦU
+      if (
+        titleLower.includes('vi phạm') || titleLower.includes('tiêu chuẩn cộng đồng') || titleLower.includes('violation') || titleLower.includes('blacklist') ||
+        contentLower.includes('vi phạm') || contentLower.includes('tiêu chuẩn cộng đồng') || contentLower.includes('violation') || contentLower.includes('blacklist')
+      ) {
+        navigate('/moderation');
+      } else if (
+        titleLower.includes('mắt thần') || titleLower.includes('mat than') || titleLower.includes('phân tích ảnh') || titleLower.includes('phan tich anh') ||
+        contentLower.includes('mắt thần') || contentLower.includes('mat than') || contentLower.includes('phân tích ảnh') || contentLower.includes('phan tich anh')
+      ) {
+        navigate('/image-analyses');
+      } else if (
+        titleLower.includes('tạo ảnh') || titleLower.includes('tao anh') || titleLower.includes('ảnh') || titleLower.includes('image') ||
+        contentLower.includes('tạo ảnh') || contentLower.includes('tao anh') || contentLower.includes('ảnh') || contentLower.includes('image')
+      ) {
+        const matchId = (item.title + ' ' + contentOriginal).match(/#(\d+)/) || (item.title + ' ' + contentOriginal).match(/tác vụ\s+(\d+)/i);
+        const jobId = item.job_id || item.target_id || (matchId ? matchId[1] : '');
+        navigate(jobId ? `/image-management?search=${jobId}` : '/image-management');
+      } else if (
+        titleLower.includes('video') || titleLower.includes('tạo video') || titleLower.includes('tao video') ||
+        contentLower.includes('video') || contentLower.includes('tạo video') || contentLower.includes('tao video')
+      ) {
+        navigate('/video-management');
+      } else if (item.redirectUrl) {
+        // CÁC LUỒNG FALLBACK CŨ
         navigate(item.redirectUrl);
       } else {
-        const content = item.content || item.message || '';
         let txCode = item.transactionCode;
         if (!txCode) {
           // Match standard formats like "Mã GD: 2210008723988", "Mã GD 2210008723988", "Mã: 2210008723988", "Mã GD:2210008723988"
-          const match = content.match(/(?:Mã\s*GD|Mã|Mã\s*GD\s*:|Mã\s*:)\s*:?\s*([A-Za-z0-9_-]+)/i);
+          const match = contentOriginal.match(/(?:Mã\s*GD|Mã|Mã\s*GD\s*:|Mã\s*:)\s*:?\s*([A-Za-z0-9_-]+)/i);
           if (match && match[1]) {
             txCode = match[1];
           } else {
             // Fallback: look for any 10 to 15 digit sequence representing PayOS order code
-            const numMatch = content.match(/\b\d{10,15}\b/);
+            const numMatch = contentOriginal.match(/\b\d{10,15}\b/);
             if (numMatch) {
               txCode = numMatch[0];
             }
@@ -238,8 +266,12 @@ const AdminHeader = ({ toggleSidebar }) => {
 
         if (txCode) {
           navigate(`/admin/deposits?search=${txCode}`);
+        } else if (type === 'billing') {
+          navigate('/billing');
+        } else if (type === 'error') {
+          navigate('/admin/logs');
         } else {
-          navigate('/admin/deposits');
+          navigate('/dashboard');
         }
       }
       setIsNotifOpen(false);

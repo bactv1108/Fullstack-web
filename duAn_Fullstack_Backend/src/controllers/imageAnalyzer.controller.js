@@ -407,15 +407,34 @@ const analyzeProductImage = async (req, res) => {
   const imageFilePath = req.file.path;
 
   try {
-    // ── BƯỚC 1: Tạo bản ghi ban đầu trong DB ──────────────────────────────────
-    analysisRecord = await ImageAnalysis.create({
-      user_id:    userId,
-      image_name: originalName,
-      image_path: imageRelativePath,
-      mime_type:  mimeType,
-      file_size:  fileSize,
-      status:     'processing',
-    });
+    // ── BƯỚC 1: Tạo bản ghi ban đầu trong DB (Phòng thủ crash) ────────────────
+    try {
+      analysisRecord = await ImageAnalysis.create({
+        user_id:    userId,
+        image_name: originalName,
+        image_path: imageRelativePath,
+        mime_type:  mimeType,
+        file_size:  fileSize,
+        status:     'processing',
+      });
+    } catch (dbError) {
+      console.error('[MAT THAN DB ERROR] Không thể tạo bản ghi ImageAnalysis:', dbError.message);
+      // Tạo bản ghi giả lập có phương thức update để các bước sau không bị crash
+      analysisRecord = {
+        id: Date.now(),
+        user_id:    userId,
+        image_name: originalName,
+        image_path: imageRelativePath,
+        mime_type:  mimeType,
+        file_size:  fileSize,
+        status:     'processing',
+        update: async function(fields) {
+          console.warn('[MAT THAN DB WARNING] Thực hiện update giả lập do DB lỗi:', fields);
+          Object.assign(this, fields);
+          return this;
+        }
+      };
+    }
 
     // ── BƯỚC 2: Đọc file ảnh vật lý → Buffer ──────────────────────────────────
     if (!fs.existsSync(imageFilePath)) {
@@ -502,48 +521,82 @@ const analyzeProductImage = async (req, res) => {
       // await user.save();
 
       // Phạt khóa tính năng Mắt Thần của user này trong 15 phút để bảo vệ ví tiền của Admin
-      // 💡 SỬA CHUẨN: 15 phút = 15 * 60 * 1000 ms. Tuyệt đối không dùng 60 phút!
       const BAN_DURATION = 15 * 60 * 1000; 
       const bannedUntilDate = new Date(Date.now() + BAN_DURATION);
 
-      // Cập nhật xuống Database
-      if (user) {
-        await user.update({ banned_until: bannedUntilDate });
-        // Cập nhật thêm cột cũ mat_than_muted_until qua SQL phòng thủ
-        await User.sequelize.query(
-          'UPDATE users SET mat_than_muted_until = :bannedUntilDate WHERE id = :userId',
-          {
-            replacements: { bannedUntilDate, userId: user.id },
-            type: User.sequelize.QueryTypes.UPDATE
-          }
-        );
-        user.mat_than_muted_until = bannedUntilDate;
-        user.banned_until = bannedUntilDate;
+      // Cập nhật xuống Database (cột chuẩn banned_until)
+      try {
+        if (user) {
+          user.banned_until = bannedUntilDate;
+          await user.save();
+        }
+      } catch (userSaveErr) {
+        console.error("[CRITICAL DB ERROR] Không thể lưu thông tin khóa User:", userSaveErr.message);
       }
 
-      // Đổi trạng thái lịch sử thành 'pending' (trạng thái tương ứng với VI_PHAM trong DB để chuyển sang trang duyệt Admin)
-      await analysisRecord.update({
-        status:        'pending',
-        prompt_output: promptText,      // Lưu lại văn bản phản hồi thô của AI
-        input_tokens:  inputTokens,
-        output_tokens: outputTokens,
-        error_message: '[MẮT THẦN SECURITY] Hình ảnh vi phạm bộ lọc an toàn của AI (CRITICAL_ERROR_SAFETY_VIOLATION).',
-      });
+      // Xác định trạng thái lưu dựa trên bộ lọc admin (đã xác định là 'pending')
+      const moderationStatus = 'pending'; 
+      let record = analysisRecord;
+
+      // Lưu bản ghi vi phạm (Trạng thái status phải khớp với điều kiện lọc để hiển thị lên trang Admin)
+      try {
+        if (record && typeof record.update === 'function') {
+          // Cập nhật bản ghi có sẵn từ Bước 1
+          await record.update({
+            user_id:       userId,
+            image_name:    originalName,
+            image_path:    imageRelativePath,
+            mime_type:     mimeType,
+            file_size:     fileSize,
+            status:        moderationStatus,
+            prompt_output: 'CRITICAL_ERROR_SAFETY_VIOLATION',
+            error_message: '[MẮT THẦN SECURITY] Hình ảnh vi phạm bộ lọc an toàn của AI (CRITICAL_ERROR_SAFETY_VIOLATION).'
+          });
+        } else {
+          // Tạo mới nếu chưa có bản ghi (ví dụ: Bước 1 bị lỗi DB)
+          record = await ImageAnalysis.create({
+            user_id:       userId,
+            image_name:    originalName,
+            image_path:    imageRelativePath,
+            mime_type:     mimeType,
+            file_size:     fileSize,
+            status:        moderationStatus,
+            prompt_output: 'CRITICAL_ERROR_SAFETY_VIOLATION',
+            error_message: '[MẮT THẦN SECURITY] Hình ảnh vi phạm bộ lọc an toàn của AI (CRITICAL_ERROR_SAFETY_VIOLATION).'
+          });
+        }
+        console.log("[DATABASE SUCCESS]: Ghi nhận ca vi phạm thành công, ID:", record.id);
+      } catch (dbError) {
+        console.error("[CRITICAL DB ERROR]: Luồng lưu vi phạm/bắn socket bị lỗi!", dbError);
+        // Tạo một object giả lập chứa ID ngẫu nhiên để các luồng Socket và luồng trả về Client phía dưới KHÔNG BỊ CHẾT ĐỨNG
+        if (!record) {
+          record = { id: Date.now() };
+        }
+        record.status = moderationStatus;
+      }
+
+      // KIỂM KÍCH HOẠT LOA PHÁT REAL-TIME ĐỂ TỰ ĐỘNG BẮN LÊN TRANG ADMIN
+      if (global.io) {
+        global.io.emit('NEW_MODERATION_ITEM', { id: record.id, status: moderationStatus });
+        global.io.emit('NEW_MODERATION_JOB', { id: record.id, status: moderationStatus });
+      }
 
       // Bắn socket về admin_room để Admin thấy real-time
-      const io = req.io;
+      const io = req.io || global.io;
       if (io) {
-        const pendingRecord = await ImageAnalysis.findByPk(analysisRecord.id, {
+        const pendingRecord = await ImageAnalysis.findByPk(record.id, {
           include: [{ model: User, as: 'owner', attributes: ['id', 'name', 'email'] }],
         }).catch(() => null);
         if (pendingRecord) {
           io.to('admin_room').emit('image_analysis:updated', pendingRecord.toJSON());
+          io.to('admin_room').emit('UPDATE_MAT_THAN_JOB', { id: pendingRecord.id, status: pendingRecord.status });
+        } else {
+          // Fallback if DB query fails: emit using analysisRecord local object
+          io.to('admin_room').emit('UPDATE_MAT_THAN_JOB', { id: record.id, status: moderationStatus });
         }
       }
 
-      if (global.io || req.io) {
-        const ioInstance = req.io || global.io;
-
+      if (io) {
         const notiTitle   = 'Phát hiện ảnh vi phạm 🚨';
         const notiMessage = 'Hệ thống Mắt Thần vừa chặn một hình ảnh hở hang/NSFW vi phạm chính sách từ người dùng!';
         const redirectUrl = '/admin/moderation';
@@ -562,7 +615,7 @@ const analyzeProductImage = async (req, res) => {
         }
 
         // Nhánh A: Đẩy thông báo chuông lên Header Admin
-        ioInstance.to('admin_room').emit('NEW_ADMIN_NOTIFICATION', {
+        io.to('admin_room').emit('NEW_ADMIN_NOTIFICATION', {
           id:          savedNoti?.id || `MOD-${Date.now()}`,
           title:       notiTitle,
           message:     notiMessage,
@@ -573,20 +626,20 @@ const analyzeProductImage = async (req, res) => {
         });
 
         // Reload record với quan hệ owner để Grid có đầy đủ thông tin
-        const fullRecord = await ImageAnalysis.findByPk(analysisRecord.id, {
+        const fullRecord = await ImageAnalysis.findByPk(record.id, {
           include: [{ model: User, as: 'owner', attributes: ['id', 'name', 'email', 'avatar'] }],
         }).catch(() => null);
 
         // Nhánh B: Đẩy object ảnh thô thẳng xuống Grid kiểm duyệt
-        ioInstance.to('admin_room').emit('NEW_MODERATION_ITEM', {
-          id:           analysisRecord.id,
-          image_name:   analysisRecord.image_name,
-          image_path:   analysisRecord.image_path,
-          mime_type:    analysisRecord.mime_type,
-          file_size:    analysisRecord.file_size,
-          status:       'pending',
+        io.to('admin_room').emit('NEW_MODERATION_ITEM', {
+          id:           record.id,
+          image_name:   record.image_name || originalName,
+          image_path:   record.image_path || imageRelativePath,
+          mime_type:    record.mime_type || mimeType,
+          file_size:    record.file_size || fileSize,
+          status:       moderationStatus,
           error_message: '[MẮT THẦN SECURITY] Hình ảnh vi phạm bộ lọc an toàn của AI (CRITICAL_ERROR_SAFETY_VIOLATION).',
-          created_at:   analysisRecord.createdAt || new Date(),
+          created_at:   record.createdAt || new Date(),
           user: fullRecord?.owner ? {
             id:     fullRecord.owner.id,
             name:   fullRecord.owner.name,
@@ -595,13 +648,14 @@ const analyzeProductImage = async (req, res) => {
           } : null,
         });
 
-        console.log(`[REAL-TIME PIPELINE] ✅ Phát sóng đôi NEW_ADMIN_NOTIFICATION + NEW_MODERATION_ITEM cho Log #${analysisRecord.id}`);
+        console.log(`[REAL-TIME PIPELINE] ✅ Phát sóng đôi NEW_ADMIN_NOTIFICATION + NEW_MODERATION_ITEM cho Log #${record.id}`);
       }
 
       // Trả về trạng thái lỗi 400 Bad Request kèm thông báo cho Frontend hiển thị
       return res.status(400).json({
         success: false,
-        message: 'Hình ảnh không vượt qua bộ lọc an toàn của AI. Bạn không bị trừ Credits. Tính năng tạm khóa 15 phút để cảnh cáo.',
+        code: 'CRITICAL_ERROR_SAFETY_VIOLATION',
+        message: 'Phân tích thất bại! Hình ảnh bạn tải lên đã vi phạm Tiêu chuẩn cộng đồng của hệ thống. Vì lý do bảo mật, tính năng Mắt Thần AI của bạn sẽ tạm thời bị đóng băng trong vòng 15 phút. Cảm ơn bạn đã sử dụng dịch vụ!',
         mutedUntil: bannedUntilDate ? new Date(bannedUntilDate).toISOString() : null,
         banned_until: bannedUntilDate ? new Date(bannedUntilDate).toISOString() : null
       });
@@ -630,13 +684,30 @@ const analyzeProductImage = async (req, res) => {
     if (isUnsafe) {
       console.log(`[MAT THAN SECURITY] 🚨 Ảnh #${analysisRecord.id} bị gắn cờ VI PHẠM bởi ${provider} — status=pending, credit KHÔNG bị trừ.`);
 
-      await analysisRecord.update({
-        status:        'pending',
-        prompt_output: promptText,      // Lưu toàn bộ nội dung cảnh báo của AI
-        input_tokens:  inputTokens,
-        output_tokens: outputTokens,
-        error_message: '[MẮT THẦN SECURITY] Ảnh chứa nội dung nghi vấn nhạy cảm (khiêu dâm/hở hang/phản động). Chờ Admin duyệt tay.',
-      });
+      try {
+        await analysisRecord.update({
+          status:        'pending',
+          user_id:       userId,
+          image_name:    originalName,
+          image_path:    imageRelativePath,
+          mime_type:     mimeType,
+          file_size:     fileSize,
+          prompt_output: promptText,      // Lưu toàn bộ nội dung cảnh báo của AI
+          input_tokens:  inputTokens,
+          output_tokens: outputTokens,
+          error_message: '[MẮT THẦN SECURITY] Ảnh chứa nội dung nghi vấn nhạy cảm (khiêu dâm/hở hang/phản động). Chờ Admin duyệt tay.',
+        });
+        console.log("[DATABASE SUCCESS]: Đã lưu bản ghi kiểm duyệt thành công! ID:", analysisRecord.id);
+      } catch (dbUpdateErr) {
+        console.error("[CRITICAL DATABASE ERROR]: Không thể lưu bản ghi kiểm duyệt vào DB!", dbUpdateErr);
+        // Cập nhật thuộc tính cục bộ để tránh đứt đoạn mạch dữ liệu
+        analysisRecord.status = 'pending';
+      }
+
+      if (global.io) {
+        global.io.emit('NEW_MODERATION_ITEM', { id: analysisRecord.id, status: 'pending' });
+        global.io.emit('NEW_MODERATION_JOB', { id: analysisRecord.id, status: 'pending' });
+      }
 
       // Bắn socket về admin_room để Admin thấy real-time
       const io = req.io;
@@ -646,7 +717,11 @@ const analyzeProductImage = async (req, res) => {
         }).catch(() => null);
         if (pendingRecord) {
           io.to('admin_room').emit('image_analysis:updated', pendingRecord.toJSON());
+          io.to('admin_room').emit('UPDATE_MAT_THAN_JOB', { id: pendingRecord.id, status: pendingRecord.status });
           console.log(`[SOCKET.IO] Emitted 'image_analysis:updated' (unsafe-pending) -> admin_room | analysisId: ${analysisRecord.id}`);
+        } else {
+          // Fallback if DB query fails: emit using analysisRecord local object
+          io.to('admin_room').emit('UPDATE_MAT_THAN_JOB', { id: analysisRecord.id, status: 'pending' });
         }
 
         // ── PHÁT SÓNG ĐÔI real-time: chuông Admin + Grid kiểm duyệt ─────────
@@ -731,6 +806,7 @@ const analyzeProductImage = async (req, res) => {
       // Broadcast cho Admin panel theo dõi tổng quan
       if (updatedRecord) {
         io.to('admin_room').emit('image_analysis:updated', updatedRecord.toJSON());
+        io.to('admin_room').emit('UPDATE_MAT_THAN_JOB', { id: updatedRecord.id, status: updatedRecord.status });
       }
 
       // Targeted event về đúng room User → Frontend tự cập nhật real-time
@@ -800,6 +876,7 @@ const analyzeProductImage = async (req, res) => {
       if (io) {
         if (failedRecord) {
           io.to('admin_room').emit('image_analysis:updated', failedRecord.toJSON());
+          io.to('admin_room').emit('UPDATE_MAT_THAN_JOB', { id: failedRecord.id, status: failedRecord.status });
         }
 
         if (userId) {

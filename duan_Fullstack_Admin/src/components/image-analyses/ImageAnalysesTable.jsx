@@ -63,7 +63,12 @@ const ImageAnalysesTable = () => {
   // Empty deps [] so socket is created ONCE — no reconnect on modal open/close
   useEffect(() => {
     // Connect to backend Socket.io server
-    const socketInstance = io('http://localhost:3000', {
+    const socketUrl = import.meta.env.VITE_SOCKET_URL || 
+      (import.meta.env.VITE_API_URL 
+        ? import.meta.env.VITE_API_URL.replace(/\/admin\/?$/, '').replace(/\/api\/?$/, '') 
+        : null) || 
+      'http://localhost:3000';
+    const socketInstance = io(socketUrl, {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
@@ -113,6 +118,22 @@ const ImageAnalysesTable = () => {
       socketInstance.disconnect();
     };
   }, []); // ← Empty deps: socket created ONCE, no reconnect on every modal open
+
+  // ── Lắng nghe sự kiện UPDATE_MAT_THAN_JOB ──
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleUpdateMatThanJob = (data) => {
+      console.log('[SOCKET.IO] Nhận được tín hiệu UPDATE_MAT_THAN_JOB:', data);
+      fetchAnalyses();
+    };
+
+    socket.on('UPDATE_MAT_THAN_JOB', handleUpdateMatThanJob);
+
+    return () => {
+      socket.off('UPDATE_MAT_THAN_JOB', handleUpdateMatThanJob);
+    };
+  }, [socket, fetchAnalyses]);
 
   // Client-side search filter (trên dữ liệu đã phân trang từ server)
   const filteredAnalyses = analyses.filter(item => 

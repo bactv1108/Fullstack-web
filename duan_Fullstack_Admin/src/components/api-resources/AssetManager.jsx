@@ -2,6 +2,12 @@ import React, { useState, useEffect, useContext } from 'react';
 import { Mic, Image, Plus, X, Save, Edit3, Trash2 } from 'lucide-react';
 import { AdminAuthContext } from '../../contexts/AdminAuthContext';
 
+const API_BASE = (() => {
+  const rawUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/admin';
+  const clean = rawUrl.replace(/\/+$/, '').replace(/\/admin\/?$/, '');
+  return clean.endsWith('/api') ? clean : `${clean}/api`;
+})();
+
 const AssetManager = () => {
   // Luôn ưu tiên lấy token từ AdminAuthContext, fallback sang localStorage
   const { isAuthenticated } = useContext(AdminAuthContext);
@@ -47,7 +53,7 @@ const AssetManager = () => {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const response = await fetch('http://localhost:3000/api/assets', { headers });
+      const response = await fetch(`${API_BASE}/assets`, { headers });
 
       if (!response.ok) {
         console.error(`[ASSET MANAGER] GET /api/assets thất bại: ${response.status} ${response.statusText}`);
@@ -90,7 +96,7 @@ const AssetManager = () => {
         'Authorization': `Bearer ${token}`
       };
 
-      const response = await fetch('http://localhost:3000/api/assets', {
+      const response = await fetch(`${API_BASE}/assets`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ name, type, status, identifier })
@@ -142,7 +148,7 @@ const AssetManager = () => {
         return;
       }
 
-      const response = await fetch(`http://localhost:3000/api/assets/${assetId}`, {
+      const response = await fetch(`${API_BASE}/assets/${assetId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -202,7 +208,7 @@ const AssetManager = () => {
         return;
       }
 
-      const response = await fetch(`http://localhost:3000/api/assets/${editingAssetId}`, {
+      const response = await fetch(`${API_BASE}/assets/${editingAssetId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

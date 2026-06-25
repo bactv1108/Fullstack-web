@@ -365,6 +365,15 @@ const createJob = async (req, res) => {
         console.error('[USER CONTROLLER] Explicit notification insert error:', notifErr.message);
       }
 
+      if (global.io) {
+        global.io.to(`user_room_${user.id}`).emit('USER_JOB_STATUS', {
+          status: 'success',
+          type: 'audio',
+          message: 'Tạo audio thành công!',
+          newBalance: user.credits
+        });
+      }
+
       return res.status(201).json({
         message: 'Tạo tác vụ thành công, tiến trình đang được xử lý.',
         job,
@@ -518,7 +527,38 @@ const updateProfile = async (req, res) => {
       deleteOldAvatarFile(user.avatar);
       user.avatar = `/uploads/avatars/${req.file.filename}`;
     } else if (inputAvatar !== undefined) {
-      user.avatar = inputAvatar;
+      if (inputAvatar && typeof inputAvatar === 'string' && inputAvatar.startsWith('data:image/')) {
+        const matches = inputAvatar.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          const type = matches[1];
+          const base64Data = matches[2];
+          const buffer = Buffer.from(base64Data, 'base64');
+          
+          let extension = 'png';
+          if (type.includes('jpeg') || type.includes('jpg')) {
+            extension = 'jpg';
+          } else if (type.includes('gif')) {
+            extension = 'gif';
+          } else if (type.includes('webp')) {
+            extension = 'webp';
+          }
+          
+          const filename = `avatar-${user.id}-${Date.now()}.${extension}`;
+          const uploadDir = path.join(__dirname, '../..', 'public', 'uploads', 'avatars');
+          if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+          }
+          const fullPath = path.join(uploadDir, filename);
+          
+          deleteOldAvatarFile(user.avatar);
+          fs.writeFileSync(fullPath, buffer);
+          user.avatar = `/uploads/avatars/${filename}`;
+        } else {
+          user.avatar = inputAvatar;
+        }
+      } else {
+        user.avatar = inputAvatar;
+      }
     }
 
     // 3. Lưu trực tiếp xuống DB thông qua ORM (An toàn, tự động xử lý SQL)

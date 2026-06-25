@@ -65,7 +65,7 @@ export default function ResetPassword() {
 
             try {
                 // Sử dụng thư viện Axios gửi yêu cầu POST bất đồng bộ lên cổng backend 3000
-                const response = await axios.post('http://localhost:3000/api/auth/reset-password', {
+                const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/auth/reset-password`, {
                     token: tokenFromUrl,
                     newPassword: password,
                 });

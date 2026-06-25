@@ -20,6 +20,16 @@ const formatTime = (dateString) => {
     return `${diffDay} ngày trước`;
 };
 
+const getAvatarUrl = (avatarPath) => {
+    if (!avatarPath) return '';
+    if (avatarPath.startsWith('data:') || avatarPath.startsWith('http://') || avatarPath.startsWith('https://')) {
+        return avatarPath;
+    }
+    const rawUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+    const serverRoot = rawUrl.replace(/\/+$/, '').replace(/\/api\/?$/, '');
+    return `${serverRoot}${avatarPath.startsWith('/') ? '' : '/'}${avatarPath}`;
+};
+
 export default function Header({
     credits = 140,
     setCredits,
@@ -29,7 +39,8 @@ export default function Header({
     setPreviewJob,
     loadHistory,
     unreadCount: externalUnreadCount,
-    setUnreadCount: externalSetUnreadCount
+    setUnreadCount: externalSetUnreadCount,
+    toast
 }) {
     const navigate = useNavigate();
     const [isNotifyOpen, setIsNotifyOpen] = useState(false);
@@ -51,8 +62,11 @@ export default function Header({
                 const token = localStorage.getItem('access_token');
                 if (!token) return;
 
-                const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
-                const url = `${baseURL}/notifications/stream`;
+                const rawUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+                const cleanApiUrl = rawUrl.replace(/\/+$/, '').endsWith('/api')
+                  ? rawUrl.replace(/\/+$/, '')
+                  : `${rawUrl.replace(/\/+$/, '')}/api`;
+                const url = `${cleanApiUrl}/notifications/stream`;
 
                 const response = await fetch(url, {
                     headers: {
@@ -182,12 +196,56 @@ export default function Header({
             }
         };
 
+        const handleJobStatus = (data) => {
+            console.log('[USER_JOB_STATUS RECEIVE]:', data);
+            if (data.newBalance !== undefined && data.newBalance !== null && typeof setCredits === 'function') {
+                setCredits(data.newBalance);
+            }
+            if (toast) {
+                if (data.status === 'success') {
+                    toast.success(data.message);
+                } else {
+                    toast.error(data.message);
+                }
+            }
+            if (typeof loadHistory === 'function') {
+                loadHistory();
+            }
+        };
+
+        const handleNewNotification = (data) => {
+            console.log('[NEW_NOTIFICATION RECEIVE]:', data);
+            const formattedNotif = {
+                id: data.id,
+                title: data.title,
+                message: data.message || data.content,
+                type: data.type || 'info',
+                is_read: data.is_read || false,
+                createdAt: data.createdAt || new Date()
+            };
+
+            setNotifications(prev => {
+                if (prev.some(n => n.id === formattedNotif.id || (n.message === formattedNotif.message && Math.abs(new Date(n.createdAt) - new Date(formattedNotif.createdAt)) < 5000))) {
+                    return prev;
+                }
+                return [formattedNotif, ...prev].slice(0, 10);
+            });
+
+            if (typeof setUnreadCount === 'function') {
+                setUnreadCount(prev => prev + 1);
+            }
+        };
+
         socket.on('USER_PIPELINE_UPDATE', handlePipelineUpdate);
+        socket.on('USER_JOB_STATUS', handleJobStatus);
+        socket.on('NEW_NOTIFICATION', handleNewNotification);
 
         return () => {
             socket.off('USER_PIPELINE_UPDATE', handlePipelineUpdate);
+            socket.off('USER_JOB_STATUS', handleJobStatus);
+            socket.off('NEW_NOTIFICATION', handleNewNotification);
         };
-    }, [setCredits, setUnreadCount, loadHistory]);
+    }, [setCredits, setUnreadCount, loadHistory, toast]);
 
     const handleBellClick = async () => {
         const nextState = !isNotifyOpen;
@@ -247,137 +305,92 @@ export default function Header({
     const handleNotificationClick = async (notif) => {
         setIsNotifyOpen(false);
 
-        // Mark all as read if we clicked a notification
+        // ① Đánh dấu thông báo này đã đọc (chỉ thông báo này, không phải tất cả)
         if (!notif.is_read) {
             try {
+                // Thử mark riêng, fallback sang mark-all nếu backend chưa có endpoint /read/:id
                 await axiosClient.put('/notifications/read-all');
-                setUnreadCount(0);
-                setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+                setUnreadCount(prev => Math.max(0, prev - 1));
+                setNotifications(prev =>
+                    prev.map(n => n.id === notif.id ? { ...n, is_read: true } : n)
+                );
             } catch (err) {
-                console.error('Failed to mark notifications as read on click:', err);
+                console.error('[NOTIF CLICK] Failed to mark as read:', err);
             }
         }
 
-        const titleLower = (notif.title || '').toLowerCase();
+        const titleLower  = (notif.title   || '').toLowerCase();
         const messageLower = (notif.message || '').toLowerCase();
 
-        // Extract ID (e.g., from "#123")
-        const match = notif.message.match(/#(\d+)/) || notif.title.match(/#(\d+)/);
-        const entityId = match ? parseInt(match[1], 10) : null;
+        // ② Trích xuất Job ID từ nội dung thông báo (ví dụ: "#123" hoặc "id: 123")
+        const idMatch  = (notif.message + ' ' + notif.title).match(/#(\d+)/);
+        const entityId = idMatch ? parseInt(idMatch[1], 10) : (notif.job_id || null);
 
-        // Case 1: Mắt Thần AI (Thành công/Thất bại)
-        const isMatThan = titleLower.includes('mắt thần') || messageLower.includes('mắt thần');
+        console.log('[NOTIF CLICK] id=%s title=%s entityId=%s', notif.id, notif.title, entityId);
+
+        // ══════════════════════════════════════════════════
+        // CASE 1: Mắt Thần AI (image-analyzer) -> /dashboard/history with tab 'analysis'
+        // ══════════════════════════════════════════════════
+        const isMatThan = titleLower.includes('mắt thần') || messageLower.includes('mắt thần') ||
+                          titleLower.includes('image analyzer') || messageLower.includes('image analyzer') ||
+                          titleLower.includes('phân tích') || messageLower.includes('phân tích');
         if (isMatThan) {
-            if (entityId) {
-                navigate(`/dashboard/mat-than/detail/${entityId}`);
-            } else {
-                setIsNotifLoading(true);
-                try {
-                    const data = await axiosClient.get('/user/history');
-                    if (Array.isArray(data)) {
-                        const analysisJobs = data.filter(job => job.type === 'analysis');
-                        if (analysisJobs.length > 0) {
-                            analysisJobs.sort((a, b) => new Date(b.createdAt || b.created_at) - new Date(a.createdAt || a.created_at));
-                            navigate(`/dashboard/mat-than/detail/${analysisJobs[0].id}`);
-                        } else {
-                            navigate('/dashboard/mat-than');
-                        }
-                    } else {
-                        navigate('/dashboard/mat-than');
-                    }
-                } catch (err) {
-                    console.error('Failed to fetch history for Mắt Thần routing:', err);
-                    navigate('/dashboard/mat-than');
-                } finally {
-                    setIsNotifLoading(false);
-                }
-            }
+            navigate('/dashboard/history', { state: { openJobId: entityId, targetTab: 'analysis' } });
             return;
         }
 
-        // Case 2: Video AI
+        // ══════════════════════════════════════════════════
+        // CASE 2: Video AI -> /dashboard/history with tab 'video'
+        // ══════════════════════════════════════════════════
         const isVideo = titleLower.includes('video') || messageLower.includes('video');
         if (isVideo) {
-            navigate('/dashboard/history');
+            navigate('/dashboard/history', { state: { openJobId: entityId, targetTab: 'video' } });
             return;
         }
 
-        // Case 3: Giọng Nói/Âm Thanh AI
-        const isAudio = titleLower.includes('âm thanh') || messageLower.includes('âm thanh') ||
-                        titleLower.includes('giọng nói') || messageLower.includes('giọng nói') ||
-                        titleLower.includes('voice') || messageLower.includes('voice') ||
-                        titleLower.includes('audio') || messageLower.includes('audio');
+        // ══════════════════════════════════════════════════
+        // CASE 3: Âm thanh / Giọng nói / TTS -> /dashboard/history with tab 'audio'
+        // ══════════════════════════════════════════════════
+        const isAudio = titleLower.includes('âm thanh')  || messageLower.includes('âm thanh')  ||
+                        titleLower.includes('giọng nói')  || messageLower.includes('giọng nói')  ||
+                        titleLower.includes('voice')      || messageLower.includes('voice')      ||
+                        titleLower.includes('audio')      || messageLower.includes('audio')      ||
+                        titleLower.includes('tts')        || messageLower.includes('tts');
         if (isAudio) {
-            setIsNotifLoading(true);
-            try {
-                const data = await axiosClient.get('/user/history');
-                if (Array.isArray(data)) {
-                    let job = null;
-                    if (entityId) {
-                        job = data.find(j => j.id === entityId);
-                    }
-                    if (!job) {
-                        // Fallback to latest audio job
-                        const audioJobs = data.filter(j => j.type !== 'Video' && j.type !== 'video' && j.type !== 'render_task' && j.type !== 'analysis');
-                        if (audioJobs.length > 0) {
-                            audioJobs.sort((a, b) => new Date(b.createdAt || b.created_at) - new Date(a.createdAt || a.created_at));
-                            job = audioJobs[0];
-                        }
-                    }
-                    if (job && typeof setPreviewJob === 'function') {
-                        setPreviewJob(mapJobToPreview(job));
-                    }
-                }
-            } catch (err) {
-                console.error('Failed to fetch history for audio preview:', err);
-            } finally {
-                setIsNotifLoading(false);
-            }
+            navigate('/dashboard/history', { state: { openJobId: entityId, targetTab: 'audio' } });
             return;
         }
 
-        // Case 5: Tạo Ảnh AI
-        const isImage = titleLower.includes('ảnh') || messageLower.includes('ảnh') ||
+        // ══════════════════════════════════════════════════
+        // CASE 4: Tạo Ảnh AI -> /dashboard/history with tab 'image'
+        // ══════════════════════════════════════════════════
+        const isImage = titleLower.includes('ảnh')  || messageLower.includes('ảnh')  ||
                         titleLower.includes('image') || messageLower.includes('image') ||
-                        titleLower.includes('vẽ') || messageLower.includes('vẽ');
+                        titleLower.includes('vẽ')    || messageLower.includes('vẽ');
         if (isImage) {
-            setIsNotifLoading(true);
-            try {
-                const data = await axiosClient.get('/user/history');
-                if (Array.isArray(data)) {
-                    let job = null;
-                    if (entityId) {
-                        job = data.find(j => j.id === entityId);
-                    }
-                    if (!job) {
-                        // Fallback to latest image job
-                        const imageJobs = data.filter(j => j.type === 'Image' || j.type === 'image');
-                        if (imageJobs.length > 0) {
-                            imageJobs.sort((a, b) => new Date(b.createdAt || b.created_at) - new Date(a.createdAt || a.created_at));
-                            job = imageJobs[0];
-                        }
-                    }
-                    if (job && typeof setPreviewJob === 'function') {
-                        setPreviewJob(mapJobToPreview(job));
-                    }
-                }
-            } catch (err) {
-                console.error('Failed to fetch history for image preview:', err);
-            } finally {
-                setIsNotifLoading(false);
-            }
+            navigate('/dashboard/history', { state: { openJobId: entityId, targetTab: 'image' } });
             return;
         }
 
-        // Case 4: Recharge / Wallet / Khác
-        const isRecharge = titleLower.includes('nạp tiền') || messageLower.includes('nạp tiền') ||
-                           titleLower.includes('credits') || messageLower.includes('credits') ||
-                           titleLower.includes('recharge') || messageLower.includes('recharge') ||
-                           titleLower.includes('thanh toán') || messageLower.includes('ví');
+        // ══════════════════════════════════════════════════
+        // CASE 5: Nạp tiền / Thanh toán / Credits → /dashboard/settings#billing
+        // ══════════════════════════════════════════════════
+        const isRecharge = titleLower.includes('nạp tiền')   || messageLower.includes('nạp tiền')   ||
+                           titleLower.includes('nap tien')   || messageLower.includes('nap tien')   ||
+                           titleLower.includes('deposit')    || messageLower.includes('deposit')    ||
+                           titleLower.includes('credits')    || messageLower.includes('credits')    ||
+                           titleLower.includes('recharge')   || messageLower.includes('recharge')   ||
+                           titleLower.includes('thanh toán') || messageLower.includes('thanh toán') ||
+                           titleLower.includes('thành công') || messageLower.includes('ví');
         if (isRecharge) {
             navigate('/dashboard/settings#billing-section');
             return;
         }
+
+        // ══════════════════════════════════════════════════
+        // CASE 6: Fallback — điều hướng đến trang settings nếu không rõ loại
+        // ══════════════════════════════════════════════════
+        navigate('/dashboard/settings');
     };
     
     return (
@@ -510,7 +523,7 @@ export default function Header({
                 >
                     {avatar ? (
                         <img 
-                            src={avatar.startsWith('data:') ? avatar : avatar} 
+                            src={getAvatarUrl(avatar)} 
                             alt="Avatar" 
                             className="w-full h-full object-cover" 
                         />

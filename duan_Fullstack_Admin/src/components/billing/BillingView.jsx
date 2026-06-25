@@ -112,14 +112,21 @@ const BillingView = () => {
       fetchData(currentPage, activeSearch, activeTab);
     };
 
+    const handleNewTransaction = (data) => {
+      console.log('[SOCKET.IO] Received NEW_TRANSACTION, reloading data:', data);
+      fetchData(currentPage, activeSearch, activeTab);
+    };
+
     socketInstance.on('transaction:created', handleTransactionCreated);
     socketInstance.on('transaction:deleted', handleTransactionDeleted);
     socketInstance.on('transaction:updated', handleTransactionUpdated);
+    socketInstance.on('NEW_TRANSACTION', handleNewTransaction);
 
     return () => {
       socketInstance.off('transaction:created', handleTransactionCreated);
       socketInstance.off('transaction:deleted', handleTransactionDeleted);
       socketInstance.off('transaction:updated', handleTransactionUpdated);
+      socketInstance.off('NEW_TRANSACTION', handleNewTransaction);
     };
   }, [currentPage, activeSearch, activeTab]);
 

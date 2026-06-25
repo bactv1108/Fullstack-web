@@ -5,6 +5,10 @@ import { userService } from '../../../services/user.service';
 import axiosClient from '../../../services/axiosClient';
 import { useAuth } from '../../../hooks/useAuth';
 
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || 
+  (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '') : '') || 
+  'http://localhost:3000';
+
 // ─── Helper: Resolve đúng DELETE endpoint dựa theo type của job ───────────────
 // Backend có 4 bảng riêng biệt:
 //   • ImageJob          → xóa qua DELETE /api/image/:id
@@ -348,8 +352,8 @@ export default function useDashboard() {
 
     try {
       const fileUrl = isVideo
-        ? `http://localhost:3000/uploads/videos/AI_Studio_Video_ID_${job.id}.mp4`
-        : `http://localhost:3000/uploads/voices/AI_Studio_Voice_ID_${job.id}.mp3`;
+        ? `${BASE_URL}/uploads/videos/AI_Studio_Video_ID_${job.id}.mp4`
+        : `${BASE_URL}/uploads/voices/AI_Studio_Voice_ID_${job.id}.mp3`;
 
       const response = await fetch(fileUrl);
       if (!response.ok) {

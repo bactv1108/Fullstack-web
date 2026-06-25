@@ -9,6 +9,7 @@ const AdminDashboard = lazy(() => import('../pages/AdminDashboard'));
 const AdminProfile = lazy(() => import('../pages/admin/AdminProfile'));
 const ApiLogsView = lazy(() => import('../pages/admin/ApiLogsView'));
 const VideoManagement = lazy(() => import('../components/video-management/VideoManagement'));
+const ImageManagement = lazy(() => import('../components/image-management/ImageManagement'));
 
 const LoadingFallback = () => (
   <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-admin-text">
@@ -34,6 +35,7 @@ const AdminRoutes = () => {
             <Route path="/moderation" element={<AdminDashboard tab="moderation" />} />
             <Route path="/image-analyses" element={<AdminDashboard tab="image-analyses" />} />
             <Route path="/video-management" element={<VideoManagement />} />
+            <Route path="/image-management" element={<ImageManagement />} />
             <Route path="/users" element={<AdminDashboard tab="users" />} />
             <Route path="/profile" element={<AdminProfile />} />
             <Route path="/admin/logs" element={<ApiLogsView />} />

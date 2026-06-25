@@ -149,22 +149,39 @@ const VideoModerator = () => {
     if (!socket) return;
 
     const handleNewModerationItem = (newItem) => {
-      console.log('[GRID RECEIVE] 📡 Nhận ảnh vi phạm real-time mới:', newItem);
-      setItems((prev) => {
-        // Chặn trùng lặp ID nếu sự kiện bị double-fire
-        if (prev.some((item) => item.id === newItem.id)) return prev;
-        // Đẩy card mới lên đầu Grid
-        return [newItem, ...prev];
-      });
+      console.log('[GRID RECEIVE] 📡 Nhận ảnh vi phạm real-time mới (NEW_MODERATION_ITEM):', newItem);
+      fetchQueue();
+    };
+
+    const handleUpdateMatThanJob = (data) => {
+      console.log('[GRID RECEIVE] 📡 Nhận tín hiệu UPDATE_MAT_THAN_JOB:', data);
+      fetchQueue();
+    };
+
+    const handleNewModerationJob = (data) => {
+      console.log('[GRID RECEIVE] 📡 Nhận tín hiệu NEW_MODERATION_JOB:', data);
+      fetchQueue();
+      // Phát âm thanh cảnh báo ngắn
+      try {
+        const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-200.wav');
+        audio.volume = 0.5;
+        audio.play().catch(() => {});
+      } catch (soundErr) {
+        console.warn('Không thể phát âm thanh thông báo:', soundErr);
+      }
     };
 
     socket.on('NEW_MODERATION_ITEM', handleNewModerationItem);
+    socket.on('UPDATE_MAT_THAN_JOB', handleUpdateMatThanJob);
+    socket.on('NEW_MODERATION_JOB', handleNewModerationJob);
 
     // Dọn dẹp khi Admin rời trang — chống tràn RAM
     return () => {
       socket.off('NEW_MODERATION_ITEM', handleNewModerationItem);
+      socket.off('UPDATE_MAT_THAN_JOB', handleUpdateMatThanJob);
+      socket.off('NEW_MODERATION_JOB', handleNewModerationJob);
     };
-  }, []);
+  }, [fetchQueue]);
 
   // ── Xử lý Duyệt / Từ chối ────────────────────────────────────────────────
   const handleReview = async (itemId, action) => {

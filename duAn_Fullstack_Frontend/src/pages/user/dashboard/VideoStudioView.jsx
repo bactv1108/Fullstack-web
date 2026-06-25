@@ -32,7 +32,7 @@ import React, {
   useCallback,
   useContext,
 } from 'react';
-import { useOutletContext, useNavigate, Link } from 'react-router-dom';
+import { useOutletContext, useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   Film,
   Wand2,
@@ -450,6 +450,7 @@ const BackToTopButton = () => {
 
 export default function VideoStudioView() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   // ── Context ───────────────────────────────────────────────────────────────
   const outletCtx        = useOutletContext() || {};
@@ -526,6 +527,43 @@ export default function VideoStudioView() {
   useEffect(() => {
     fetchRecentJobs();
   }, [fetchRecentJobs]);
+
+  // Auto-open video preview from navigation state (notification click)
+  useEffect(() => {
+    if (recentJobs && recentJobs.length > 0 && location.state?.openJobId) {
+      const searchId = Number(String(location.state.openJobId).replace(/\D/g, ''));
+      console.log("[DEBUG VIDEO]: Target ID:", searchId, "Sample Item:", recentJobs[0]);
+
+      const target = recentJobs.find(item => 
+        Number(item.job_id) === searchId || Number(item.jobId) === searchId || Number(item.id) === searchId
+      );
+      if (target) {
+        // Set inline preview
+        setSelectedPreview({
+          id: target.id,
+          videoUrl: target.videoUrl || target.video_url,
+          prompt: target.prompt,
+          title: `Video #${target.id}`,
+        });
+        // Set global modal preview
+        if (typeof setPreviewJob === 'function') {
+          setPreviewJob({
+            id: target.id,
+            title: `Tác vụ #${target.id}`,
+            prompt: target.prompt,
+            sub: target.prompt || 'Video Ads',
+            type: 'video',
+            status: target.status,
+            output_url: target.videoUrl || target.video_url || target.output_url,
+            videoUrl: target.videoUrl || target.video_url || target.output_url,
+            ratio: target.aspectRatio || target.ratio || '16:9',
+            createdAt: target.createdAt
+          });
+        }
+        window.history.replaceState({}, document.title);
+      }
+    }
+  }, [recentJobs, location.state, setPreviewJob]);
 
   // Auto-scroll logs
   useEffect(() => {

@@ -1,18 +1,23 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import axiosAdminClient from '../../services/axiosAdminClient';
 import { getSocket } from '../../services/socketService';
-import { Search, Eye, AlertCircle, FileText, Calendar, Shield, Cpu, RefreshCw, X, Film } from 'lucide-react';
+import { Search, Eye, AlertCircle, FileText, Calendar, Shield, Cpu, RefreshCw, X, Image as ImageIcon } from 'lucide-react';
 
-const VideoManagement = () => {
+const ImageManagement = () => {
+  const [searchParams] = useSearchParams();
+  const queryId = searchParams.get('search');
+
   // ── State Management ──
-  const [videoJobs, setVideoJobs] = useState([]);
+  const [imageJobs, setImageJobs] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(queryId || '');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(queryId || '');
   const [selectedJob, setSelectedJob] = useState(null);
+  const [isZoomed, setIsZoomed] = useState(false);
 
   // ── Filter configuration ──
   const [statusFilter, setStatusFilter] = useState('all');
@@ -24,9 +29,7 @@ const VideoManagement = () => {
     success: 0, 
     failed: 0, 
     processing: 0, 
-    queueing: 0,
-    wan_turbo: 0,
-    kling_v2_5_standard: 0
+    queueing: 0
   });
 
   // ── Debounce searchQuery -> debouncedSearchQuery ──
@@ -45,43 +48,45 @@ const VideoManagement = () => {
     setCurrentPage(1);
   }, [debouncedSearchQuery]);
 
+  // Auto-fill queryId from URL
+  useEffect(() => {
+    if (queryId) {
+      setSearchQuery(queryId);
+      setDebouncedSearchQuery(queryId);
+    }
+  }, [queryId]);
+
   // ── Fetch Data Function ──
-  const fetchVideoJobsData = useCallback(async () => {
+  const fetchImageJobsData = useCallback(async () => {
     setIsLoading(true);
     try {
       let statusParam = '';
-      let modelNameParam = '';
-
       if (['all', 'success', 'failed', 'processing', 'queueing'].includes(statusFilter)) {
         statusParam = statusFilter;
-      } else if (['wan_turbo', 'kling_v2_5_standard'].includes(statusFilter)) {
-        modelNameParam = statusFilter;
       }
 
       const response = await axiosAdminClient.get(
-        `/video-jobs?page=${currentPage}&limit=${limit}&status=${statusParam}&modelName=${modelNameParam}&search=${encodeURIComponent(debouncedSearchQuery)}`
+        `/image-jobs?page=${currentPage}&limit=${limit}&status=${statusParam}&search=${encodeURIComponent(debouncedSearchQuery)}`
       );
 
       if (response && response.success && response.pagination && Array.isArray(response.data)) {
-        setVideoJobs(response.data);
+        setImageJobs(response.data);
         const p = response.pagination;
         setTotalPages(p.totalPages || 1);
         setTotalItems(p.totalItems || 0);
         
         const c = p.counts || {};
         setTabCounts({
-          all:                 c.all                 ?? 0,
-          success:             c.success             ?? 0,
-          failed:              c.failed              ?? 0,
-          processing:          c.processing          ?? 0,
-          queueing:            c.queueing            ?? 0,
-          wan_turbo:           c.wan_turbo           ?? 0,
-          kling_v2_5_standard: c.kling_v2_5_standard ?? 0
+          all:        c.all        ?? 0,
+          success:    c.success    ?? 0,
+          failed:     c.failed     ?? 0,
+          processing: c.processing ?? 0,
+          queueing:   c.queueing   ?? 0
         });
       } else {
         // Fallback in case of legacy payload format
         const arr = Array.isArray(response) ? response : [];
-        setVideoJobs(arr);
+        setImageJobs(arr);
         setTotalPages(1);
         setTotalItems(arr.length);
         setTabCounts({
@@ -89,13 +94,11 @@ const VideoManagement = () => {
           success: arr.filter(i => i.status === 'success').length,
           failed: arr.filter(i => i.status === 'failed').length,
           processing: arr.filter(i => i.status === 'processing').length,
-          queueing: arr.filter(i => i.status === 'queueing').length,
-          wan_turbo: arr.filter(i => i.model_name === 'wan_turbo').length,
-          kling_v2_5_standard: arr.filter(i => i.model_name === 'kling_v2_5_standard').length,
+          queueing: arr.filter(i => i.status === 'queueing').length
         });
       }
     } catch (err) {
-      console.error('[VIDEO ADMIN] Failed to fetch video jobs history:', err.message);
+      console.error('[IMAGE ADMIN] Failed to fetch image jobs history:', err.message);
     } finally {
       setIsLoading(false);
     }
@@ -103,29 +106,29 @@ const VideoManagement = () => {
 
   // Re-fetch when page, status filter, or search changes
   useEffect(() => {
-    fetchVideoJobsData();
-  }, [fetchVideoJobsData]);
+    fetchImageJobsData();
+  }, [fetchImageJobsData]);
 
-  // ── Socket.io: Lắng nghe cập nhật realtime ──
+  // ── Socket.io: Real-time update listener ──
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
 
-    const handleVideoJobUpdate = (data) => {
-      console.log('[SOCKET.IO] Nhận được tín hiệu cập nhật video, đang làm mới...', data);
-      fetchVideoJobsData();
+    const handleImageJobUpdate = (data) => {
+      console.log('[SOCKET.IO] Received image job update, reloading data:', data);
+      fetchImageJobsData();
     };
 
-    socket.on('video_job:created', handleVideoJobUpdate);
-    socket.on('video_job:updated', handleVideoJobUpdate);
-    socket.on('UPDATE_VIDEO_JOB', handleVideoJobUpdate);
+    socket.on('image_job:created', handleImageJobUpdate);
+    socket.on('image_job:updated', handleImageJobUpdate);
+    socket.on('UPDATE_IMAGE_JOB', handleImageJobUpdate);
 
     return () => {
-      socket.off('video_job:created', handleVideoJobUpdate);
-      socket.off('video_job:updated', handleVideoJobUpdate);
-      socket.off('UPDATE_VIDEO_JOB', handleVideoJobUpdate);
+      socket.off('image_job:created', handleImageJobUpdate);
+      socket.off('image_job:updated', handleImageJobUpdate);
+      socket.off('UPDATE_IMAGE_JOB', handleImageJobUpdate);
     };
-  }, [fetchVideoJobsData]);
+  }, [fetchImageJobsData]);
 
   const formatTime = (dateStr) => {
     if (!dateStr) return '-';
@@ -141,16 +144,6 @@ const VideoManagement = () => {
     const year = date.getFullYear();
     
     return `${hours}:${minutes}:${seconds} ${day}/${month}/${year}`;
-  };
-
-  const getModelLabel = (modelName, aspectRatio) => {
-    let modelLabel = modelName;
-    if (modelName === 'wan_turbo') {
-      modelLabel = 'Wan v2.2';
-    } else if (modelName === 'kling_v2_5_standard') {
-      modelLabel = 'Kling v2.5';
-    }
-    return `${modelLabel} (${aspectRatio || '16:9'})`;
   };
 
   const getStatusBadge = (status) => {
@@ -200,16 +193,16 @@ const VideoManagement = () => {
 
   return (
     <div className="space-y-6 animate-fade-in h-[calc(100vh-8rem)] flex flex-col">
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-admin-text mb-2 flex-shrink-0">QUẢN LÝ LỊCH SỬ VIDEO AI</h1>
+      <h1 className="text-2xl font-bold text-slate-900 dark:text-admin-text mb-2 flex-shrink-0">QUẢN LÝ LỊCH SỬ ẢNH AI</h1>
 
       <div className="admin-card p-0 overflow-hidden flex flex-col h-full bg-white dark:bg-[#18181b]/50 border border-slate-200 dark:border-admin-border/60 rounded-xl relative">
         
         {/* Table Header Controls */}
         <div className="p-6 border-b border-slate-200 dark:border-admin-border flex justify-between items-center bg-slate-50/80 dark:bg-[#131317]/40">
           <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Danh Sách Lịch Sử Video AI</h2>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Danh Sách Lịch Sử Ảnh AI</h2>
             <button 
-              onClick={fetchVideoJobsData}
+              onClick={fetchImageJobsData}
               disabled={isLoading}
               className="p-1.5 hover:bg-admin-card text-admin-text-muted hover:text-white rounded-lg transition-colors cursor-pointer border-none bg-transparent"
               title="Tải lại dữ liệu"
@@ -220,7 +213,7 @@ const VideoManagement = () => {
           <div className="relative flex items-center">
             <input 
               type="text" 
-              placeholder="Tìm theo người dùng, id video"
+              placeholder="Tìm theo người dùng, id ảnh"
               className="admin-input pl-10 pr-9 py-1.5 text-sm w-80 bg-white dark:bg-[#0f0f13] border border-slate-200 dark:border-admin-border rounded-lg text-slate-900 dark:text-white outline-none transition-all focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -328,42 +321,6 @@ const VideoManagement = () => {
               {tabCounts.queueing}
             </span>
           </button>
-
-          {/* Tab: Mô hình Wan v2.2 */}
-          <button
-            onClick={() => handleTabClick('wan_turbo')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-lg transition-all duration-200 select-none border-b-2 ${
-              statusFilter === 'wan_turbo'
-                ? 'border-cyan-500 text-cyan-400 bg-cyan-500/10'
-                : 'border-transparent text-admin-text-muted hover:text-cyan-400 hover:bg-cyan-500/5'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-cyan-500 shrink-0"></span>
-            Mô hình Wan v2.2
-            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-              statusFilter === 'wan_turbo' ? 'bg-cyan-500/20 text-cyan-400' : 'bg-admin-card text-admin-text-muted'
-            }`}>
-              {tabCounts.wan_turbo}
-            </span>
-          </button>
-
-          {/* Tab: Mô hình Kling v2.5 */}
-          <button
-            onClick={() => handleTabClick('kling_v2_5_standard')}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold rounded-t-lg transition-all duration-200 select-none border-b-2 ${
-              statusFilter === 'kling_v2_5_standard'
-                ? 'border-fuchsia-500 text-fuchsia-400 bg-fuchsia-500/10'
-                : 'border-transparent text-admin-text-muted hover:text-fuchsia-400 hover:bg-fuchsia-500/5'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-fuchsia-500 shrink-0"></span>
-            Mô hình Kling v2.5
-            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-              statusFilter === 'kling_v2_5_standard' ? 'bg-fuchsia-500/20 text-fuchsia-400' : 'bg-admin-card text-admin-text-muted'
-            }`}>
-              {tabCounts.kling_v2_5_standard}
-            </span>
-          </button>
         </div>
 
         {/* Data Table */}
@@ -373,8 +330,8 @@ const VideoManagement = () => {
               <tr>
                 <th className="px-6 py-4">ID</th>
                 <th className="px-6 py-4">Người thực hiện</th>
-                <th className="px-6 py-4">Kịch bản (Prompt)</th>
-                <th className="px-6 py-4">Mô hình (Model)</th>
+                <th className="px-6 py-4">Ý tưởng (Prompt)</th>
+                <th className="px-6 py-4">Mô hình & Tỷ lệ</th>
                 <th className="px-6 py-4">Trạng thái</th>
                 <th className="px-6 py-4">Thời gian</th>
                 <th className="px-6 py-4 text-right">Chi tiết</th>
@@ -386,11 +343,11 @@ const VideoManagement = () => {
                   <td colSpan="7" className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <RefreshCw className="animate-spin text-admin-primary" size={24} />
-                      <p className="text-sm text-admin-text-muted font-semibold">Đang tải lịch sử video...</p>
+                      <p className="text-sm text-admin-text-muted font-semibold">Đang tải lịch sử ảnh...</p>
                     </div>
                   </td>
                 </tr>
-              ) : videoJobs.length === 0 ? (
+              ) : imageJobs.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center justify-center gap-3">
@@ -404,7 +361,7 @@ const VideoManagement = () => {
                   </td>
                 </tr>
               ) : (
-                videoJobs.map((item) => (
+                imageJobs.map((item) => (
                   <tr key={item.id} className="border-b border-admin-border hover:bg-admin-bg/30 transition-colors">
                     <td className="px-6 py-4 font-mono text-xs">#{item.id}</td>
                     <td className="px-6 py-4">
@@ -417,7 +374,7 @@ const VideoManagement = () => {
                       {item.prompt && item.prompt.length > 60 ? `${item.prompt.substring(0, 60)}...` : item.prompt}
                     </td>
                     <td className="px-6 py-4 text-xs font-mono text-admin-primary">
-                      {getModelLabel(item.model_name, item.aspect_ratio)}
+                      Flux Schnell ({item.aspect_ratio || '1:1'})
                     </td>
                     <td className="px-6 py-4">{getStatusBadge(item.status)}</td>
                     <td className="px-6 py-4 text-xs font-mono">
@@ -443,7 +400,7 @@ const VideoManagement = () => {
         <div className="flex justify-between items-center pt-4 border-t border-gray-200 dark:border-gray-800 w-full px-6 pb-6 bg-slate-100 dark:bg-[#0e0e11] rounded-b-lg">
           {/* Phía bên trái (Thông tin trang) */}
           <div className="text-gray-400 dark:text-gray-500 text-xs">
-            Trang {currentPage} trên {totalPages} (Hiển thị {videoJobs.length} dòng)
+            Trang {currentPage} trên {totalPages} (Hiển thị {imageJobs.length} dòng)
           </div>
 
           {/* Phía bên phải (Hệ thống nút bấm) */}
@@ -500,9 +457,9 @@ const VideoManagement = () => {
               {/* Header */}
               <div className="flex justify-between items-center pb-3 border-b border-admin-border/50">
                 <div className="flex items-center gap-2">
-                  <Film className="text-blue-500" size={18} />
+                  <ImageIcon className="text-blue-500" size={18} />
                   <h3 className="text-sm font-black uppercase text-slate-900 dark:text-white tracking-wider">
-                    Chi Tiết Tác Vụ Video AI #{selectedJob.id}
+                    Chi Tiết Tác Vụ Ảnh AI #{selectedJob.id}
                   </h3>
                 </div>
                 <button 
@@ -522,9 +479,9 @@ const VideoManagement = () => {
                   </span>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="text-zinc-500 dark:text-zinc-400 font-bold">Mô hình & Khung hình:</span>
+                  <span className="text-zinc-500 dark:text-zinc-400 font-bold">Mô hình & Provider:</span>
                   <span className="text-slate-900 dark:text-white">
-                    {getModelLabel(selectedJob.model_name, selectedJob.aspect_ratio)}
+                    Flux Schnell (Fal.ai)
                   </span>
                 </div>
                 <div className="flex flex-col gap-1">
@@ -532,17 +489,11 @@ const VideoManagement = () => {
                   <span className="text-slate-900 dark:text-white">{formatTime(selectedJob.createdAt)}</span>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="text-zinc-500 dark:text-zinc-400 font-bold">Thời lượng & Preset:</span>
+                  <span className="text-zinc-500 dark:text-zinc-400 font-bold">Tỷ lệ & Chi phí:</span>
                   <span className="text-slate-900 dark:text-white">
-                    {selectedJob.duration || 5}s | {selectedJob.stylePreset || 'Mặc định'}
+                    {selectedJob.aspect_ratio || '1:1'} | {selectedJob.credits_used || 2} Credits
                   </span>
                 </div>
-                {selectedJob.thirdPartyTaskId && (
-                  <div className="flex flex-col gap-1 col-span-2">
-                    <span className="text-zinc-500 dark:text-zinc-400 font-bold">Third-party Task ID (Fal.ai ID):</span>
-                    <span className="text-slate-900 dark:text-white font-mono">{selectedJob.thirdPartyTaskId}</span>
-                  </div>
-                )}
               </div>
 
               {/* Status Section */}
@@ -553,31 +504,18 @@ const VideoManagement = () => {
                 </div>
               </div>
 
-              {/* Input Image if exists */}
-              {selectedJob.inputImageUrl && (
+              {/* Output Image Section */}
+              {selectedJob.status === 'success' && (selectedJob.result_url || selectedJob.output_url || selectedJob.image_url || selectedJob.imageUrl) ? (
                 <div className="flex flex-col gap-2 animate-fade-in">
-                  <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">Hình ảnh đầu vào:</span>
-                  <div className="relative w-40 h-24 overflow-hidden rounded-lg border border-slate-200 dark:border-admin-border bg-slate-100 dark:bg-zinc-900 flex items-center justify-center">
+                  <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">Ảnh kết quả (Click để xem kích thước lớn):</span>
+                  <div className="relative w-full overflow-hidden rounded-xl border border-slate-200 dark:border-admin-border bg-slate-100 dark:bg-zinc-900 flex items-center justify-center max-h-72">
                     <img 
-                      src={selectedJob.inputImageUrl} 
-                      alt="Input Source" 
-                      className="w-full h-full object-cover cursor-zoom-in"
-                      onClick={() => window.open(selectedJob.inputImageUrl, '_blank')}
+                      src={selectedJob.result_url || selectedJob.output_url || selectedJob.image_url || selectedJob.imageUrl} 
+                      alt="Output Result" 
+                      className="max-h-72 max-w-full object-contain cursor-zoom-in hover:opacity-90 transition-opacity"
+                      onClick={() => setIsZoomed(true)}
                     />
                   </div>
-                </div>
-              )}
-
-              {/* Video Player Section */}
-              {selectedJob.status === 'success' && selectedJob.videoUrl ? (
-                <div className="flex flex-col gap-2 animate-fade-in">
-                  <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">Trình phát Video kết quả:</span>
-                  <video 
-                    controls 
-                    className="w-full rounded-xl border border-slate-200 dark:border-admin-border bg-black max-h-72" 
-                    src={selectedJob.videoUrl}
-                    poster={selectedJob.inputImageUrl || undefined}
-                  />
                 </div>
               ) : selectedJob.status === 'failed' ? (
                 <div className="bg-red-50 dark:bg-red-950/10 border border-red-200 dark:border-red-900/30 text-red-700 dark:text-red-400 rounded-xl p-4 text-[11px] font-mono whitespace-pre-wrap max-h-56 overflow-y-auto select-text">
@@ -585,17 +523,17 @@ const VideoManagement = () => {
                     <AlertCircle size={14} />
                     <span>THÔNG BÁO LỖI HỆ THỐNG</span>
                   </div>
-                  Tác vụ xử lý video đã thất bại. Vui lòng kiểm tra lại cấu hình hoặc logs hệ thống Fal.ai.
+                  Tác vụ tạo ảnh đã thất bại. Vui lòng kiểm tra lại cấu hình hoặc logs hệ thống Fal.ai Flux Schnell.
                 </div>
               ) : (
                 <div className="bg-amber-50 dark:bg-amber-950/10 border border-amber-200 dark:border-amber-900/30 text-amber-700 dark:text-amber-500 rounded-xl p-4 text-[11px] text-center font-bold">
-                  Video đang được xếp hàng đợi hoặc đang render từ Fal.ai. Vui lòng làm mới sau!
+                  Ảnh đang được xếp hàng đợi hoặc đang render từ Fal.ai. Vui lòng làm mới sau!
                 </div>
               )}
 
               {/* Prompt Output */}
               <div className="flex-grow flex flex-col gap-2">
-                <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">Kịch bản (Prompt):</span>
+                <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">Ý tưởng (Prompt):</span>
                 <div className="bg-gray-50 dark:bg-zinc-950 border border-slate-200 dark:border-admin-border rounded-xl p-4 text-[11px] text-slate-700 dark:text-zinc-300 leading-relaxed font-semibold max-h-40 overflow-y-auto select-text whitespace-pre-wrap">
                   {selectedJob.prompt}
                 </div>
@@ -615,8 +553,28 @@ const VideoManagement = () => {
           </div>
         )}
       </div>
+
+      {/* Lightbox / Zoom Overlay */}
+      {isZoomed && selectedJob && (selectedJob.result_url || selectedJob.output_url || selectedJob.image_url || selectedJob.imageUrl) && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center cursor-zoom-out p-4 animate-fade-in"
+          onClick={() => setIsZoomed(false)}
+        >
+          <img 
+            src={selectedJob.result_url || selectedJob.output_url || selectedJob.image_url || selectedJob.imageUrl} 
+            alt="Zoomed preview" 
+            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+          />
+          <button 
+            onClick={(e) => { e.stopPropagation(); setIsZoomed(false); }}
+            className="absolute top-4 right-4 bg-black/50 hover:bg-black/80 text-white p-2 rounded-full cursor-pointer transition-all border border-white/20"
+          >
+            <X size={24} />
+          </button>
+        </div>
+      )}
     </div>
   );
 };
 
-export default VideoManagement;
+export default ImageManagement;

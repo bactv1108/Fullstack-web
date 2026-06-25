@@ -77,8 +77,8 @@ const createPaymentLink = async (req, res) => {
       orderCode,
       amount,
       description,
-      cancelUrl: 'http://localhost:5173/payment-cancel',
-      returnUrl: 'http://localhost:5173/payment-success'
+      cancelUrl: `${process.env.FRONTEND_URL}/payment-cancel`,
+      returnUrl: `${process.env.FRONTEND_URL}/payment-success`
     };
 
     // 6. Gọi PayOS SDK để tạo link thanh toán
@@ -175,7 +175,7 @@ const receiveWebhook = async (req, res) => {
     console.log(`💾 [PAYOS WEBHOOK] Đã lưu lịch sử giao dịch thành công vào bảng transactions: ID=${transactionId}`);
 
     // 8. Phát sự kiện Socket.io cập nhật số dư tức thì lên Frontend
-    const io = req.app ? req.app.io : null;
+    const io = req.app?.io || req.io || global.io;
     if (io) {
       // Bắn sự kiện Socket.io cho Admin Panel để tự động tải lại bảng Lịch sử giao dịch
       try {
@@ -186,7 +186,8 @@ const receiveWebhook = async (req, res) => {
 
         io.to('admin_room').emit('transaction:created', txJson);
         io.to('admin_room').emit('transaction:updated', txJson);
-        console.log(`📡 [SOCKET.IO] Đã bắn transaction:created & transaction:updated lên admin_room cho GD: ${transactionId}`);
+        io.emit('NEW_TRANSACTION', { type: 'deposit', amount: transaction.amount, userId: userId });
+        console.log(`📡 [SOCKET.IO] Đã bắn transaction:created, transaction:updated & NEW_TRANSACTION lên admin_room cho GD: ${transactionId}`);
       } catch (socketErr) {
         console.error('❌ [PAYOS WEBHOOK] Lỗi bắn socket transaction:created/updated:', socketErr.message);
       }

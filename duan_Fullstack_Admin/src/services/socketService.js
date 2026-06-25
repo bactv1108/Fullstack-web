@@ -5,7 +5,11 @@
  */
 import { io } from 'socket.io-client';
 
-const SERVER_URL = 'http://localhost:3000';
+const SERVER_URL = import.meta.env.VITE_SOCKET_URL || 
+  (import.meta.env.VITE_API_URL 
+    ? import.meta.env.VITE_API_URL.replace(/\/admin\/?$/, '').replace(/\/api\/?$/, '') 
+    : null) || 
+  'http://localhost:3000';
 
 let socketInstance = null;
 

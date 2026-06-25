@@ -43,7 +43,9 @@ export const AdminAuthProvider = ({ children }) => {
   const login = async (credentials) => {
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/admin';
-      const authUrl = apiUrl.replace(/\/admin\/?$/, '/auth/login');
+      const cleanApiUrl = apiUrl.replace(/\/+$/, '').replace(/\/admin\/?$/, '');
+      const apiBase = cleanApiUrl.endsWith('/api') ? cleanApiUrl : `${cleanApiUrl}/api`;
+      const authUrl = `${apiBase}/auth/login`;
       
       const response = await axios.post(authUrl, credentials);
       const data = response.data; // { user, access_token, refresh_token }
@@ -77,8 +79,9 @@ export const AdminAuthProvider = ({ children }) => {
   const verify2FALogin = async (userId, otpToken) => {
     try {
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/admin';
-      const baseUrl = apiUrl.replace(/\/admin\/?$/, '');
-      const response = await axios.post(`${baseUrl}/auth/2fa/verify-login`, { userId, token: otpToken });
+      const cleanApiUrl = apiUrl.replace(/\/+$/, '').replace(/\/admin\/?$/, '');
+      const apiBase = cleanApiUrl.endsWith('/api') ? cleanApiUrl : `${cleanApiUrl}/api`;
+      const response = await axios.post(`${apiBase}/auth/2fa/verify-login`, { userId, token: otpToken });
       const data = response.data;
       const normalizedRole = data.user?.role?.toLowerCase();
 

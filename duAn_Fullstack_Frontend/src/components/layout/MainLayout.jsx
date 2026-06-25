@@ -8,6 +8,10 @@ import { userService } from '../../services/user.service';
 import { useAuth } from '../../hooks/useAuth';
 import socketService from '../../services/socketService';
 
+const SERVER_URL = import.meta.env.VITE_API_BASE_URL || 
+  (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '') : '') || 
+  'http://localhost:3000';
+
 const MainLayout = () => {
   const { user, updateUserState } = useAuth();
   const [currentMenu, setCurrentMenu] = useState('image-generator');
@@ -212,7 +216,7 @@ const MainLayout = () => {
     setModalPlaying(false);
     if (modalAudioRef.current) {
       modalAudioRef.current.pause();
-      modalAudioRef.current.src = (previewJob && previewJob.type !== 'video') ? `http://localhost:3000/uploads/voices/AI_Studio_Voice_ID_${previewJob.id}.mp3` : '';
+      modalAudioRef.current.src = (previewJob && previewJob.type !== 'video') ? `${SERVER_URL}/uploads/voices/AI_Studio_Voice_ID_${previewJob.id}.mp3` : '';
       modalAudioRef.current.load();
       modalAudioRef.current.volume = modalVolume;
     }
@@ -234,7 +238,7 @@ const MainLayout = () => {
       const isVideo = job.type === 'Video' || job.type === 'video' || job.type === 'render_task';
       const isImage = job.type === 'Image' || job.type === 'image';
       
-      const baseUrl = 'http://localhost:3000';
+      const baseUrl = SERVER_URL;
       let fileUrl = '';
       if (job.output_url) {
         fileUrl = job.output_url.startsWith('http') ? job.output_url : `${baseUrl}${job.output_url}`;
@@ -356,6 +360,7 @@ const MainLayout = () => {
         loadHistory={loadHistory}
         unreadCount={notificationCount}
         setUnreadCount={setNotificationCount}
+        toast={toast}
       />
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }} className="relative">
         {/* Backdrop for mobile/tablet when sidebar is open */}
@@ -457,7 +462,7 @@ const MainLayout = () => {
                   </div>
                 ) : (
                   <img 
-                    src={previewJob.output_url ? (previewJob.output_url.startsWith('http') ? previewJob.output_url : `http://localhost:3000${previewJob.output_url}`) : `http://localhost:3000/uploads/images/AI_Studio_Image_ID_${previewJob.id}.jpg`}
+                    src={previewJob.output_url ? (previewJob.output_url.startsWith('http') ? previewJob.output_url : `${SERVER_URL}${previewJob.output_url}`) : `${SERVER_URL}/uploads/images/AI_Studio_Image_ID_${previewJob.id}.jpg`}
                     alt="AI Studio Preview"
                     className="max-w-full max-h-full object-contain"
                   />
@@ -468,7 +473,7 @@ const MainLayout = () => {
                 {/* Audio Node */}
                 <audio 
                   ref={modalAudioRef}
-                  src={`http://localhost:3000/uploads/voices/AI_Studio_Voice_ID_${previewJob.id}.mp3`}
+                  src={`${SERVER_URL}/uploads/voices/AI_Studio_Voice_ID_${previewJob.id}.mp3`}
                   crossOrigin="anonymous"
                   onPlay={() => setModalPlaying(true)}
                   onPause={() => setModalPlaying(false)}

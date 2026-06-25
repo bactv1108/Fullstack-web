@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { useNavigate, useOutletContext } from 'react-router-dom';
+import { useNavigate, useLocation, useOutletContext } from 'react-router-dom';
 import {
   Sparkles, Image as ImageIcon, Download, Trash2, Loader2,
   ExternalLink, CheckCircle2, XCircle, ChevronLeft, ChevronRight,
@@ -87,6 +87,7 @@ export default function ImageView() {
   // triggerDeleteHistory: mở Global Delete Dialog của Dashboard
   const { credits, setCredits, loadHistory, toast, triggerDeleteHistory } = useOutletContext();
   const navigate    = useNavigate();
+  const location    = useLocation();
   const textareaRef = useRef(null);
 
   // ── Ref đến container cuộn chính ──────────────────────────────────────────
@@ -105,6 +106,23 @@ export default function ImageView() {
   const [previewJob, setPreviewJob]             = useState(null);   // 100% DB-driven, no localStorage
   const [isDetailOpen, setIsDetailOpen]         = useState(false);
   const [selectedJob, setSelectedJob]           = useState(null);
+
+  // Auto-open job detail from navigation state (notification click)
+  useEffect(() => {
+    if (imageHistory && imageHistory.length > 0 && location.state?.openJobId) {
+      const searchId = Number(String(location.state.openJobId).replace(/\D/g, ''));
+      console.log("[DEBUG IMAGE]: Target ID:", searchId, "Sample Item:", imageHistory[0]);
+      
+      const target = imageHistory.find(item => 
+        Number(item.job_id) === searchId || Number(item.jobId) === searchId || Number(item.id) === searchId
+      );
+      if (target) {
+        setSelectedJob(target);
+        setIsDetailOpen(true);
+        window.history.replaceState({}, document.title);
+      }
+    }
+  }, [imageHistory, location.state]);
 
   // ── Pagination — 10 cards/page (2 hàng × 5 cột desktop) ─────────────────
   const CARDS_PER_PAGE = 10;

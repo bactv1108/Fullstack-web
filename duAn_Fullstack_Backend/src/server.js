@@ -111,6 +111,7 @@ const paymentRouter   = require('./routes/payment.routes');
 
 
 const app = express();
+app.set('trust proxy', 1);
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
@@ -128,30 +129,16 @@ global.io = io;
 
 app.use(cors({
   origin: [
-    // ── Local Development ─────────────────────────────────────────
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://localhost:5175',
-    'http://localhost:5176',
-    // ── Production Domains ────────────────────────────────────────
-    'https://matthanai.cloud',
-    'https://www.matthanai.cloud',
-    'https://admin.matthanai.cloud',
-  ],
+    'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176',
+    'https://matthanai.cloud', 'https://www.matthanai.cloud', 'https://admin.matthanai.cloud'
+  ], // Frontend & Admin URLs
   credentials: true
 }));
 // ĐẶT NGAY DƯỚI DÒNG app.use(cors(...)) TRONG FILE server.js
 app.use((req, res, next) => {
   const allowedOrigins = [
-    // ── Local Development ─────────────────────────────────────────
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://localhost:5175',
-    'http://localhost:5176',
-    // ── Production Domains ────────────────────────────────────────
-    'https://matthanai.cloud',
-    'https://www.matthanai.cloud',
-    'https://admin.matthanai.cloud',
+    'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176',
+    'https://matthanai.cloud', 'https://www.matthanai.cloud', 'https://admin.matthanai.cloud'
   ];
   const origin = req.headers.origin;
 
@@ -181,6 +168,9 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 app.use('/previews', express.static(path.join(__dirname, '../public/previews')));
+app.use('/api/static/audio/previews', express.static(path.join(__dirname, '../public/previews')));
+app.use('/api/static/previews', express.static(path.join(__dirname, '../public/previews')));
+app.use('/api/static', express.static(path.join(__dirname, '../public')));
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Real-time notification stream (SSE) for Admin

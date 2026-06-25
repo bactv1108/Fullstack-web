@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import axiosClient from '../../services/axiosClient';
 import { CheckCircle2, AlertCircle, ArrowRight } from 'lucide-react';
 import './AuthForm.css'; // Tái sử dụng các lớp CSS chung để đồng bộ giao diện tối (Dark Mode)
 
@@ -12,7 +12,9 @@ const VerifyEmail = () => {
   const [verificationSuccessState, setVerificationSuccessState] = useState(false);
   const [verificationErrorMessage, setVerificationErrorMessage] = useState('');
 
-  const verificationToken = searchParameters.get('token');
+  // Trích xuất và làm sạch token (loại bỏ khoảng trắng và các ký tự query dư thừa)
+  const rawToken = searchParameters.get('token');
+  const verificationToken = rawToken ? rawToken.replace(/^[?&]+/, '').trim() : null;
 
   useEffect(() => {
     const executeEmailVerification = async () => {
@@ -23,14 +25,9 @@ const VerifyEmail = () => {
       }
 
       try {
-        // Gửi yêu cầu API xác thực bất đồng bộ lên máy chủ Backend
-        const apiResponse = await axios.get(`http://localhost:3000/api/auth/verify-email?token=${verificationToken}`);
-        
-        if (apiResponse.status === 200) {
-          setVerificationSuccessState(true);
-        } else {
-          setVerificationErrorMessage(apiResponse.data?.message || 'Không thể xác thực tài khoản vào lúc này.');
-        }
+        // Gửi yêu cầu API xác thực qua axiosClient đã được thiết lập base URL động
+        await axiosClient.get(`/auth/verify-email?token=${verificationToken}`);
+        setVerificationSuccessState(true);
       } catch (apiError) {
         const errorData = apiError.response?.data;
         setVerificationErrorMessage(errorData?.message || 'Đường truyền mạng bị gián đoạn hoặc máy chủ gặp sự cố.');

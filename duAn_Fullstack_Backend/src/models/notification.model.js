@@ -41,6 +41,23 @@ module.exports = (sequelize) => {
     tableName: 'notifications',
     underscored: true,
     timestamps: true,
+    hooks: {
+      afterCreate: async (notification, options) => {
+        if (global.io && notification.userId) {
+          const userRoom = `user_room_${notification.userId}`;
+          global.io.to(userRoom).emit('NEW_NOTIFICATION', {
+            id: notification.id,
+            title: notification.title,
+            message: notification.message,
+            content: notification.message,
+            is_read: notification.is_read || false,
+            createdAt: notification.createdAt,
+            type: notification.type
+          });
+          console.log(`[SOCKET HOOK] Sent NEW_NOTIFICATION to ${userRoom} for Notification #${notification.id}`);
+        }
+      }
+    }
   });
 
   return Notification;

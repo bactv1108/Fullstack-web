@@ -92,16 +92,15 @@ const updateBillingPlans = async (req, res) => {
   try {
     const { Package, SystemConfig } = require('../models');
     
-    // BƯỚC 1: Duyệt qua các key và cập nhật trực tiếp vào từng hàng tương ứng của bảng packages trong MySQL
+    // BƯỚC 1: Duyệt qua các key và cập nhật trực tiếp vào từng hàng tương ứng của bảng packages trong MySQL sử dụng UPSERT
     for (const key of Object.keys(plans)) {
       const targetId = key.toLowerCase(); // Ép chữ thường: 'free', 'basic', 'premium' để khớp khóa chính id trong DB
-      await Package.update(
-        {
-          price: parseInt(plans[key].price, 10) || 0,
-          credits: parseInt(plans[key].credits, 10) || 0
-        },
-        { where: { id: targetId } }
-      );
+      await Package.upsert({
+        id: targetId,
+        name: targetId.charAt(0).toUpperCase() + targetId.slice(1),
+        price: parseInt(plans[key].price, 10) || 0,
+        credits: parseInt(plans[key].credits, 10) || 0
+      });
     }
 
     // BƯỚC 2: Ghi đè chuỗi JSON vào bảng system_configs để đảm bảo tính tương thích ngược toàn cục
@@ -114,8 +113,8 @@ const updateBillingPlans = async (req, res) => {
       success: true, 
       message: 'Cấu hình gói cước đã được cập nhật đồng bộ vào cả hai bảng dữ liệu thành công!' 
     });
-  } catch (err) {
-    console.error('[ADMIN CONTROLLER] updateBillingPlans error:', err.message);
+  } catch (error) {
+    console.error('[ADMIN BILLING ERROR]', error);
     return res.status(500).json({ message: 'Lỗi hệ thống khi cập nhật gói cước.' });
   }
 };
@@ -370,14 +369,27 @@ const getApiCosts = async (req, res) => {
         [sequelize.fn('SUM', sequelize.col('cost')), 'total_spend']
       ],
       group: ['provider'], 
-      order: [[sequelize.literal('total_spend'), 'DESC']],
       raw: true
     });
 
+    // Sort in memory to guarantee cross-database compatibility and avoid Sequelize literal issues
+    providerStats.sort((a, b) => Number(b.total_spend || 0) - Number(a.total_spend || 0));
+
     return res.status(200).json({ success: true, data: providerStats });
-  } catch (err) {
-    console.error('[ADMIN CONTROLLER] getApiCosts error:', err.message);
-    return res.status(500).json({ message: 'Lỗi hệ thống khi tải chi phí API.' });
+  } catch (error) {
+    console.error('[API COST ERROR LOG]:', error);
+    // Trả về giá trị mặc định (status: 200) thay vì crash hệ thống
+    return res.status(200).json({
+      success: true,
+      data: [
+        { provider: 'OpenAI', total_calls: 0, total_spend: 0 },
+        { provider: 'ElevenLabs', total_calls: 0, total_spend: 0 },
+        { provider: 'Fal', total_calls: 0, total_spend: 0 },
+        { provider: 'OpenRouter', total_calls: 0, total_spend: 0 },
+        { provider: 'Gemini', total_calls: 0, total_spend: 0 }
+      ],
+      message: 'Sử dụng dữ liệu cấu hình mặc định (fallback) do lỗi kết nối cơ sở dữ liệu.'
+    });
   }
 };
 
@@ -712,7 +724,7 @@ const approveTransactionManually = async (req, res) => {
       console.log(`[MANUAL APPROVAL SUCCESS] Transaction ${transactionId} approved manually by Admin. Added ${transaction.credits_added} credits to user ID ${transaction.userId}.`);
 
       // Emit real-time update via Socket.io
-      const io = req.io;
+      const io = req.io || req.app?.io || global.io;
       if (io) {
         const updatedTransaction = transaction.toJSON();
         const user = await User.findByPk(transaction.userId, {
@@ -720,7 +732,8 @@ const approveTransactionManually = async (req, res) => {
         });
         updatedTransaction.user = user ? { id: user.id, name: user.name, email: user.email } : {};
         io.emit('transaction:updated', updatedTransaction);
-        console.log(`[SOCKET.IO] Emitted 'transaction:updated' (APPROVED) for transaction ID: ${transactionId}`);
+        io.emit('NEW_TRANSACTION', { type: 'deposit', amount: transaction.amount, userId: transaction.userId });
+        console.log(`[SOCKET.IO] Emitted 'transaction:updated' & 'NEW_TRANSACTION' (APPROVED) for transaction ID: ${transactionId}`);
 
         // Also emit user:credit_updated so the user's Header updates the balance live
         if (user) {
@@ -1018,6 +1031,177 @@ const getVideoJobs = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/admin/image-jobs
+ * Retrieve paginated & filtered image jobs history logs
+ * Query params: page (default 1), limit (forced 10), status ('all'|'success'|'failed'|'processing'|'queueing'), search/searchWord (optional string)
+ * Returns: { rows, totalPages, currentPage, totalItems, countAll, countSuccess, countFailed, countProcessing, countQueueing, counts }
+ */
+const getImageJobs = async (req, res) => {
+  try {
+    const { ImageJob, User } = require('../models');
+    const { Op } = require('sequelize');
+
+    // ── Hard-lock pagination: 10 rows per page ──
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = 10;
+    const offset = (page - 1) * limit;
+
+    // ── Search filter (by id, user name, or user email) ──
+    const searchWord = (req.query.search || req.query.searchWord || '').trim();
+    const statusParam = (req.query.status || 'all').trim().toLowerCase();
+
+    let isSearchNumeric = false;
+    if (searchWord) {
+      const parsedId = parseInt(searchWord, 10);
+      if (!isNaN(parsedId) && String(parsedId) === searchWord) {
+        isSearchNumeric = true;
+      }
+    }
+
+    const hasUserTextSearch = searchWord && !isSearchNumeric;
+    const includeRequired = hasUserTextSearch ? true : false;
+
+    // Build main where condition
+    const whereClause = {};
+    if (searchWord) {
+      if (isSearchNumeric) {
+        whereClause.id = parseInt(searchWord, 10);
+      } else {
+        whereClause[Op.or] = [
+          { '$owner.name$': { [Op.like]: `%${searchWord}%` } },
+          { '$owner.email$': { [Op.like]: `%${searchWord}%` } }
+        ];
+      }
+    }
+
+    if (['success', 'failed', 'processing', 'queueing'].includes(statusParam)) {
+      if (statusParam === 'success') {
+        whereClause.status = 'Completed';
+      } else if (statusParam === 'failed') {
+        whereClause.status = { [Op.in]: ['Failed', 'failed_violation'] };
+      } else if (statusParam === 'processing') {
+        whereClause.status = 'Rendering';
+      } else if (statusParam === 'queueing') {
+        whereClause.status = 'Pending';
+      }
+    }
+
+    // Build base where condition for tab counts (ignores status filter, applies search filter)
+    const baseWhere = {};
+    if (searchWord) {
+      if (isSearchNumeric) {
+        baseWhere.id = parseInt(searchWord, 10);
+      } else {
+        baseWhere[Op.or] = [
+          { '$owner.name$': { [Op.like]: `%${searchWord}%` } },
+          { '$owner.email$': { [Op.like]: `%${searchWord}%` } }
+        ];
+      }
+    }
+
+    const countInclude = [{
+      model: User,
+      as: 'owner',
+      attributes: [],
+      required: includeRequired
+    }];
+
+    // ── Parallel: paginated query + counts for tab badges ──
+    const [
+      { count, rows },
+      countAll,
+      countSuccess,
+      countFailed,
+      countProcessing,
+      countQueueing
+    ] = await Promise.all([
+      ImageJob.findAndCountAll({
+        where: whereClause,
+        limit,
+        offset,
+        order: [['id', 'DESC']],
+        include: [{
+          model: User,
+          as: 'owner',
+          attributes: ['name', 'email'],
+          required: includeRequired
+        }]
+      }),
+      ImageJob.count({
+        where: baseWhere,
+        include: countInclude
+      }),
+      ImageJob.count({
+        where: { ...baseWhere, status: 'Completed' },
+        include: countInclude
+      }),
+      ImageJob.count({
+        where: { ...baseWhere, status: { [Op.in]: ['Failed', 'failed_violation'] } },
+        include: countInclude
+      }),
+      ImageJob.count({
+        where: { ...baseWhere, status: 'Rendering' },
+        include: countInclude
+      }),
+      ImageJob.count({
+        where: { ...baseWhere, status: 'Pending' },
+        include: countInclude
+      })
+    ]);
+
+    const totalPages = Math.ceil(count / limit) || 1;
+
+    const APP_API_URL = 'https://api.matthanai.cloud';
+    const formattedData = rows.map(r => {
+      const dbUrl = r.output_url || r.outputUrl || '';
+      let fullUrl = '';
+      if (dbUrl) {
+        fullUrl = dbUrl.startsWith('http') ? dbUrl : `${APP_API_URL}${dbUrl}`;
+      }
+
+      return {
+        id: r.id,
+        prompt: r.prompt,
+        aspect_ratio: r.aspectRatio || r.aspect_ratio,
+        status: r.status === 'Completed' ? 'success' :
+                (r.status === 'Failed' || r.status === 'failed_violation') ? 'failed' :
+                r.status === 'Rendering' ? 'processing' :
+                r.status === 'Pending' ? 'queueing' : 'unknown',
+        output_url: fullUrl,
+        result_url: fullUrl,
+        image_url: fullUrl,
+        imageUrl: fullUrl,
+        createdAt: r.createdAt,
+        owner: r.owner ? {
+          name: r.owner.name,
+          email: r.owner.email
+        } : null
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: formattedData,
+      pagination: {
+        totalItems: count,
+        totalPages: totalPages,
+        currentPage: page,
+        counts: {
+          all: countAll,
+          success: countSuccess,
+          failed: countFailed,
+          processing: countProcessing,
+          queueing: countQueueing
+        }
+      }
+    });
+  } catch (error) {
+    console.error('[ADMIN CONTROLLER] getImageJobs error:', error.message);
+    return res.status(500).json({ message: 'Lỗi hệ thống khi tải lịch sử Ảnh AI.' });
+  }
+};
+
 const getCreditStatistics = async (request, response) => {
   try {
     const statisticsData = await CreditStat.findAll({ order: [['id', 'ASC']] });
@@ -1093,22 +1277,34 @@ const confirmImageViolation = async (req, res) => {
     await log.update({ status: 'rejected' });
 
     // Phát tin nhắn socket cho user room để đồng bộ trạng thái ở client nếu cần
-    const io = req.io;
-    if (io && log.user_id) {
-      const userRoom = `user_room_${log.user_id}`;
-      io.to(userRoom).emit('image_analysis_result', {
-        itemId: Number(imageId),
-        status: 'failed',
-        resultData: {
-          id: log.id,
-          prompt_output: log.prompt_output || null,
-          input_tokens: log.input_tokens || null,
-          output_tokens: log.output_tokens || null,
+    const io = req.io || req.app?.io || global.io;
+    if (io) {
+      // Bắn socket về admin_room để Admin tự động cập nhật
+      const pendingRecord = await ImageAnalysis.findByPk(log.id, {
+        include: [{ model: require('../models').User, as: 'owner', attributes: ['id', 'name', 'email'] }],
+      }).catch(() => null);
+
+      if (pendingRecord) {
+        io.to('admin_room').emit('image_analysis:updated', pendingRecord.toJSON());
+      }
+      io.to('admin_room').emit('UPDATE_MAT_THAN_JOB', { id: log.id, status: 'rejected' });
+
+      if (log.user_id) {
+        const userRoom = `user_room_${log.user_id}`;
+        io.to(userRoom).emit('image_analysis_result', {
+          itemId: Number(imageId),
           status: 'failed',
-          error_message: log.error_message || 'Ảnh của bạn đã bị Admin xác nhận vi phạm chính sách.',
-        },
-        message: 'Ảnh của bạn đã bị Admin xác nhận vi phạm chính sách.'
-      });
+          resultData: {
+            id: log.id,
+            prompt_output: log.prompt_output || null,
+            input_tokens: log.input_tokens || null,
+            output_tokens: log.output_tokens || null,
+            status: 'failed',
+            error_message: log.error_message || 'Ảnh của bạn đã bị Admin xác nhận vi phạm chính sách.',
+          },
+          message: 'Ảnh của bạn đã bị Admin xác nhận vi phạm chính sách.'
+        });
+      }
     }
 
     return res.status(200).json({ success: true, message: 'Đã cập nhật trạng thái vi phạm vĩnh viễn.' });
@@ -1140,6 +1336,7 @@ module.exports = {
   getModerationQueue,
   reviewModerationItem,
   getVideoJobs,
+  getImageJobs,
   getCreditStatistics,
   getDetailedApiLogs,
   confirmImageViolation

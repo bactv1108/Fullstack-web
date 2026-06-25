@@ -5,6 +5,16 @@ import axiosClient from '../../../services/axiosClient';
 import { useAuth } from '../../../hooks/useAuth';
 import confetti from 'canvas-confetti';
 
+const getAvatarUrl = (avatarPath) => {
+  if (!avatarPath) return '';
+  if (avatarPath.startsWith('data:') || avatarPath.startsWith('http://') || avatarPath.startsWith('https://')) {
+    return avatarPath;
+  }
+  const rawUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+  const serverRoot = rawUrl.replace(/\/+$/, '').replace(/\/api\/?$/, '');
+  return `${serverRoot}${avatarPath.startsWith('/') ? '' : '/'}${avatarPath}`;
+};
+
 const packageMeta = {
   free: {
     badge: 'Free Tier',
@@ -608,7 +618,7 @@ export default function SettingsView() {
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-5 bg-[#0f0f11] p-4 rounded-xl border border-[#222226]/40 w-full">
           <div onClick={handleAvatarClick} className="w-20 h-20 rounded-full bg-[#854d0e] text-white flex items-center justify-center font-bold text-xl cursor-pointer relative group overflow-hidden border border-[#222226] shrink-0">
-            {avatar ? <img src={avatar.startsWith('data:') ? avatar : avatar} alt="User Avatar" className="w-full h-full object-cover" /> : <span>TB</span>}
+            {avatar ? <img src={getAvatarUrl(avatar)} alt="User Avatar" className="w-full h-full object-cover" /> : <span>TB</span>}
             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-opacity duration-200">
               <Camera size={18} className="text-white" />
               <span className="text-[8px] font-black uppercase text-white tracking-widest mt-1">Đổi ảnh</span>
