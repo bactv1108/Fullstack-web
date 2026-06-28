@@ -163,17 +163,21 @@ export default function SettingsView() {
         }
       });
       if (transRes && transRes.data && Array.isArray(transRes.data)) {
-        const mapped = transRes.data.map(tx => ({
-          id: tx.id,
-          package: tx.package_name || 'Gói cước',
-          package_name: tx.package_name,
-          type: tx.type || (tx.amount > 0 ? 'Thanh toán' : 'Hệ thống tặng'),
-          amount: tx.amount,
-          amount_formatted: new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(tx.amount).replace('₫', 'đ'),
-          credits_added: tx.credits_added,
-          status: (tx.status === 'success' || tx.status === 'Completed') ? 'Thành công' : (tx.status === 'pending' ? 'Chờ xử lý' : (tx.status === 'Expired' ? 'Hết hạn' : 'Thất bại')),
-          date: new Date(tx.createdAt).toLocaleString('vi-VN')
-        }));
+        const mapped = transRes.data.map(tx => {
+          const rawPackageName = tx.package_name === 'tiền lương' ? 'Hệ thống tặng' : tx.package_name;
+          const rawType = tx.type === 'tiền lương' ? 'Hệ thống tặng' : tx.type;
+          return {
+            id: tx.id,
+            package: rawPackageName || 'Gói cước',
+            package_name: rawPackageName,
+            type: rawType || (tx.amount > 0 ? 'Thanh toán' : 'Hệ thống tặng'),
+            amount: tx.amount,
+            amount_formatted: new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(tx.amount).replace('₫', 'đ'),
+            credits_added: tx.credits_added,
+            status: (tx.status === 'success' || tx.status === 'Completed') ? 'Thành công' : (tx.status === 'pending' ? 'Chờ xử lý' : (tx.status === 'Expired' ? 'Hết hạn' : 'Thất bại')),
+            date: new Date(tx.createdAt).toLocaleString('vi-VN')
+          };
+        });
         setTransactions(mapped);
         setTotalPages(transRes.totalPages || 1);
       } else {
@@ -875,11 +879,11 @@ export default function SettingsView() {
                     return (
                       <tr key={tx.id} className="hover:bg-[#131316]/50 transition-colors">
                         <td className="!p-2 p-3 font-mono text-zinc-500">{tx.id}</td>
-                        <td className="p-3 font-bold text-zinc-200">{tx.package_name || tx.package}</td>
+                        <td className="p-3 font-bold text-zinc-200">{(tx.package_name === 'tiền lương' || tx.package === 'tiền lương') ? 'Hệ thống tặng' : (tx.package_name || tx.package)}</td>
                         <td className="p-3">
                           {isServerRefund ? (
                             <span className="text-gray-400">Hoàn tiền dịch vụ</span>
-                          ) : tx.package?.includes('Free') || tx.package_name?.includes('Free') || tx.type === 'Gift' || tx.package === 'Gói Free' || tx.package_name === 'Gói Free' || tx.type === 'Hệ thống tặng' ? (
+                          ) : tx.package?.includes('Free') || tx.package_name?.includes('Free') || tx.type === 'Gift' || tx.package === 'Gói Free' || tx.package_name === 'Gói Free' || tx.type === 'Hệ thống tặng' || tx.package === 'tiền lương' || tx.package_name === 'tiền lương' || tx.type === 'tiền lương' ? (
                             <span className="text-gray-300">Hệ thống tặng</span>
                           ) : tx.amount > 0 ? (
                             <span className="text-gray-300">Nạp gói cước</span>
@@ -891,7 +895,7 @@ export default function SettingsView() {
                         <td className="p-3">
                           {isServerRefund ? (
                             <span className="text-green-500 font-bold">+{Math.abs(tx.credits_added)}</span>
-                          ) : tx.package?.includes('Free') || tx.package_name?.includes('Free') || tx.amount > 0 || tx.type === 'Gift' || tx.package === 'Gói Free' || tx.package_name === 'Gói Free' || tx.type === 'Hệ thống tặng' ? (
+                          ) : tx.package?.includes('Free') || tx.package_name?.includes('Free') || tx.amount > 0 || tx.type === 'Gift' || tx.package === 'Gói Free' || tx.package_name === 'Gói Free' || tx.type === 'Hệ thống tặng' || tx.package === 'tiền lương' || tx.package_name === 'tiền lương' || tx.type === 'tiền lương' ? (
                             <span className="text-green-500 font-bold">+{Math.abs(tx.credits_added)}</span>
                           ) : (
                             <span className="text-red-500 font-bold">-{Math.abs(tx.credits_added)}</span>

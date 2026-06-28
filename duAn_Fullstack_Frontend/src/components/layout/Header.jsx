@@ -3,6 +3,7 @@ import { Bell, Menu, AlertTriangle, Trash2, X, Check } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import axiosClient from '../../services/axiosClient';
 import socketService from '../../services/socketService';
+import { useAuth } from '../../hooks/useAuth';
 
 const formatTime = (dateString) => {
     if (!dateString) return 'vừa xong';
@@ -42,6 +43,7 @@ export default function Header({
     setUnreadCount: externalSetUnreadCount,
     toast
 }) {
+    const { user } = useAuth();
     const navigate = useNavigate();
     const [isNotifyOpen, setIsNotifyOpen] = useState(false);
     const [notifications, setNotifications] = useState([]);
@@ -421,7 +423,7 @@ export default function Header({
                         $
                     </span>
                     <span className="text-[10px] sm:text-xs font-bold text-[#f59e0b] whitespace-nowrap">
-                        {credits} Credits
+                        {user?.credits !== undefined ? user.credits : credits} Credits
                     </span>
                 </div>
 

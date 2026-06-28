@@ -174,7 +174,7 @@ const googleCallback = async (req, res) => {
         await Transaction.create({
           id: transactionId,
           userId: newUser.id,
-          package_name: freePackage.name || 'Gói Free',
+          package_name: (freePackage.name === 'tiền lương' ? 'Hệ thống tặng' : freePackage.name) || 'Gói Free',
           amount: 0,
           credits_added: defaultFreeCredits,
           status: 'success', // Trạng thái "Thành công" theo cấu hình
@@ -287,7 +287,7 @@ const register = async (request, response) => {
       await Transaction.create({
         id: transactionId,
         userId: newUser.id,
-        package_name: freePackage.name || 'Gói Free',
+        package_name: (freePackage.name === 'tiền lương' ? 'Hệ thống tặng' : freePackage.name) || 'Gói Free',
         amount: 0,
         credits_added: defaultFreeCredits,
         status: 'success', // Trạng thái "Thành công" theo cấu hình
